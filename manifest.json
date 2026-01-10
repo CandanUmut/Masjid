@@ -1,0 +1,10 @@
+{
+  "name": "Prayer Hub",
+  "short_name": "PrayerHub",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0f14",
+  "theme_color": "#0b0f14",
+  "icons": []
+}

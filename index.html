@@ -4,10 +4,18 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Mescid namaz vakitleri ve cemaat (ikame) saatleri — konuma göre otomatik, paylaşılabilir." />
+  <meta name="theme-color" content="#0b0f14" />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f7fb" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Prayer Hub" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="format-detection" content="telephone=no" />
   <title>Mescid Vakitleri</title>
 
+  <link rel="manifest" href="./manifest.json" />
+
   <link rel="stylesheet" href="./styles.css" />
-  <link rel="icon" href="data:," />
 
   <!-- Supabase JS (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
@@ -38,6 +46,8 @@
       </div>
 
       <div class="topbar__actions">
+        <span class="offline-badge" id="offlineBadge" data-i18n="offline" hidden>Çevrimdışı</span>
+        <button class="btn btn--primary" id="installBtn" type="button" data-i18n="install" hidden>Yükle</button>
         <button class="btn btn--ghost" id="settingsBtn" type="button" aria-label="Ayarları aç" data-i18n="settings">
           Ayarlar
         </button>
@@ -61,6 +71,10 @@
       <button class="notice__close" id="noticeClose" type="button" aria-label="Bildirimi kapat">✕</button>
     </section>
 
+    <div class="install-tip" id="iosInstallTip" data-i18n="installTip" hidden>
+      iOS için: Paylaş → Ana Ekrana Ekle
+    </div>
+
     <section class="card" id="slugGate" hidden>
       <h1 class="h1" data-i18n="slugTitle">Mescid Linki</h1>
       <p class="muted" data-i18n="slugHelp">
@@ -81,7 +95,7 @@
     </section>
 
     <section class="grid">
-      <section class="card">
+      <section class="card card--highlight">
         <div class="card__header">
           <h2 class="h2" data-i18n="nextTitle">Sıradaki Vakit</h2>
           <span class="badge" id="tzBadge" title="Saat dilimi">TZ: —</span>
@@ -721,6 +735,11 @@
       <option value="Australia/Sydney"></option>
     </datalist>
 
+    <div class="toast" id="updateToast" role="status" aria-live="polite" hidden>
+      <div class="toast__text" data-i18n="updateAvailable">Güncelleme hazır</div>
+      <button class="btn btn--primary" id="reloadBtn" type="button" data-i18n="reload">Yenile</button>
+    </div>
+
     <script type="application/json" id="i18nDict">
     {
       "tr": {
@@ -729,6 +748,11 @@
         "settings": "Ayarlar",
         "admin": "Admin",
         "copyLink": "Linki Kopyala",
+        "install": "Yükle",
+        "installTip": "iOS için: Paylaş → Ana Ekrana Ekle",
+        "offline": "Çevrimdışı",
+        "updateAvailable": "Güncelleme hazır",
+        "reload": "Yenile",
         "slugTitle": "Mescid Linki",
         "slugHelp": "Bu sayfa genellikle paylaşılmış bir link ile açılır: /?m=mescid-slug. Slug yoksa aşağıdan gir.",
         "slugLabel": "Mescid Slug",
@@ -814,6 +838,11 @@
         "settings": "Settings",
         "admin": "Admin",
         "copyLink": "Copy link",
+        "install": "Install",
+        "installTip": "On iOS: Share → Add to Home Screen",
+        "offline": "Offline",
+        "updateAvailable": "Update available",
+        "reload": "Reload",
         "slugTitle": "Masjid Link",
         "slugHelp": "This page is usually opened via a shared link: /?m=masjid-slug. If missing, enter it below.",
         "slugLabel": "Masjid Slug",
