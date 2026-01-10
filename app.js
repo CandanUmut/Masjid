@@ -1076,7 +1076,6 @@
     const c = state.computed;
     if (!c) return;
 
-    const now = new Date();
     const rows = document.querySelectorAll("#timesTable tbody tr[data-prayer]");
     rows.forEach((tr) => tr.classList.remove("is-current"));
 
@@ -1093,19 +1092,9 @@
 
       const statusTd = tds[2];
       if (statusTd) {
-        const status = computeRowStatus(now, p, ad, c.times.ends?.[p]);
-        statusTd.textContent = "";
-        if (status.isCurrent) {
-          const pill = document.createElement("span");
-          pill.className = "pill pill--current status-pill";
-          pill.textContent = t("current") || "Current";
-          statusTd.appendChild(pill);
-        }
-        statusTd.appendChild(document.createTextNode(status.text));
-        statusTd.className = `status ${status.className}`;
+        statusTd.textContent = "—";
+        statusTd.className = "status";
       }
-
-      if (statusTd?.classList.contains("status--current")) tr.classList.add("is-current");
     }
   }
 
@@ -1120,7 +1109,7 @@
     }
     if (n >= a && n < e) {
       return {
-        text: `${t("inProgress")} (${prayerLabel}) • ${t("endsIn")}: ${fmtDelta(e - n)}`,
+        text: `${t("now") || "Now"}: ${prayerLabel} (${t("inProgress")}) • ${t("endsIn")}: ${fmtDelta(e - n)}`,
         className: "status--current",
         isCurrent: true,
       };
@@ -1129,10 +1118,18 @@
   }
 
   function renderNextCard() {
+    updateTimeUI();
+  }
+
+  function updateTimeUI(now = new Date()) {
     const c = state.computed;
     if (!c) return;
 
-    const now = new Date();
+    const nowLabel = t("now") || "Now";
+    const nextLabel = t("next") || "Next";
+    const inProgressLabel = t("inProgress") || "In progress";
+    const endsInLabel = t("endsIn") || "Ends in";
+    const startsInLabel = t("startsIn") || "Starts in";
     const activeWindow = findActivePrayerWindow(now, c);
     const nextPrayer = findNextPrayerStart(now, c);
 
@@ -1140,7 +1137,7 @@
       const activeLabel = pickLang(PRAYER_LABELS[activeWindow.prayer], state.lang) || activeWindow.prayer;
       if (el.nowPrayerName) el.nowPrayerName.textContent = activeLabel;
       if (el.nowPrayerStatus) {
-        el.nowPrayerStatus.textContent = `${t("inProgress")} (${activeLabel}) • ${t("endsIn")}: ${fmtDelta(
+        el.nowPrayerStatus.textContent = `${nowLabel}: ${activeLabel} (${inProgressLabel}) • ${endsInLabel}: ${fmtDelta(
           activeWindow.end.getTime() - now.getTime()
         )}`;
       }
@@ -1159,7 +1156,9 @@
       el.nextTypePill.textContent = t("begins") || "Begins";
       el.nextPrayerTime.textContent = fmtTime(nextPrayer.at, c.tz);
 
-      const startsInText = `${t("startsIn")}: ${fmtDelta(nextPrayer.at.getTime() - now.getTime())}`;
+      const startsInText = `${nextLabel}: ${prayerLabel} • ${startsInLabel}: ${fmtDelta(
+        nextPrayer.at.getTime() - now.getTime()
+      )}`;
       const nextMetaParts = [startsInText];
       if (nextPrayer._tomorrow) nextMetaParts.push(t("tomorrow") || "Tomorrow");
       el.nextMeta.textContent = nextMetaParts.join(" • ");
@@ -1178,7 +1177,57 @@
       el.nextIqamaLine.textContent = "—";
     }
 
-    updateCountdown();
+    const rows = document.querySelectorAll("#timesTable tbody tr[data-prayer]");
+    rows.forEach((tr) => tr.classList.remove("is-current"));
+
+    for (const p of PRAYERS) {
+      const tr = document.querySelector(`#timesTable tbody tr[data-prayer="${p}"]`);
+      if (!tr) continue;
+      const statusTd = tr.querySelector("td.status");
+      const ad = c.times.adhanSafe?.[p];
+      const end = c.times.ends?.[p];
+      if (statusTd && ad && end) {
+        const status = computeRowStatus(now, p, ad, end);
+        statusTd.textContent = "";
+        if (status.isCurrent) {
+          const pill = document.createElement("span");
+          pill.className = "pill pill--current status-pill";
+          pill.textContent = t("current") || "Current";
+          statusTd.appendChild(pill);
+        }
+        statusTd.appendChild(document.createTextNode(status.text));
+        statusTd.className = `status ${status.className}`;
+        if (status.isCurrent) tr.classList.add("is-current");
+      }
+    }
+
+    if (activeWindow) {
+      const diff = activeWindow.end.getTime() - now.getTime();
+      if (diff <= 0) {
+        if (el.countdown) el.countdown.textContent = "00:00:00";
+        scheduleSoftRefresh();
+        return;
+      }
+      const prayerLabel = pickLang(PRAYER_LABELS[activeWindow.prayer], state.lang) || activeWindow.prayer;
+      if (el.countdownLabel) {
+        el.countdownLabel.textContent = `${nowLabel}: ${prayerLabel} (${inProgressLabel}) • ${endsInLabel}`;
+      }
+      if (el.countdown) el.countdown.textContent = fmtHMS(diff);
+      return;
+    }
+
+    if (!nextPrayer) return;
+    const diff = nextPrayer.at.getTime() - now.getTime();
+    if (diff <= 0) {
+      if (el.countdown) el.countdown.textContent = "00:00:00";
+      scheduleSoftRefresh();
+      return;
+    }
+    if (el.countdownLabel) {
+      const prayerLabel = pickLang(PRAYER_LABELS[nextPrayer.prayer], state.lang) || nextPrayer.prayer;
+      el.countdownLabel.textContent = `${nextLabel}: ${prayerLabel} • ${startsInLabel}`;
+    }
+    if (el.countdown) el.countdown.textContent = fmtHMS(diff);
   }
 
   function showFreshnessBadge() {
@@ -1195,7 +1244,7 @@
   function startCountdownLoop() {
     if (state.countdownTimer) clearInterval(state.countdownTimer);
     state.countdownTimer = setInterval(() => {
-      updateCountdown();
+      updateTimeUI();
       showFreshnessBadge();
     }, COUNTDOWN_TICK_MS);
   }
@@ -1211,42 +1260,6 @@
       }
     }
     return null;
-  }
-
-  function updateCountdown() {
-    const c = state.computed;
-    if (!c) return;
-
-    const now = new Date();
-    const activeWindow = findActivePrayerWindow(now, c);
-    if (activeWindow) {
-      const diff = activeWindow.end.getTime() - now.getTime();
-      if (diff <= 0) {
-        el.countdown.textContent = "00:00:00";
-        scheduleSoftRefresh();
-        return;
-      }
-      const prayerLabel = pickLang(PRAYER_LABELS[activeWindow.prayer], state.lang) || activeWindow.prayer;
-      if (el.countdownLabel) {
-        el.countdownLabel.textContent = `${t("inProgress")} (${prayerLabel}) • ${t("endsIn")}`;
-      }
-      el.countdown.textContent = fmtHMS(diff);
-      return;
-    }
-
-    const nextPrayer = findNextPrayerStart(now, c);
-    if (!nextPrayer) return;
-    const diff = nextPrayer.at.getTime() - now.getTime();
-    if (diff <= 0) {
-      el.countdown.textContent = "00:00:00";
-      scheduleSoftRefresh();
-      return;
-    }
-    if (el.countdownLabel) {
-      const prayerLabel = pickLang(PRAYER_LABELS[nextPrayer.prayer], state.lang) || nextPrayer.prayer;
-      el.countdownLabel.textContent = `${t("startsIn")} (${prayerLabel})`;
-    }
-    el.countdown.textContent = fmtHMS(diff);
   }
 
   function scheduleSoftRefresh() {
@@ -2595,10 +2608,10 @@
       enterSlug: "Slug gir.",
       needLocation: "Konum izni ver veya şehir/adres gir.",
       startsIn: "Başlamasına",
-      inProgress: "Vakit devam ediyor",
+      inProgress: "Vakit girdi",
       endsIn: "Bitmesine",
       ended: "Vakit çıktı",
-      now: "Şimdi",
+      now: "Şu an",
       next: "Sıradaki",
       begins: "Vakit girişi",
       beganAt: "Başladı",
