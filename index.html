@@ -21,7 +21,7 @@
     window.__SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuYXR4cGNqcXN6Z2psdnpuaHdkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjUzMTA4OTEsImV4cCI6MjA4MDg4Njg5MX0.rwuFyq0XdXDG822d2lUqdxHvTq4OAIUtdXebh0aXCCc";  // e.g. eyJhbGciOi...
   </script>
 
-  <!-- App logic (will be created later) -->
+  <!-- App logic -->
   <script src="./app.js" defer></script>
 </head>
 
@@ -43,6 +43,9 @@
       </div>
 
       <div class="topbar__actions">
+        <button class="btn btn--ghost" id="settingsBtn" type="button" aria-label="Ayarları aç" data-i18n="settings">
+          Ayarlar
+        </button>
         <button class="btn btn--ghost" id="langToggleBtn" type="button" aria-label="Dil değiştir">
           <span class="mono">TR / EN</span>
         </button>
@@ -61,7 +64,7 @@
       <button class="notice__close" id="noticeClose" type="button" aria-label="Bildirimi kapat">✕</button>
     </section>
 
-    <!-- If slug is missing -->
+    <!-- Optional slug info -->
     <section class="card" id="slugGate" hidden>
       <h1 class="h1" data-i18n="slugTitle">Mescid Linki</h1>
       <p class="muted" data-i18n="slugHelp">
@@ -96,6 +99,7 @@
               <span class="pill" id="nextTypePill" data-i18n="adhanOrIqama">—</span>
               <span class="muted" id="nextMeta">—</span>
             </div>
+            <div class="next__sub" id="nextIqamaLine">—</div>
           </div>
 
           <div class="next__right">
@@ -122,7 +126,7 @@
             <div class="kv__k" data-i18n="source">Kaynak</div>
             <div class="kv__v" id="providerStatus">—</div>
           </div>
-          <div class="kv">
+          <div class="kv" id="iqamaSetWrap">
             <div class="kv__k" data-i18n="iqamaSet">İkame Seti</div>
             <div class="kv__v">
               <select id="iqamaSetSelect" class="select" aria-label="İkame seti seç">
@@ -199,6 +203,9 @@
         </div>
 
         <div class="foot">
+          <div class="muted small" id="safetyNote" data-i18n="safetyNote">
+            Görüntülenen adhan vakitleri ihtiyat payı içerir.
+          </div>
           <div class="muted small" id="disclaimer" data-i18n="disclaimer">
             İhtiyat ve yöntem detayları aşağıdaki “Detaylar” bölümünde görünür.
           </div>
@@ -276,12 +283,88 @@
       </div>
     </footer>
 
+    <div class="action-bar" id="actionBar" aria-label="Hızlı işlemler">
+      <button class="action-bar__btn" id="actionRefreshBtn" type="button" data-i18n="refresh">Yenile</button>
+      <button class="action-bar__btn" id="actionLocationBtn" type="button" data-i18n="getLocation">Konum Al</button>
+      <button class="action-bar__btn" id="actionSettingsBtn" type="button" data-i18n="settings">Ayarlar</button>
+    </div>
+
+    <div class="modal" id="settingsModal" hidden>
+      <div class="modal__backdrop" data-close="settings"></div>
+      <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <div class="modal__header">
+          <h2 class="h2" id="settingsTitle" data-i18n="settings">Ayarlar</h2>
+          <button class="btn btn--ghost" id="settingsCloseBtn" type="button" aria-label="Kapat">✕</button>
+        </div>
+        <div class="modal__body">
+          <section class="settings-section">
+            <h3 class="h3" data-i18n="methodSettings">Hesaplama Yöntemi</h3>
+            <div class="row row--wrap">
+              <label class="field">
+                <span class="field__label" data-i18n="methodId">Method ID</span>
+                <select id="methodSelect" class="select" aria-label="Method ID"></select>
+              </label>
+              <label class="field">
+                <span class="field__label" data-i18n="asrSchool">Asr (School)</span>
+                <select id="schoolSelect" class="select" aria-label="Asr school">
+                  <option value="standard">Standard</option>
+                  <option value="hanafi">Hanafi</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field__label" data-i18n="highLat">High Latitude Rule</span>
+                <select id="highLatSelect" class="select" aria-label="High latitude rule">
+                  <option value="angleBased">Angle-based</option>
+                  <option value="midnight">Midnight</option>
+                  <option value="oneSeventh">One-Seventh</option>
+                </select>
+              </label>
+            </div>
+            <div class="row row--wrap">
+              <button class="btn btn--ghost" id="resetMethodBtn" type="button" data-i18n="resetMethod">Mescid varsayılanına dön</button>
+              <div class="muted small" id="methodScopeNote">—</div>
+            </div>
+          </section>
+
+          <section class="settings-section">
+            <h3 class="h3" data-i18n="savedLocations">Kayıtlı Konumlar</h3>
+            <div class="row row--wrap">
+              <label class="field grow">
+                <span class="field__label" data-i18n="savedLocationsLabel">Kayıtlı konumlar</span>
+                <select id="savedLocationsSelect" class="select" aria-label="Kayıtlı konumlar"></select>
+              </label>
+              <button id="useSavedLocationBtn" class="btn" type="button" data-i18n="use">Kullan</button>
+              <button id="removeSavedLocationBtn" class="btn btn--ghost" type="button" data-i18n="remove">Sil</button>
+            </div>
+            <div class="row row--wrap">
+              <label class="field grow">
+                <span class="field__label" data-i18n="saveCurrentLabel">Mevcut konumu kaydet</span>
+                <input id="saveLocationLabelInput" class="input" type="text" placeholder="ör: Ev" />
+              </label>
+              <button id="saveLocationBtn" class="btn" type="button" data-i18n="save">Kaydet</button>
+            </div>
+            <p class="muted small" data-i18n="savedLocationsNote">
+              Konumlar cihazda saklanır ve Supabase'e yazılmaz.
+            </p>
+          </section>
+
+          <section class="settings-section">
+            <h3 class="h3" data-i18n="language">Dil</h3>
+            <button class="btn btn--ghost" id="langToggleBtn2" type="button">
+              <span class="mono">TR / EN</span>
+            </button>
+          </section>
+        </div>
+      </div>
+    </div>
+
     <!-- Hidden i18n dictionary (app.js will use these keys) -->
     <script type="application/json" id="i18nDict">
     {
       "tr": {
         "skip": "İçeriğe atla",
         "masjid": "Mescid",
+        "settings": "Ayarlar",
         "copyLink": "Linki Kopyala",
         "slugTitle": "Mescid Linki",
         "slugHelp": "Bu sayfa genellikle paylaşılmış bir link ile açılır: /?m=mescid-slug. Slug yoksa aşağıdan gir.",
@@ -305,6 +388,7 @@
         "adhanSafe": "Adhan (İhtiyatlı)",
         "iqama": "İkame",
         "status": "Durum",
+        "safetyNote": "Görüntülenen adhan vakitleri ihtiyat payı içerir.",
         "disclaimer": "İhtiyat ve yöntem detayları aşağıdaki “Detaylar” bölümünde görünür.",
         "detailsTitle": "Ayarlar / Detaylar",
         "calcSummary": "Hesaplama yöntemi",
@@ -319,11 +403,22 @@
         "shareLinkLabel": "Paylaşım Linki",
         "copy": "Kopyala",
         "shareNote": "Link formatı: /?m=<slug> veya /?m=<slug>&set=<iqamaSetId>",
+        "methodSettings": "Hesaplama Yöntemi",
+        "resetMethod": "Mescid varsayılanına dön",
+        "savedLocations": "Kayıtlı Konumlar",
+        "savedLocationsLabel": "Kayıtlı konumlar",
+        "saveCurrentLabel": "Mevcut konumu kaydet",
+        "save": "Kaydet",
+        "remove": "Sil",
+        "use": "Kullan",
+        "savedLocationsNote": "Konumlar cihazda saklanır ve Supabase'e yazılmaz.",
+        "language": "Dil",
         "footer": "Kaynaklar ve yöntem bilgisi mescid profilinden gelir. Bu sayfa yalnızca bilgi amaçlıdır."
       },
       "en": {
         "skip": "Skip to content",
         "masjid": "Masjid",
+        "settings": "Settings",
         "copyLink": "Copy link",
         "slugTitle": "Masjid Link",
         "slugHelp": "This page is usually opened via a shared link: /?m=masjid-slug. If missing, enter it below.",
@@ -347,6 +442,7 @@
         "adhanSafe": "Adhan (Safety-adjusted)",
         "iqama": "Iqama",
         "status": "Status",
+        "safetyNote": "Displayed adhan times include safety offsets.",
         "disclaimer": "Safety offsets and calculation details are shown in the “Details” section below.",
         "detailsTitle": "Settings / Details",
         "calcSummary": "Calculation method",
@@ -361,6 +457,16 @@
         "shareLinkLabel": "Share link",
         "copy": "Copy",
         "shareNote": "Link format: /?m=<slug> or /?m=<slug>&set=<iqamaSetId>",
+        "methodSettings": "Calculation Method",
+        "resetMethod": "Reset to masjid defaults",
+        "savedLocations": "Saved Locations",
+        "savedLocationsLabel": "Saved locations",
+        "saveCurrentLabel": "Save current location",
+        "save": "Save",
+        "remove": "Remove",
+        "use": "Use",
+        "savedLocationsNote": "Locations are stored on this device and never written to Supabase.",
+        "language": "Language",
         "footer": "Method and settings come from the masjid profile. This page is informational."
       }
     }

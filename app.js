@@ -1,5 +1,5 @@
 // app.js
-// Mescid Namaz Vakitleri + Cemaat (İkame) Saatleri
+// Masjid Prayer Times + Iqama
 // Uses Supabase schema: prayer_hub (tables: masjids, overrides)
 // Prayer times provider: AlAdhan (timings)
 // TR/EN support via #i18nDict in index.html
@@ -17,17 +17,44 @@
     isha: { tr: "Isha", en: "Isha" },
   };
 
-  // AlAdhan method mapping is provider-defined; we store methodId in DB.
+  const METHOD_OPTIONS = [
+    { id: 1, label: { tr: "Karachi (1)", en: "Karachi (1)" } },
+    { id: 2, label: { tr: "ISNA (2)", en: "ISNA (2)" } },
+    { id: 3, label: { tr: "MWL (3)", en: "MWL (3)" } },
+    { id: 4, label: { tr: "Umm Al-Qura (4)", en: "Umm Al-Qura (4)" } },
+    { id: 5, label: { tr: "Egypt (5)", en: "Egypt (5)" } },
+    { id: 7, label: { tr: "Tehran (7)", en: "Tehran (7)" } },
+    { id: 8, label: { tr: "Gulf (8)", en: "Gulf (8)" } },
+    { id: 9, label: { tr: "Kuwait (9)", en: "Kuwait (9)" } },
+    { id: 10, label: { tr: "Qatar (10)", en: "Qatar (10)" } },
+    { id: 11, label: { tr: "Singapore (11)", en: "Singapore (11)" } },
+    { id: 12, label: { tr: "UOIF (12)", en: "UOIF (12)" } },
+    { id: 13, label: { tr: "Diyanet (13)", en: "Diyanet (13)" } },
+    { id: 14, label: { tr: "Moonsighting (14)", en: "Moonsighting (14)" } },
+  ];
+
   const DEFAULT_METHOD = {
     provider: "aladhan",
     methodId: 2,
     school: "standard", // "hanafi" or "standard"
-    highLatRule: "angleBased", // angleBased|midnight|oneSeventh (we map)
-    tune: {}, // optional
+    highLatRule: "angleBased", // angleBased|midnight|oneSeventh
+    tune: {},
+  };
+
+  const STORAGE_KEYS = {
+    lang: "prayerhub_lang",
+    methodGlobal: "prayerhub:method:global",
+    methodSlug: (slug) => `prayerhub:method:${slug}`,
+    savedLocations: "prayerhub:saved_locations",
+    masjidCache: (slug) => `prayerhub:masjid:${slug}`,
+    timingsCache: (key) => `prayerhub:timings:${key}`,
   };
 
   const CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes
+  const MASJID_CACHE_TTL_MS = 1000 * 60 * 10; // 10 minutes
+  const TIMINGS_CACHE_TTL_MS = 1000 * 60 * 60; // 60 minutes
   const COUNTDOWN_TICK_MS = 1000;
+  const RETRY_LIMIT = 2;
 
   // ---------- DOM ----------
   const el = {
@@ -39,9 +66,11 @@
     todayDate: $("#todayDate"),
 
     langToggleBtn: $("#langToggleBtn"),
+    langToggleBtn2: $("#langToggleBtn2"),
     copyLinkBtn: $("#copyLinkBtn"),
     copyLinkBtn2: $("#copyLinkBtn2"),
     shareLinkInput: $("#shareLinkInput"),
+    settingsBtn: $("#settingsBtn"),
 
     // slug gate
     slugGate: $("#slugGate"),
@@ -59,12 +88,14 @@
     nextPrayerTime: $("#nextPrayerTime"),
     nextTypePill: $("#nextTypePill"),
     nextMeta: $("#nextMeta"),
+    nextIqamaLine: $("#nextIqamaLine"),
     countdown: $("#countdown"),
     refreshBtn: $("#refreshBtn"),
     useLocationBtn: $("#useLocationBtn"),
     locationStatus: $("#locationStatus"),
     providerStatus: $("#providerStatus"),
     iqamaSetSelect: $("#iqamaSetSelect"),
+    iqamaSetWrap: $("#iqamaSetWrap"),
     dataFreshnessBadge: $("#dataFreshnessBadge"),
 
     // manual location
@@ -79,6 +110,27 @@
     calcSchool: $("#calcSchool"),
     calcHighLat: $("#calcHighLat"),
     calcTune: $("#calcTune"),
+    safetyNote: $("#safetyNote"),
+
+    // settings modal
+    settingsModal: $("#settingsModal"),
+    settingsCloseBtn: $("#settingsCloseBtn"),
+    methodSelect: $("#methodSelect"),
+    schoolSelect: $("#schoolSelect"),
+    highLatSelect: $("#highLatSelect"),
+    resetMethodBtn: $("#resetMethodBtn"),
+    methodScopeNote: $("#methodScopeNote"),
+
+    savedLocationsSelect: $("#savedLocationsSelect"),
+    useSavedLocationBtn: $("#useSavedLocationBtn"),
+    removeSavedLocationBtn: $("#removeSavedLocationBtn"),
+    saveLocationLabelInput: $("#saveLocationLabelInput"),
+    saveLocationBtn: $("#saveLocationBtn"),
+
+    // action bar
+    actionRefreshBtn: $("#actionRefreshBtn"),
+    actionLocationBtn: $("#actionLocationBtn"),
+    actionSettingsBtn: $("#actionSettingsBtn"),
   };
 
   const i18n = loadI18n();
@@ -89,28 +141,32 @@
     supabase: null,
 
     slug: null,
-    setId: null, // optional URL param set=main
+    setId: null,
 
     masjid: null,
-    iqamaSet: null, // active set object
+    iqamaSet: null,
     iqamaSets: [],
 
-    // location and timings
-    coords: null, // { lat, lon }
-    locationLabel: null,
-    manualLocation: null, // string
+    methodOverride: null,
 
-    // prayer times (base from API + computed with safety + iqama)
+    coords: null,
+    locationLabel: null,
+    locationSource: null,
+    manualLocation: null,
+
+    savedLocations: [],
+
     computed: null,
 
-    // countdown timer
     countdownTimer: null,
     refreshTimer: null,
 
     lastFetchInfo: {
-      source: null, // "live" | "cache"
+      source: null,
       at: null,
     },
+
+    timingsCacheKey: null,
   };
 
   // ---------- Init ----------
@@ -120,47 +176,52 @@
   });
 
   async function boot() {
-    // Wire UI
     wireLanguage();
     wireShare();
     wireSlugGate();
     wireRefresh();
     wireManualLocation();
     wireNotice();
+    wireSettings();
+    wireSavedLocations();
 
     applyLanguage(state.lang);
 
-    // Parse URL params
     const params = new URLSearchParams(location.search);
     state.slug = (params.get("m") || "").trim() || null;
     state.setId = (params.get("set") || "").trim() || null;
 
-    setTodayDate();
-
     if (!state.slug) {
-      // show slug gate and stop
       el.slugGate.hidden = false;
-      setShareLink("");
-      showNotice(t("slugHelp"), "info");
-      return;
     }
 
-    // Setup Supabase
-    state.supabase = createSupabaseClient();
+    if (state.slug) {
+      state.supabase = createSupabaseClient();
+      if (state.supabase) {
+        await loadMasjid(state.slug);
+      }
+    }
 
-    // Load masjid profile
-    await loadMasjid(state.slug);
+    if (!state.masjid) {
+      state.masjid = buildDefaultMasjid();
+    }
 
-    // Pre-fill share link
-    setShareLink(makeShareLink(state.slug, state.setId));
+    loadSavedLocations();
+    hydrateMethodOverride();
+    renderMethodOptions();
+    renderMethodControls();
 
-    // Attempt location
+    setTodayDate(state.masjid.timezone);
+    renderMasjidHeader();
+    loadIqamaSets();
+    pickInitialIqamaSet();
+    renderIqamaSelect();
+    setShareLink(makeShareLink(state.slug, state.iqamaSet?.id));
+
     await resolveLocation();
 
-    // Fetch timings & render
     await refreshAll({ preferCache: true });
 
-    // Start countdown ticking
     startCountdownLoop();
   }
 
@@ -170,15 +231,16 @@
     const key = window.__SUPABASE_ANON_KEY || "";
     if (!url || !key) {
       showNotice(
-        "Supabase config missing. Fill __SUPABASE_URL and __SUPABASE_ANON_KEY in index.html.",
+        t("supabaseMissing") ||
+          "Supabase config missing. Fill __SUPABASE_URL and __SUPABASE_ANON_KEY in index.html.",
         "error"
       );
-      // Still return a client object if possible; but will fail on queries.
+      return null;
     }
 
-    // Supabase JS is loaded via CDN: window.supabase
     if (!window.supabase?.createClient) {
-      throw new Error("Supabase JS client not found. Check the CDN script tag.");
+      showNotice(t("supabaseMissingScript") || "Supabase JS client not found.", "error");
+      return null;
     }
     return window.supabase.createClient(url, key, {
       auth: { persistSession: false },
@@ -188,35 +250,62 @@
   async function loadMasjid(slug) {
     showNotice(t("loadingMasjid") || "Loading masjid profile…", "info");
 
-    // IMPORTANT: use schema "prayer_hub"
-    const { data, error } = await state.supabase
-      .schema("prayer_hub")
-      .from("masjids")
-      .select("*")
-      .eq("slug", slug)
-      .single();
-
-    if (error) {
-      throw new Error(`Supabase: cannot load masjid (${slug}). ${error.message}`);
-    }
-    if (!data) {
-      throw new Error(`Masjid not found for slug: ${slug}`);
+    const cached = readMasjidCache(slug);
+    if (cached) {
+      state.masjid = cached;
+      renderMasjidHeader();
     }
 
-    state.masjid = normalizeMasjid(data);
-    renderMasjidHeader();
-    renderMethodDetails();
-    loadIqamaSets();
-    pickInitialIqamaSet();
-    renderIqamaSelect();
+    try {
+      const { data, error } = await state.supabase
+        .schema("prayer_hub")
+        .from("masjids")
+        .select("*")
+        .eq("slug", slug)
+        .single();
 
-    // Load today's overrides (optional)
-    // We apply overrides later in refreshAll to use correct day.
-    clearNotice();
+      if (error) {
+        throw new Error(error.message);
+      }
+      if (!data) {
+        throw new Error(t("masjidNotFound") || `Masjid not found for slug: ${slug}`);
+      }
+
+      state.masjid = normalizeMasjid(data);
+      writeMasjidCache(slug, state.masjid);
+      renderMasjidHeader();
+      renderMethodDetails();
+      loadIqamaSets();
+      pickInitialIqamaSet();
+      renderIqamaSelect();
+      clearNotice();
+    } catch (err) {
+      console.warn("Masjid load failed:", err?.message);
+      showNotice(t("masjidNotFound") || "Masjid not found. Check the link or slug.", "error");
+      state.slug = null;
+      state.setId = null;
+      el.slugGate.hidden = false;
+      state.masjid = null;
+    }
+  }
+
+  function buildDefaultMasjid() {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return {
+      id: null,
+      slug: null,
+      name: { tr: "Namaz Vakitleri", en: "Prayer Times" },
+      city: null,
+      timezone: tz,
+      calc_method: { ...DEFAULT_METHOD },
+      safety_offsets: clampSafetyOffsets({}),
+      iqama_sets: [],
+      meta: {},
+      is_public: true,
+    };
   }
 
   function normalizeMasjid(row) {
-    // row.name and row.city are JSONB (tr/en)
     const name = safeJson(row.name);
     const city = row.city ? safeJson(row.city) : null;
 
@@ -225,7 +314,7 @@
       slug: row.slug,
       name,
       city,
-      timezone: row.timezone || "America/Los_Angeles",
+      timezone: row.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
       calc_method: mergeCalcMethod(row.calc_method),
       safety_offsets: clampSafetyOffsets(safeJson(row.safety_offsets)),
       iqama_sets: Array.isArray(row.iqama_sets) ? row.iqama_sets : safeJson(row.iqama_sets, []),
@@ -254,10 +343,8 @@
     return out;
   }
 
-  // ---------- Overrides (optional) ----------
+  // ---------- Overrides ----------
   async function loadOverridesForDay(isoDate) {
-    // isoDate = YYYY-MM-DD
-    // We load both kinds and return a merged object
     if (!state.supabase || !state.masjid?.id) return [];
 
     const { data, error } = await state.supabase
@@ -268,7 +355,6 @@
       .eq("day", isoDate);
 
     if (error) {
-      // Non-fatal; just show notice and continue
       console.warn("Overrides fetch failed:", error.message);
       return [];
     }
@@ -276,10 +362,6 @@
   }
 
   function applyOverridesToConfig(baseMasjid, overrides) {
-    // baseMasjid is state.masjid
-    // overrides: array of {kind, payload}
-    // - kind=adhan: may include safety_offsets or tune
-    // - kind=iqama: may include setId + fixedTimes (per prayer)
     const masjid = structuredClone(baseMasjid);
 
     for (const ov of overrides) {
@@ -298,15 +380,13 @@
           };
         }
       }
-      // iqama overrides are applied later at calculation-time (need selected set)
     }
 
     return masjid;
   }
 
   function applyIqamaOverrideForSet(iqamaSet, overrides) {
-    // Find matching iqama override: payload { setId, fixedTimes }
-    const set = structuredClone(iqamaSet);
+    const set = structuredClone(iqamaSet || {});
     for (const ov of overrides) {
       if (ov.kind !== "iqama") continue;
       const payload = safeJson(ov.payload, {});
@@ -326,20 +406,19 @@
 
   // ---------- Location ----------
   async function resolveLocation() {
-    el.locationStatus.textContent = t("locResolving") || "Resolving location…";
+    updateLocationStatus("resolving");
 
-    // Prefer geolocation first
     const ok = await tryGeolocation();
     if (ok) return;
 
-    // If geolocation fails, open manual location details
     el.manualLocationDetails.open = true;
-    el.locationStatus.textContent = t("locManual") || "Location blocked — enter city/address.";
+    updateLocationStatus("blocked");
   }
 
   async function tryGeolocation() {
     if (!navigator.geolocation) {
       showNotice(t("geoUnsupported") || "Geolocation is not supported in this browser.", "error");
+      updateLocationStatus("blocked");
       return false;
     }
 
@@ -350,11 +429,13 @@
           const lon = pos.coords.longitude;
           state.coords = { lat, lon };
           state.locationLabel = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-          el.locationStatus.textContent = state.locationLabel;
+          state.locationSource = "gps";
+          updateLocationStatus("gps");
           resolve(true);
         },
         (err) => {
           console.warn("Geolocation error:", err?.message);
+          updateLocationStatus("blocked");
           resolve(false);
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
@@ -363,24 +444,16 @@
   }
 
   async function resolveManualLocation(text) {
-    // Use OpenStreetMap Nominatim to convert city/address -> lat/lon
-    // (No key required; keep usage respectful)
     const q = (text || "").trim();
     if (!q) throw new Error(t("enterCity") || "Please enter a city/address.");
 
-    el.locationStatus.textContent = t("locSearching") || "Searching…";
+    updateLocationStatus("searching");
 
     const url =
       "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" +
       encodeURIComponent(q);
 
-    const res = await fetch(url, {
-      headers: {
-        // helpful UA; some environments ignore it
-        "Accept": "application/json",
-      },
-    });
-
+    const res = await fetchWithRetry(url, { headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error(`Geocoding failed (${res.status}).`);
     const arr = await res.json();
     if (!Array.isArray(arr) || !arr[0]) throw new Error(t("locNotFound") || "Location not found.");
@@ -391,7 +464,21 @@
 
     state.coords = { lat, lon };
     state.locationLabel = arr[0].display_name || q;
-    el.locationStatus.textContent = state.locationLabel;
+    state.locationSource = "manual";
+    state.manualLocation = q;
+    updateLocationStatus("manual");
+  }
+
+  function updateLocationStatus(mode) {
+    const map = {
+      resolving: t("locResolving") || "Resolving location…",
+      gps: t("locUsingGps") || "Using GPS",
+      manual: t("locUsingManual") || "Using manual city",
+      saved: t("locUsingSaved") || "Using saved location",
+      blocked: t("locBlocked") || "Location not allowed",
+      searching: t("locSearching") || "Searching…",
+    };
+    el.locationStatus.textContent = map[mode] || "—";
   }
 
   // ---------- Prayer Times Fetch ----------
@@ -402,88 +489,115 @@
     el.tzBadge.textContent = `TZ: ${tz}`;
 
     const todayISO = isoDateInTZ(new Date(), tz);
+    const tomorrowISO = isoDateInTZ(addDays(new Date(), 1), tz);
 
-    // Cache key is tied to slug + date + coords or manual location
-    const cacheKey = makeCacheKey({
-      slug: state.masjid.slug,
+    const cachedMethod = getActiveMethod();
+    state.timingsCacheKey = makeTimingsCacheKey({
       date: todayISO,
       tz,
       coords: state.coords,
-      manual: state.manualLocation,
-      setId: state.iqamaSet?.id || "main",
-      lang: state.lang,
+      method: cachedMethod,
     });
 
-    // Try cache first
-    if (preferCache) {
-      const cached = readCache(cacheKey);
-      if (cached) {
-        state.computed = cached.computed;
-        state.lastFetchInfo = { source: "cache", at: new Date(cached.savedAt) };
-        renderAll();
-        showFreshnessBadge();
-      }
+    const cachedTimings = preferCache ? readTimingsCache(state.timingsCacheKey) : null;
+
+    if (cachedTimings) {
+      state.computed = computeSchedule({
+        tz,
+        baseTimings: cachedTimings.today,
+        tomorrowTimings: cachedTimings.tomorrow,
+        safetyOffsets: state.masjid.safety_offsets,
+        iqamaSet: state.iqamaSet,
+      });
+      state.lastFetchInfo = { source: "cache", at: new Date(cachedTimings.savedAt) };
+      renderAll();
+      showFreshnessBadge();
     }
 
-    // Need location before live fetch
     if (!state.coords) {
       showNotice(t("needLocation") || "Please allow location or enter a city/address.", "info");
       return;
     }
 
-    // Load overrides for today (optional)
-    let overrides = [];
+    let overridesToday = [];
+    let overridesTomorrow = [];
     try {
-      overrides = await loadOverridesForDay(todayISO);
+      overridesToday = await loadOverridesForDay(todayISO);
+      overridesTomorrow = await loadOverridesForDay(tomorrowISO);
     } catch {
-      overrides = [];
+      overridesToday = [];
+      overridesTomorrow = [];
     }
 
-    // Apply overrides to config (adhan-level)
-    const masjidForToday = applyOverridesToConfig(state.masjid, overrides);
-    const iqamaSetForToday = applyIqamaOverrideForSet(state.iqamaSet, overrides);
+    const masjidForToday = applyOverridesToConfig(state.masjid, overridesToday);
+    const masjidForTomorrow = applyOverridesToConfig(state.masjid, overridesTomorrow);
+    const iqamaSetForToday = applyIqamaOverrideForSet(state.iqamaSet, overridesToday);
+    const iqamaSetForTomorrow = applyIqamaOverrideForSet(state.iqamaSet, overridesTomorrow);
 
-    // Fetch from AlAdhan
-    const live = await fetchTimingsAlAdhan({
+    try {
+      const methodForFetch = getActiveMethod(masjidForToday.calc_method);
+      state.timingsCacheKey = makeTimingsCacheKey({
+        date: todayISO,
+        tz,
+        coords: state.coords,
+        method: methodForFetch,
+      });
+
+      const live = await fetchTimingsRange({
+        tz,
+        coords: state.coords,
+        method: methodForFetch,
+      });
+
+      const computed = computeSchedule({
+        tz,
+        baseTimings: live.today,
+        tomorrowTimings: live.tomorrow,
+        safetyOffsets: masjidForToday.safety_offsets,
+        iqamaSet: iqamaSetForToday,
+        tomorrowSafetyOffsets: masjidForTomorrow.safety_offsets,
+        tomorrowIqamaSet: iqamaSetForTomorrow,
+      });
+
+      state.computed = computed;
+      state.lastFetchInfo = { source: "live", at: new Date() };
+
+      writeTimingsCache(state.timingsCacheKey, live);
+      renderAll();
+      showFreshnessBadge();
+      clearNotice();
+    } catch (err) {
+      console.error(err);
+      if (!cachedTimings) {
+        showNotice(err?.message || "Prayer API failed.", "error");
+      } else {
+        showNotice(t("usingCache") || "Using cached data (live fetch failed).", "info");
+      }
+    }
+  }
+
+  async function fetchTimingsRange({ tz, coords, method }) {
+    const today = await fetchTimingsAlAdhan({
       date: new Date(),
-      tz: masjidForToday.timezone,
-      coords: state.coords,
-      method: masjidForToday.calc_method,
+      tz,
+      coords,
+      method,
     });
-
-    const computed = computeSchedule({
-      tz: masjidForToday.timezone,
-      baseTimings: live.timings,
-      safetyOffsets: masjidForToday.safety_offsets,
-      iqamaSet: iqamaSetForToday,
+    const tomorrow = await fetchTimingsAlAdhan({
+      date: addDays(new Date(), 1),
+      tz,
+      coords,
+      method,
     });
-
-    state.computed = computed;
-    state.lastFetchInfo = { source: "live", at: new Date() };
-
-    // Cache it
-    writeCache(cacheKey, { computed });
-
-    renderAll();
-    showFreshnessBadge();
-
-    clearNotice();
+    return { today: today.timings, tomorrow: tomorrow.timings };
   }
 
   async function fetchTimingsAlAdhan({ date, tz, coords, method }) {
-    // Use AlAdhan timings endpoint.
-    // We use timestamp to avoid month/year confusion and pass latitude/longitude.
-    // AlAdhan supports: method=<id>, school=0/1, latitudeAdjustmentMethod=1/2/3.
     const ts = Math.floor(date.getTime() / 1000);
 
     const school = (method.school || "standard").toLowerCase() === "hanafi" ? 1 : 0;
     const latAdj = mapHighLatRule(method.highLatRule);
     const tune = safeJson(method.tune, {});
-
-    // AlAdhan "tune" parameter is comma-separated adjustments per prayer in minutes:
-    // "0,0,0,0,0,0,0,0,0" for (Imsak,Fajr,Sunrise,Dhuhr,Asr,Sunset,Maghrib,Isha,Midnight)
-    // We keep it simple: if user provides aladhan_tune string in tune, use it;
-    // otherwise build from per-prayer keys if present.
     const tuneParam = buildAlAdhanTune(tune);
 
     const url = new URL(`https://api.aladhan.com/v1/timings/${ts}`);
@@ -492,13 +606,12 @@
     url.searchParams.set("method", String(numOr(method.methodId, 2)));
     url.searchParams.set("school", String(school));
     url.searchParams.set("latitudeAdjustmentMethod", String(latAdj));
-    // Request 24h
     url.searchParams.set("timezonestring", tz);
     if (tuneParam) url.searchParams.set("tune", tuneParam);
 
     el.providerStatus.textContent = `AlAdhan • method ${numOr(method.methodId, 2)}`;
 
-    const res = await fetch(url.toString());
+    const res = await fetchWithRetry(url.toString());
     if (!res.ok) {
       throw new Error(`Prayer API failed (${res.status}).`);
     }
@@ -506,7 +619,6 @@
     const timings = json?.data?.timings;
     if (!timings) throw new Error("Prayer API returned invalid response.");
 
-    // Normalize to our 5 prayers only: HH:MM
     return {
       timings: {
         fajr: normalizeHHMM(timings.Fajr),
@@ -519,51 +631,38 @@
   }
 
   function mapHighLatRule(rule) {
-    // AlAdhan latitudeAdjustmentMethod:
-    // 1 = Middle of the Night
-    // 2 = One Seventh
-    // 3 = Angle Based
     const r = (rule || "angleBased").toLowerCase();
     if (r === "midnight") return 1;
     if (r === "oneseventh" || r === "one_seventh" || r === "one-seventh") return 2;
-    return 3; // angleBased default
+    return 3;
   }
 
   function buildAlAdhanTune(tune) {
-    // If tune contains a raw aladhan string, allow it:
     if (typeof tune?.aladhan_tune === "string" && tune.aladhan_tune.trim()) {
       return tune.aladhan_tune.trim();
     }
-    // Otherwise build from known keys (fajr/dhuhr/asr/maghrib/isha).
-    // Map to (Imsak,Fajr,Sunrise,Dhuhr,Asr,Sunset,Maghrib,Isha,Midnight)
     const F = numOr(tune.fajr, 0);
     const D = numOr(tune.dhuhr, 0);
     const A = numOr(tune.asr, 0);
     const M = numOr(tune.maghrib, 0);
     const I = numOr(tune.isha, 0);
 
-    // If all zeros, skip param entirely
     const any = [F, D, A, M, I].some((x) => x !== 0);
     if (!any) return "";
 
-    return [
-      0, // Imsak
-      Math.floor(F),
-      0, // Sunrise
-      Math.floor(D),
-      Math.floor(A),
-      0, // Sunset
-      Math.floor(M),
-      Math.floor(I),
-      0, // Midnight
-    ].join(",");
+    return [0, Math.floor(F), 0, Math.floor(D), Math.floor(A), 0, Math.floor(M), Math.floor(I), 0].join(",");
   }
 
   // ---------- Computation ----------
-  function computeSchedule({ tz, baseTimings, safetyOffsets, iqamaSet }) {
-    // baseTimings: {fajr:"HH:MM", ...}
-    // safetyOffsets: minutes positive
-    // iqamaSet: {id,label,offsets,fixedTimes}
+  function computeSchedule({
+    tz,
+    baseTimings,
+    tomorrowTimings,
+    safetyOffsets,
+    iqamaSet,
+    tomorrowSafetyOffsets,
+    tomorrowIqamaSet,
+  }) {
     const now = new Date();
     const todayISO = isoDateInTZ(now, tz);
 
@@ -572,22 +671,23 @@
       baseDates[p] = dateFromHHMMInTZ(todayISO, baseTimings[p], tz);
     }
 
-    // Apply safety
     const adhanSafe = {};
     for (const p of PRAYERS) {
       const min = Math.max(0, numOr(safetyOffsets?.[p], 0));
       adhanSafe[p] = addMinutes(baseDates[p], min);
     }
 
-    // Compute iqama
     const iqama = {};
+    const hasIqama = Boolean(iqamaSet);
     const offsets = safeJson(iqamaSet?.offsets, {});
     const fixedTimes = iqamaSet?.fixedTimes ? safeJson(iqamaSet.fixedTimes, {}) : null;
 
     for (const p of PRAYERS) {
+      if (!hasIqama) {
+        iqama[p] = null;
+        continue;
+      }
       let iq = null;
-
-      // fixedTime priority
       const ft = fixedTimes?.[p];
       if (typeof ft === "string" && ft.trim()) {
         iq = dateFromHHMMInTZ(todayISO, ft.trim(), tz);
@@ -595,26 +695,28 @@
         const off = Math.max(0, numOr(offsets?.[p], 0));
         iq = addMinutes(adhanSafe[p], off);
       }
-
-      // clamp: iqama cannot be before adhanSafe
       if (iq.getTime() < adhanSafe[p].getTime()) iq = new Date(adhanSafe[p].getTime());
-
       iqama[p] = iq;
     }
 
-    // Determine "next event" (we choose next ADHAN_SAFE by default, and show iqama too)
-    // But UI wants table status per prayer and a single next card.
     const timeline = [];
     for (const p of PRAYERS) {
       timeline.push({ kind: "adhan", prayer: p, at: adhanSafe[p] });
-      timeline.push({ kind: "iqama", prayer: p, at: iqama[p] });
+      if (hasIqama && iqama[p]) timeline.push({ kind: "iqama", prayer: p, at: iqama[p] });
     }
     timeline.sort((a, b) => a.at - b.at);
 
-    // If past Isha events, next is tomorrow's Fajr adhan/iqama; we need tomorrow fetch to be perfect,
-    // but for MVP, we approximate tomorrow fajr based on today + 1 day using same HH:MM (can be off).
-    // Better: fetch tomorrow in next iteration. For now, we'll compute tomorrow placeholders.
-    const next = findNextEvent(timeline, now, tz, baseTimings, safetyOffsets, iqamaSet, todayISO);
+    const next = findNextEvent({
+      timeline,
+      now,
+      tz,
+      baseTimings,
+      safetyOffsets,
+      iqamaSet,
+      tomorrowTimings,
+      tomorrowSafetyOffsets,
+      tomorrowIqamaSet,
+    });
 
     return {
       tz,
@@ -636,37 +738,73 @@
     };
   }
 
-  function findNextEvent(timeline, now, tz, baseTimings, safetyOffsets, iqamaSet, todayISO) {
+  function findNextEvent({
+    timeline,
+    now,
+    tz,
+    baseTimings,
+    safetyOffsets,
+    iqamaSet,
+    tomorrowTimings,
+    tomorrowSafetyOffsets,
+    tomorrowIqamaSet,
+  }) {
     const future = timeline.find((e) => e.at.getTime() > now.getTime());
-    if (future) return future;
-
-    // Past all events today -> compute tomorrow fajr adhan/iqama approximately
-    const tomorrowISO = isoDateInTZ(addDays(now, 1), tz);
-    const fajrBase = dateFromHHMMInTZ(tomorrowISO, baseTimings.fajr, tz);
-    const fajrAdhan = addMinutes(fajrBase, Math.max(0, numOr(safetyOffsets?.fajr, 0)));
-
-    const fixedTimes = iqamaSet?.fixedTimes ? safeJson(iqamaSet.fixedTimes, {}) : null;
-    let fajrIqama;
-    if (fixedTimes?.fajr) {
-      fajrIqama = dateFromHHMMInTZ(tomorrowISO, fixedTimes.fajr, tz);
-    } else {
-      const off = Math.max(0, numOr(iqamaSet?.offsets?.fajr, 0));
-      fajrIqama = addMinutes(fajrAdhan, off);
+    if (future) {
+      return {
+        ...future,
+        adhanAt: timeline.find((t) => t.prayer === future.prayer && t.kind === "adhan")?.at,
+        iqamaAt: timeline.find((t) => t.prayer === future.prayer && t.kind === "iqama")?.at,
+      };
     }
-    if (fajrIqama.getTime() < fajrAdhan.getTime()) fajrIqama = new Date(fajrAdhan.getTime());
 
-    // Choose next event as fajr adhan (and show meta)
-    return { kind: "adhan", prayer: "fajr", at: fajrAdhan, _tomorrow: true, _tomorrowIqama: fajrIqama };
+    const tomorrowISO = isoDateInTZ(addDays(now, 1), tz);
+    const useTimings = tomorrowTimings || baseTimings;
+    const fajrBase = dateFromHHMMInTZ(tomorrowISO, useTimings.fajr, tz);
+    const fajrAdhan = addMinutes(
+      fajrBase,
+      Math.max(0, numOr((tomorrowSafetyOffsets || safetyOffsets)?.fajr, 0))
+    );
+
+    const hasIqama = Boolean(tomorrowIqamaSet || iqamaSet);
+    const fixedTimes = tomorrowIqamaSet?.fixedTimes
+      ? safeJson(tomorrowIqamaSet.fixedTimes, {})
+      : iqamaSet?.fixedTimes
+      ? safeJson(iqamaSet.fixedTimes, {})
+      : null;
+    let fajrIqama = null;
+    if (hasIqama) {
+      if (fixedTimes?.fajr) {
+        fajrIqama = dateFromHHMMInTZ(tomorrowISO, fixedTimes.fajr, tz);
+      } else {
+        const off = Math.max(0, numOr((tomorrowIqamaSet || iqamaSet)?.offsets?.fajr, 0));
+        fajrIqama = addMinutes(fajrAdhan, off);
+      }
+      if (fajrIqama.getTime() < fajrAdhan.getTime()) fajrIqama = new Date(fajrAdhan.getTime());
+    }
+
+    return {
+      kind: "adhan",
+      prayer: "fajr",
+      at: fajrAdhan,
+      adhanAt: fajrAdhan,
+      iqamaAt: fajrIqama,
+      _tomorrow: true,
+    };
   }
 
   // ---------- Rendering ----------
   function renderAll() {
+    setTodayDate(state.masjid?.timezone);
     renderMasjidHeader();
     renderIqamaSelect();
     renderTable();
     renderNextCard();
     renderMethodDetails();
     renderSafetyDetails();
+    renderSafetyNote();
+    renderMethodControls();
+    renderSavedLocations();
   }
 
   function renderMasjidHeader() {
@@ -680,7 +818,7 @@
 
   function renderMethodDetails() {
     if (!state.masjid) return;
-    const m = state.masjid.calc_method || DEFAULT_METHOD;
+    const m = getActiveMethod();
 
     el.methodBadge.textContent = `Method: ${numOr(m.methodId, 2)}`;
     el.calcProvider.textContent = m.provider || "aladhan";
@@ -701,9 +839,25 @@
     }
   }
 
+  function renderSafetyNote() {
+    if (!state.masjid) return;
+    const offsets = state.masjid.safety_offsets || {};
+    const hasSafety = PRAYERS.some((p) => numOr(offsets[p], 0) > 0);
+    if (el.safetyNote) {
+      el.safetyNote.textContent = hasSafety
+        ? t("safetyNote") || "Displayed adhan times include safety offsets."
+        : t("safetyNoteNone") || "Displayed adhan times have no safety offset.";
+    }
+  }
+
   function loadIqamaSets() {
     state.iqamaSets = [];
-    const sets = state.masjid?.iqama_sets || [];
+    if (!state.masjid?.iqama_sets?.length) {
+      state.iqamaSets = [];
+      return;
+    }
+
+    const sets = state.masjid.iqama_sets || [];
     for (const raw of sets) {
       const obj = safeJson(raw, {});
       const id = (obj.id || "").trim();
@@ -715,23 +869,14 @@
         fixedTimes: obj.fixedTimes ? safeJson(obj.fixedTimes, {}) : null,
       });
     }
-    if (!state.iqamaSets.length) {
-      // fallback
-      state.iqamaSets = [
-        {
-          id: "main",
-          label: { tr: "Ana Cemaat", en: "Main Congregation" },
-          offsets: { fajr: 20, dhuhr: 10, asr: 10, maghrib: 5, isha: 15 },
-          fixedTimes: null,
-        },
-      ];
-    }
   }
 
   function pickInitialIqamaSet() {
-    const byId = state.setId
-      ? state.iqamaSets.find((s) => s.id === state.setId)
-      : null;
+    if (!state.iqamaSets.length) {
+      state.iqamaSet = null;
+      return;
+    }
+    const byId = state.setId ? state.iqamaSets.find((s) => s.id === state.setId) : null;
     state.iqamaSet = byId || state.iqamaSets[0];
   }
 
@@ -739,6 +884,19 @@
     if (!el.iqamaSetSelect) return;
     const sel = el.iqamaSetSelect;
     sel.innerHTML = "";
+
+    if (!state.iqamaSets.length) {
+      sel.disabled = true;
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "—";
+      sel.appendChild(opt);
+      if (el.iqamaSetWrap) el.iqamaSetWrap.classList.add("is-disabled");
+      return;
+    }
+
+    sel.disabled = false;
+    if (el.iqamaSetWrap) el.iqamaSetWrap.classList.remove("is-disabled");
 
     for (const s of state.iqamaSets) {
       const opt = document.createElement("option");
@@ -754,14 +912,14 @@
       if (!chosen) return;
       state.iqamaSet = chosen;
 
-      // Update URL param set
       const url = new URL(location.href);
-      url.searchParams.set("m", state.slug);
-      url.searchParams.set("set", chosen.id);
-      history.replaceState({}, "", url.toString());
-      setShareLink(url.toString());
+      if (state.slug) {
+        url.searchParams.set("m", state.slug);
+        url.searchParams.set("set", chosen.id);
+        history.replaceState({}, "", url.toString());
+      }
+      setShareLink(makeShareLink(state.slug, chosen.id));
 
-      // Refresh computations
       refreshAll({ preferCache: true }).catch((e) => showNotice(e.message, "error"));
     };
   }
@@ -782,9 +940,8 @@
       const iq = c.times.iqama[p];
 
       const tds = tr.querySelectorAll("td");
-      // Order: Adhan, Iqama, Status
       if (tds[0]) tds[0].textContent = fmtTime(ad, c.tz);
-      if (tds[1]) tds[1].textContent = fmtTime(iq, c.tz);
+      if (tds[1]) tds[1].textContent = iq ? fmtTime(iq, c.tz) : "—";
 
       const statusTd = tds[2];
       if (statusTd) {
@@ -793,7 +950,6 @@
         statusTd.className = status.className;
       }
 
-      // Highlight current/next prayer row (based on next adhan)
       const next = c.next;
       if (next?.prayer === p) tr.classList.add("is-active");
     }
@@ -802,11 +958,11 @@
   function computeRowStatus(now, adhan, iqama) {
     const n = now.getTime();
     const a = adhan.getTime();
-    const i = iqama.getTime();
+    const i = iqama?.getTime?.() || a;
 
-    if (n < a) return { text: `${t("startsIn")}: ${fmtDelta(a - n)}`, className: "muted" };
-    if (n >= a && n < i) return { text: `${t("adhanPassed")}`, className: "" };
-    return { text: `${t("passed")}`, className: "muted" };
+    if (n < a) return { text: `${t("startsIn")}: ${fmtDelta(a - n)}`, className: "status--upcoming" };
+    if (n >= a && n < i) return { text: `${t("adhanPassed")}`, className: "status--current" };
+    return { text: `${t("passed")}`, className: "status--passed" };
   }
 
   function renderNextCard() {
@@ -819,10 +975,7 @@
     el.nextPrayerLabel.textContent = prayerLabel;
     el.nextPrayerTime.textContent = fmtTime(next.at, c.tz);
 
-    const typeText =
-      next.kind === "adhan"
-        ? t("adhan") || "Adhan"
-        : t("iqama") || "Iqama";
+    const typeText = next.kind === "adhan" ? t("adhan") || "Adhan" : t("iqama") || "Iqama";
     el.nextTypePill.textContent = typeText;
 
     const metaParts = [];
@@ -830,7 +983,18 @@
     if (state.locationLabel) metaParts.push(state.locationLabel);
     el.nextMeta.textContent = metaParts.join(" • ") || "—";
 
-    // Countdown will be updated by loop
+    if (next.adhanAt) {
+      const adhanText = fmtTime(next.adhanAt, c.tz);
+      if (next.iqamaAt) {
+        const iqamaText = fmtTime(next.iqamaAt, c.tz);
+        el.nextIqamaLine.textContent = `${t("nextAdhan") || "Adhan"}: ${adhanText} • ${t("nextIqama") || "Iqama"}: ${iqamaText}`;
+      } else {
+        el.nextIqamaLine.textContent = `${t("nextAdhan") || "Adhan"}: ${adhanText}`;
+      }
+    } else {
+      el.nextIqamaLine.textContent = "—";
+    }
+
     updateCountdown();
   }
 
@@ -862,7 +1026,6 @@
     const diff = c.next.at.getTime() - now.getTime();
     if (diff <= 0) {
       el.countdown.textContent = "00:00:00";
-      // Debounced refresh soon after passing
       scheduleSoftRefresh();
       return;
     }
@@ -879,14 +1042,18 @@
 
   // ---------- UI wiring ----------
   function wireLanguage() {
-    if (el.langToggleBtn) {
-      el.langToggleBtn.addEventListener("click", () => {
-        state.lang = state.lang === "tr" ? "en" : "tr";
-        localStorage.setItem("prayerhub_lang", state.lang);
-        applyLanguage(state.lang);
-        renderAll();
-      });
-    }
+    const toggle = () => {
+      state.lang = state.lang === "tr" ? "en" : "tr";
+      localStorage.setItem(STORAGE_KEYS.lang, state.lang);
+      applyLanguage(state.lang);
+      renderAll();
+      renderMethodOptions();
+      renderMethodControls();
+      renderSavedLocations();
+    };
+
+    el.langToggleBtn?.addEventListener("click", toggle);
+    el.langToggleBtn2?.addEventListener("click", toggle);
   }
 
   function wireShare() {
@@ -896,7 +1063,6 @@
         await navigator.clipboard.writeText(link);
         showNotice(t("copied") || "Copied!", "info");
       } catch {
-        // fallback
         if (el.shareLinkInput) {
           el.shareLinkInput.focus();
           el.shareLinkInput.select();
@@ -919,18 +1085,19 @@
       location.href = url.toString();
     });
 
-    // Enter key support
     el.slugInput?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") el.openSlugBtn?.click();
     });
   }
 
   function wireRefresh() {
-    el.refreshBtn?.addEventListener("click", () => {
+    const refresh = () => {
       refreshAll({ preferCache: false }).catch((e) => showNotice(e.message, "error"));
-    });
+    };
+    el.refreshBtn?.addEventListener("click", refresh);
+    el.actionRefreshBtn?.addEventListener("click", refresh);
 
-    el.useLocationBtn?.addEventListener("click", async () => {
+    const useLocation = async () => {
       const ok = await tryGeolocation();
       if (!ok) {
         el.manualLocationDetails.open = true;
@@ -938,20 +1105,22 @@
         return;
       }
       refreshAll({ preferCache: false }).catch((e) => showNotice(e.message, "error"));
-    });
-
-    el.iqamaSetSelect?.addEventListener("change", () => {
-      // handled in renderIqamaSelect
-    });
+    };
+    el.useLocationBtn?.addEventListener("click", useLocation);
+    el.actionLocationBtn?.addEventListener("click", useLocation);
   }
 
   function wireManualLocation() {
+    const debouncedSearch = debounceAsync(async (q) => {
+      state.manualLocation = q;
+      await resolveManualLocation(q);
+      await refreshAll({ preferCache: false });
+    }, 500);
+
     el.manualLocationBtn?.addEventListener("click", async () => {
       const q = (el.manualLocationInput?.value || "").trim();
       try {
-        state.manualLocation = q;
-        await resolveManualLocation(q);
-        await refreshAll({ preferCache: false });
+        await debouncedSearch(q);
       } catch (e) {
         showNotice(e.message || "Manual location failed.", "error");
       }
@@ -966,6 +1135,197 @@
     el.noticeClose?.addEventListener("click", clearNotice);
   }
 
+  function wireSettings() {
+    const open = () => {
+      if (!el.settingsModal) return;
+      el.settingsModal.hidden = false;
+    };
+    const close = () => {
+      if (!el.settingsModal) return;
+      el.settingsModal.hidden = true;
+    };
+
+    el.settingsBtn?.addEventListener("click", open);
+    el.actionSettingsBtn?.addEventListener("click", open);
+    el.settingsCloseBtn?.addEventListener("click", close);
+    el.settingsModal?.querySelector("[data-close='settings']")?.addEventListener("click", close);
+
+    el.methodSelect?.addEventListener("change", onMethodChange);
+    el.schoolSelect?.addEventListener("change", onMethodChange);
+    el.highLatSelect?.addEventListener("change", onMethodChange);
+
+    el.resetMethodBtn?.addEventListener("click", () => {
+      clearMethodOverride();
+      renderMethodControls();
+      refreshAll({ preferCache: false }).catch((e) => showNotice(e.message, "error"));
+    });
+  }
+
+  function wireSavedLocations() {
+    el.saveLocationBtn?.addEventListener("click", () => {
+      saveCurrentLocation();
+    });
+
+    el.useSavedLocationBtn?.addEventListener("click", () => {
+      const id = el.savedLocationsSelect?.value || "";
+      if (!id) return;
+      const selected = state.savedLocations.find((loc) => loc.id === id);
+      if (!selected) return;
+      applySavedLocation(selected);
+    });
+
+    el.removeSavedLocationBtn?.addEventListener("click", () => {
+      const id = el.savedLocationsSelect?.value || "";
+      if (!id) return;
+      state.savedLocations = state.savedLocations.filter((loc) => loc.id !== id);
+      writeSavedLocations();
+      renderSavedLocations();
+    });
+  }
+
+  // ---------- Method Switching ----------
+  function hydrateMethodOverride() {
+    const key = state.slug ? STORAGE_KEYS.methodSlug(state.slug) : STORAGE_KEYS.methodGlobal;
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    try {
+      const obj = JSON.parse(raw);
+      if (obj && typeof obj === "object") {
+        state.methodOverride = {
+          methodId: numOr(obj.methodId, DEFAULT_METHOD.methodId),
+          school: obj.school || DEFAULT_METHOD.school,
+          highLatRule: obj.highLatRule || DEFAULT_METHOD.highLatRule,
+        };
+      }
+    } catch {
+      state.methodOverride = null;
+    }
+  }
+
+  function getActiveMethod(baseMethod = state.masjid?.calc_method || DEFAULT_METHOD) {
+    if (state.methodOverride) {
+      return {
+        ...baseMethod,
+        ...state.methodOverride,
+      };
+    }
+    return baseMethod;
+  }
+
+  function onMethodChange() {
+    if (!el.methodSelect || !el.schoolSelect || !el.highLatSelect) return;
+    const next = {
+      methodId: numOr(el.methodSelect.value, DEFAULT_METHOD.methodId),
+      school: el.schoolSelect.value,
+      highLatRule: el.highLatSelect.value,
+    };
+    state.methodOverride = next;
+
+    const key = state.slug ? STORAGE_KEYS.methodSlug(state.slug) : STORAGE_KEYS.methodGlobal;
+    localStorage.setItem(key, JSON.stringify(next));
+
+    renderMethodControls();
+    refreshAll({ preferCache: false }).catch((e) => showNotice(e.message, "error"));
+  }
+
+  function clearMethodOverride() {
+    const key = state.slug ? STORAGE_KEYS.methodSlug(state.slug) : STORAGE_KEYS.methodGlobal;
+    localStorage.removeItem(key);
+    state.methodOverride = null;
+  }
+
+  function renderMethodOptions() {
+    if (!el.methodSelect) return;
+    el.methodSelect.innerHTML = "";
+    for (const option of METHOD_OPTIONS) {
+      const opt = document.createElement("option");
+      opt.value = String(option.id);
+      opt.textContent = pickLang(option.label, state.lang) || `Method ${option.id}`;
+      el.methodSelect.appendChild(opt);
+    }
+  }
+
+  function renderMethodControls() {
+    const method = getActiveMethod();
+    if (el.methodSelect) el.methodSelect.value = String(numOr(method.methodId, DEFAULT_METHOD.methodId));
+    if (el.schoolSelect) el.schoolSelect.value = method.school || "standard";
+    if (el.highLatSelect) el.highLatSelect.value = method.highLatRule || "angleBased";
+
+    if (el.resetMethodBtn) el.resetMethodBtn.disabled = !state.slug;
+    if (el.methodScopeNote) {
+      el.methodScopeNote.textContent = state.slug
+        ? state.methodOverride
+          ? t("methodScopeMasjidOverride") || "Overriding masjid defaults (local only)."
+          : t("methodScopeMasjid") || "Using masjid defaults."
+        : t("methodScopeGlobal") || "Using global defaults."
+    }
+  }
+
+  // ---------- Saved Locations ----------
+  function loadSavedLocations() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.savedLocations);
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) state.savedLocations = arr;
+    } catch {
+      state.savedLocations = [];
+    }
+  }
+
+  function writeSavedLocations() {
+    try {
+      localStorage.setItem(STORAGE_KEYS.savedLocations, JSON.stringify(state.savedLocations));
+    } catch {
+      // ignore
+    }
+  }
+
+  function renderSavedLocations() {
+    if (!el.savedLocationsSelect) return;
+    el.savedLocationsSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = state.savedLocations.length ? t("selectSaved") || "Select" : t("noSaved") || "No saved locations";
+    el.savedLocationsSelect.appendChild(placeholder);
+
+    for (const loc of state.savedLocations) {
+      const opt = document.createElement("option");
+      opt.value = loc.id;
+      opt.textContent = loc.label;
+      el.savedLocationsSelect.appendChild(opt);
+    }
+  }
+
+  function saveCurrentLocation() {
+    if (!state.coords) {
+      showNotice(t("needLocation") || "Please allow location or enter a city/address.", "info");
+      return;
+    }
+    const label = (el.saveLocationLabelInput?.value || "").trim() || state.locationLabel || t("savedLocation") || "Saved";
+    const entry = {
+      id: `loc_${Date.now()}`,
+      label,
+      coords: state.coords,
+      manualQuery: state.manualLocation || null,
+    };
+    state.savedLocations.push(entry);
+    writeSavedLocations();
+    renderSavedLocations();
+    if (el.saveLocationLabelInput) el.saveLocationLabelInput.value = "";
+    showNotice(t("saved") || "Saved.", "info");
+  }
+
+  function applySavedLocation(loc) {
+    if (!loc?.coords) return;
+    state.coords = loc.coords;
+    state.manualLocation = loc.manualQuery || null;
+    state.locationLabel = loc.label;
+    state.locationSource = "saved";
+    updateLocationStatus("saved");
+    refreshAll({ preferCache: true }).catch((e) => showNotice(e.message, "error"));
+  }
+
   // ---------- Language (TR/EN) ----------
   function loadI18n() {
     const dictEl = document.getElementById("i18nDict");
@@ -978,7 +1338,7 @@
   }
 
   function detectInitialLang() {
-    const saved = localStorage.getItem("prayerhub_lang");
+    const saved = localStorage.getItem(STORAGE_KEYS.lang);
     if (saved === "tr" || saved === "en") return saved;
     const htmlLang = (document.documentElement.getAttribute("lang") || "").toLowerCase();
     if (htmlLang.startsWith("en")) return "en";
@@ -989,19 +1349,20 @@
     el.root.setAttribute("lang", lang);
     el.root.setAttribute("data-lang", lang);
 
-    // Replace elements with data-i18n
     document.querySelectorAll("[data-i18n]").forEach((node) => {
       const key = node.getAttribute("data-i18n");
       const val = i18n?.[lang]?.[key];
       if (typeof val === "string") node.textContent = val;
     });
 
-    // Update placeholders that are language-sensitive (optional)
     if (el.slugInput) {
       el.slugInput.placeholder = lang === "en" ? "e.g. sanjose-umut-mescid" : "ör: sanjose-umut-mescid";
     }
     if (el.manualLocationInput) {
       el.manualLocationInput.placeholder = lang === "en" ? "e.g. San Jose, CA" : "ör: San Jose, CA";
+    }
+    if (el.saveLocationLabelInput) {
+      el.saveLocationLabelInput.placeholder = lang === "en" ? "e.g. Home" : "ör: Ev";
     }
   }
 
@@ -1009,8 +1370,6 @@
     return i18n?.[state.lang]?.[key] || i18n?.tr?.[key] || "";
   }
 
-  // Add a few runtime-only translations (keys not in HTML dict)
-  // (keeps HTML minimal; still TR/EN ready)
   i18n.tr = Object.assign(
     {
       loadingMasjid: "Mescid profili yükleniyor…",
@@ -1018,6 +1377,10 @@
       locManual: "Konum kapalı — şehir/adres gir.",
       locSearching: "Konum aranıyor…",
       locNotFound: "Konum bulunamadı.",
+      locUsingGps: "GPS kullanılıyor",
+      locUsingManual: "Manuel şehir kullanılıyor",
+      locUsingSaved: "Kayıtlı konum kullanılıyor",
+      locBlocked: "Konum izni yok",
       geoUnsupported: "Tarayıcı konum özelliğini desteklemiyor.",
       enterCity: "Şehir/adres gir.",
       enterSlug: "Slug gir.",
@@ -1031,6 +1394,19 @@
       copied: "Kopyalandı!",
       cached: "Önbellek",
       live: "Canlı",
+      nextAdhan: "Adhan",
+      nextIqama: "İkame",
+      masjidNotFound: "Mescid bulunamadı. Linki veya slug'ı kontrol edin.",
+      supabaseMissing: "Supabase ayarları eksik. index.html dosyasında __SUPABASE_URL ve __SUPABASE_ANON_KEY doldurun.",
+      supabaseMissingScript: "Supabase JS bulunamadı.",
+      methodScopeMasjidOverride: "Mescid varsayılanı üzerine yazılıyor (yalnızca cihazınızda).",
+      methodScopeMasjid: "Mescid varsayılanı kullanılıyor.",
+      methodScopeGlobal: "Genel varsayılanlar kullanılıyor.",
+      saved: "Kaydedildi.",
+      usingCache: "Önbellek verisi kullanılıyor (canlı istek başarısız).",
+      selectSaved: "Seç",
+      noSaved: "Kayıtlı konum yok",
+      safetyNoteNone: "Görüntülenen adhan vakitlerinde ihtiyat payı yok.",
     },
     i18n.tr || {}
   );
@@ -1042,6 +1418,10 @@
       locManual: "Location blocked — enter city/address.",
       locSearching: "Searching location…",
       locNotFound: "Location not found.",
+      locUsingGps: "Using GPS",
+      locUsingManual: "Using manual city",
+      locUsingSaved: "Using saved location",
+      locBlocked: "Location not allowed",
       geoUnsupported: "Geolocation is not supported in this browser.",
       enterCity: "Enter a city/address.",
       enterSlug: "Enter a slug.",
@@ -1055,6 +1435,19 @@
       copied: "Copied!",
       cached: "Cached",
       live: "Live",
+      nextAdhan: "Adhan",
+      nextIqama: "Iqama",
+      masjidNotFound: "Masjid not found. Check the link or slug.",
+      supabaseMissing: "Supabase config missing. Fill __SUPABASE_URL and __SUPABASE_ANON_KEY in index.html.",
+      supabaseMissingScript: "Supabase JS client not found.",
+      methodScopeMasjidOverride: "Overriding masjid defaults (local only).",
+      methodScopeMasjid: "Using masjid defaults.",
+      methodScopeGlobal: "Using global defaults.",
+      saved: "Saved.",
+      usingCache: "Using cached data (live fetch failed).",
+      selectSaved: "Select",
+      noSaved: "No saved locations",
+      safetyNoteNone: "Displayed adhan times have no safety offset.",
     },
     i18n.en || {}
   );
@@ -1068,9 +1461,6 @@
     if (!el.notice || !el.noticeText) return;
     el.notice.hidden = false;
     el.noticeText.textContent = text;
-
-    // tint via background only (CSS already uses danger color);
-    // we keep it simple: add data-type for future styling
     el.notice.dataset.type = type;
   }
 
@@ -1081,15 +1471,14 @@
     delete el.notice.dataset.type;
   }
 
-  function setTodayDate() {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  function setTodayDate(tz) {
     const d = new Date();
     el.todayDate.textContent = d.toLocaleDateString(state.lang === "en" ? "en-US" : "tr-TR", {
       weekday: "short",
       year: "numeric",
       month: "short",
       day: "2-digit",
-      timeZone: tz,
+      timeZone: tz || Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   }
 
@@ -1099,9 +1488,14 @@
 
   function makeShareLink(slug, setId) {
     const url = new URL(location.href);
-    url.searchParams.set("m", slug);
-    if (setId) url.searchParams.set("set", setId);
-    else url.searchParams.delete("set");
+    if (slug) {
+      url.searchParams.set("m", slug);
+      if (setId) url.searchParams.set("set", setId);
+      else url.searchParams.delete("set");
+    } else {
+      url.searchParams.delete("m");
+      url.searchParams.delete("set");
+    }
     return url.toString();
   }
 
@@ -1127,7 +1521,6 @@
 
   function normalizeHHMM(s) {
     if (!s) return "00:00";
-    // AlAdhan sometimes returns "05:12 (PDT)" -> strip
     const m = String(s).match(/(\d{1,2}):(\d{2})/);
     if (!m) return "00:00";
     const hh = String(m[1]).padStart(2, "0");
@@ -1136,7 +1529,6 @@
   }
 
   function isoDateInTZ(date, tz) {
-    // YYYY-MM-DD in a specific timezone using Intl parts
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: tz,
       year: "numeric",
@@ -1151,17 +1543,11 @@
   }
 
   function dateFromHHMMInTZ(isoDate, hhmm, tz) {
-    // Create a Date representing isoDate + hh:mm in tz.
-    // We build a "wall clock" date then convert by comparing formatted parts.
-    // This is a common workaround without moment/luxon.
     const [H, M] = (hhmm || "00:00").split(":").map((x) => parseInt(x, 10));
     const [y, mo, d] = isoDate.split("-").map((x) => parseInt(x, 10));
 
-    // Start with UTC date at same components, then shift to match tz wall clock.
     const approx = new Date(Date.UTC(y, mo - 1, d, H || 0, M || 0, 0));
 
-    // Compute the timezone offset at that wall-clock moment by formatting
-    // and comparing back to intended components.
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZone: tz,
       year: "numeric",
@@ -1178,7 +1564,6 @@
     const hh = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
     const mi = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
 
-    // difference in minutes between intended and formatted (in tz)
     const intendedUTC = Date.UTC(y, mo - 1, d, H || 0, M || 0, 0);
     const gotUTC = Date.UTC(yy, mm - 1, dd, hh, mi, 0);
 
@@ -1220,36 +1605,103 @@
     return `${h}h ${rm}m`;
   }
 
-  function makeCacheKey({ slug, date, tz, coords, manual, setId, lang }) {
-    const loc = coords ? `${coords.lat.toFixed(4)},${coords.lon.toFixed(4)}` : `manual:${manual || ""}`;
-    return `prayerhub:v1:${slug}:${date}:${tz}:${setId}:${lang}:${loc}`;
+  function makeTimingsCacheKey({ date, tz, coords, method }) {
+    const loc = coords ? `${coords.lat.toFixed(4)},${coords.lon.toFixed(4)}` : "unknown";
+    const tuneKey = encodeURIComponent(JSON.stringify(method.tune || {}));
+    return `${date}:${tz}:${loc}:${method.methodId}:${method.school}:${method.highLatRule}:${tuneKey}`;
   }
 
-  function readCache(key) {
+  function readTimingsCache(key) {
     try {
-      const raw = localStorage.getItem(key);
+      const raw = localStorage.getItem(STORAGE_KEYS.timingsCache(key));
       if (!raw) return null;
       const obj = JSON.parse(raw);
       if (!obj?.savedAt) return null;
       const age = Date.now() - new Date(obj.savedAt).getTime();
-      if (age > CACHE_TTL_MS) return null;
+      if (age > TIMINGS_CACHE_TTL_MS) return null;
       return obj;
     } catch {
       return null;
     }
   }
 
-  function writeCache(key, payload) {
+  function writeTimingsCache(key, payload) {
     try {
       localStorage.setItem(
-        key,
+        STORAGE_KEYS.timingsCache(key),
         JSON.stringify({
           savedAt: new Date().toISOString(),
           ...payload,
         })
       );
     } catch {
-      // ignore storage quota issues
+      // ignore
     }
+  }
+
+  function readMasjidCache(slug) {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.masjidCache(slug));
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj?.savedAt) return null;
+      const age = Date.now() - new Date(obj.savedAt).getTime();
+      if (age > MASJID_CACHE_TTL_MS) return null;
+      return obj.data || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeMasjidCache(slug, data) {
+    try {
+      localStorage.setItem(
+        STORAGE_KEYS.masjidCache(slug),
+        JSON.stringify({
+          savedAt: new Date().toISOString(),
+          data,
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  async function fetchWithRetry(url, options = {}) {
+    let lastError = null;
+    for (let attempt = 0; attempt <= RETRY_LIMIT; attempt += 1) {
+      try {
+        const res = await fetch(url, options);
+        return res;
+      } catch (err) {
+        lastError = err;
+        await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+      }
+    }
+    throw lastError || new Error("Network error");
+  }
+
+  function debounceAsync(fn, wait) {
+    let timer = null;
+    let pendingResolve = null;
+
+    return (...args) => {
+      if (timer) clearTimeout(timer);
+      if (pendingResolve) pendingResolve(null);
+
+      return new Promise((resolve, reject) => {
+        pendingResolve = resolve;
+        timer = setTimeout(async () => {
+          try {
+            const result = await fn(...args);
+            pendingResolve = null;
+            resolve(result);
+          } catch (err) {
+            pendingResolve = null;
+            reject(err);
+          }
+        }, wait);
+      });
+    };
   }
 })();

@@ -147,6 +147,7 @@ main.container{
 
 .h1{ margin:0 0 8px; font-size: 18px; }
 .h2{ margin:0; font-size: 16px; }
+.h3{ margin:0 0 10px; font-size: 14.5px; }
 .muted{ color: var(--muted); }
 .small{ font-size: 12.5px; }
 
@@ -256,6 +257,11 @@ main.container{
   flex-wrap: wrap;
   align-items:center;
 }
+.next__sub{
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
 
 .pill{
   display:inline-flex;
@@ -304,6 +310,9 @@ main.container{
   padding: 10px 12px;
   background: color-mix(in oklab, var(--card2), transparent 0%);
 }
+.kv.is-disabled{
+  opacity: 0.6;
+}
 .kv__k{
   color: var(--muted);
   font-size: 12px;
@@ -345,6 +354,9 @@ main.container{
   background: color-mix(in oklab, var(--accent), transparent 90%);
 }
 .col-time{ width: 140px; }
+.status--upcoming{ color: var(--text); }
+.status--current{ color: var(--accent2); font-weight: 700; }
+.status--passed{ color: var(--muted); }
 
 .mono{ font-family: var(--mono); }
 
@@ -417,6 +429,76 @@ main.container{
 .footer{
   margin-top: 14px;
   padding: 6px 0;
+}
+
+.action-bar{
+  position: sticky;
+  bottom: 0;
+  display: none;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: color-mix(in oklab, var(--bg), transparent 10%);
+  border-top: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+  z-index: 45;
+}
+.action-bar__btn{
+  flex: 1 1 auto;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--card2), transparent 0%);
+  color: var(--text);
+  font-weight: 650;
+  cursor: pointer;
+}
+.action-bar__btn:hover{ filter: brightness(1.05); }
+
+.modal{
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 60;
+}
+.modal[hidden]{ display: none; }
+.modal__backdrop{
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 9, 16, 0.6);
+}
+.modal__panel{
+  position: relative;
+  width: min(720px, calc(100% - 24px));
+  max-height: min(85vh, 640px);
+  overflow: auto;
+  background: var(--card);
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+.modal__header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.modal__body{
+  display: grid;
+  gap: 16px;
+}
+.settings-section{
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--card2), transparent 0%);
+}
+
+@media (max-width: 720px){
+  .action-bar{ display: flex; }
 }
 
 /* Responsive table -> stacked cards */
