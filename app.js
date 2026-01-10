@@ -80,6 +80,7 @@
     nextMeta: $("#nextMeta"),
     nextIqamaLine: $("#nextIqamaLine"),
     countdown: $("#countdown"),
+    countdownLabel: document.querySelector(".countdown__label"),
     refreshBtn: $("#refreshBtn"),
     useLocationBtn: $("#useLocationBtn"),
     locationStatus: $("#locationStatus"),
@@ -752,6 +753,7 @@
     return {
       timings: {
         fajr: normalizeHHMM(timings.Fajr),
+        sunrise: normalizeHHMM(timings.Sunrise),
         dhuhr: normalizeHHMM(timings.Dhuhr),
         asr: normalizeHHMM(timings.Asr),
         maghrib: normalizeHHMM(timings.Maghrib),
@@ -799,6 +801,9 @@
     for (const p of PRAYERS) {
       baseDates[p] = dateFromHHMMInTZ(todayISO, baseTimings[p], tz);
     }
+    const sunriseTime = baseTimings?.sunrise
+      ? dateFromHHMMInTZ(todayISO, baseTimings.sunrise, tz)
+      : null;
 
     const adhanSafe = {};
     for (const p of PRAYERS) {
@@ -835,6 +840,20 @@
     }
     timeline.sort((a, b) => a.at - b.at);
 
+    const tomorrowISO = isoDateInTZ(addDays(now, 1), tz);
+    const tomorrowBase = tomorrowTimings || baseTimings;
+    const tomorrowFajrBase = dateFromHHMMInTZ(tomorrowISO, tomorrowBase.fajr, tz);
+    const tomorrowFajrOffset = Math.max(0, numOr((tomorrowSafetyOffsets || safetyOffsets)?.fajr, 0));
+    const tomorrowFajrAdhan = addMinutes(tomorrowFajrBase, tomorrowFajrOffset);
+
+    const endTimes = {
+      fajr: sunriseTime || adhanSafe.dhuhr,
+      dhuhr: adhanSafe.asr,
+      asr: adhanSafe.maghrib,
+      maghrib: adhanSafe.isha,
+      isha: tomorrowFajrAdhan,
+    };
+
     const next = findNextEvent({
       timeline,
       now,
@@ -864,6 +883,8 @@
         base: baseDates,
         adhanSafe,
         iqama,
+        ends: endTimes,
+        sunrise: sunriseTime,
       },
       next,
     };
@@ -1086,7 +1107,7 @@
 
       const statusTd = tds[2];
       if (statusTd) {
-        const status = computeRowStatus(now, ad, iq);
+        const status = computeRowStatus(now, ad, c.times.ends?.[p]);
         statusTd.textContent = status.text;
         statusTd.className = status.className;
       }
@@ -1096,14 +1117,16 @@
     }
   }
 
-  function computeRowStatus(now, adhan, iqama) {
+  function computeRowStatus(now, start, end) {
     const n = now.getTime();
-    const a = adhan.getTime();
-    const i = iqama?.getTime?.() || a;
+    const a = start.getTime();
+    const e = end?.getTime?.() ?? a;
 
     if (n < a) return { text: `${t("startsIn")}: ${fmtDelta(a - n)}`, className: "status--upcoming" };
-    if (n >= a && n < i) return { text: `${t("adhanPassed")}`, className: "status--current" };
-    return { text: `${t("passed")}`, className: "status--passed" };
+    if (n >= a && n < e) {
+      return { text: `${t("inProgress")} • ${t("endsIn")}: ${fmtDelta(e - n)}`, className: "status--current" };
+    }
+    return { text: `${t("ended")}`, className: "status--passed" };
   }
 
   function renderNextCard() {
@@ -1158,16 +1181,47 @@
     }, COUNTDOWN_TICK_MS);
   }
 
+  function findActivePrayerWindow(now, schedule) {
+    const n = now.getTime();
+    for (const p of PRAYERS) {
+      const start = schedule.times.adhanSafe?.[p];
+      const end = schedule.times.ends?.[p];
+      if (!start || !end) continue;
+      if (n >= start.getTime() && n < end.getTime()) {
+        return { prayer: p, start, end };
+      }
+    }
+    return null;
+  }
+
   function updateCountdown() {
     const c = state.computed;
     if (!c?.next) return;
 
     const now = new Date();
+    const activeWindow = findActivePrayerWindow(now, c);
+    if (activeWindow) {
+      const diff = activeWindow.end.getTime() - now.getTime();
+      if (diff <= 0) {
+        el.countdown.textContent = "00:00:00";
+        scheduleSoftRefresh();
+        return;
+      }
+      if (el.countdownLabel) {
+        el.countdownLabel.textContent = `${t("inProgress")} • ${t("endsIn")}`;
+      }
+      el.countdown.textContent = fmtHMS(diff);
+      return;
+    }
+
     const diff = c.next.at.getTime() - now.getTime();
     if (diff <= 0) {
       el.countdown.textContent = "00:00:00";
       scheduleSoftRefresh();
       return;
+    }
+    if (el.countdownLabel) {
+      el.countdownLabel.textContent = t("startsIn") || "Starts in";
     }
     el.countdown.textContent = fmtHMS(diff);
   }
@@ -2504,11 +2558,12 @@
       enterCity: "Şehir/adres gir.",
       enterSlug: "Slug gir.",
       needLocation: "Konum izni ver veya şehir/adres gir.",
-      startsIn: "Başlar",
-      adhanPassed: "Adhan geçti",
-      passed: "Geçti",
+      startsIn: "Başlamasına",
+      inProgress: "Vakit girdi",
+      endsIn: "Bitmesine",
+      ended: "Vakit çıktı",
       adhan: "Adhan",
-      iqama: "İkame",
+      iqama: "İkame (Cemaat)",
       tomorrow: "Yarın",
       copied: "Kopyalandı!",
       cached: "Önbellek",
@@ -2606,11 +2661,12 @@
       enterCity: "Enter a city/address.",
       enterSlug: "Enter a slug.",
       needLocation: "Allow location or enter a city/address.",
-      startsIn: "Starts",
-      adhanPassed: "Adhan passed",
-      passed: "Passed",
+      startsIn: "Starts in",
+      inProgress: "In progress",
+      endsIn: "Ends in",
+      ended: "Ended",
       adhan: "Adhan",
-      iqama: "Iqama",
+      iqama: "Iqama (Congregation)",
       tomorrow: "Tomorrow",
       copied: "Copied!",
       cached: "Cached",
