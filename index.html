@@ -38,6 +38,8 @@
         <div class="brand__text">
           <div class="brand__title" id="masjidName" data-i18n="masjid">Mescid</div>
           <div class="brand__subtitle">
+            <span id="masjidSubtitle" data-i18n="todaySubtitle">Bugünün Vakitleri</span>
+            <span class="dot" id="masjidSubtitleSep" aria-hidden="true">•</span>
             <span id="masjidCity">—</span>
             <span class="dot" aria-hidden="true">•</span>
             <span id="todayDate">—</span>
@@ -643,27 +645,19 @@
       <option value="Australia/Sydney"></option>
     </datalist>
 
-    <div class="toast" id="updateToast" role="status" aria-live="polite" hidden>
-      <div class="toast__text" data-i18n="updateAvailable">Güncelleme hazır</div>
-      <div class="toast__actions">
-        <button class="btn btn--primary" id="reloadBtn" type="button" data-i18n="reload">Yenile</button>
-        <button class="btn btn--ghost btn--small" id="dismissUpdateBtn" type="button" aria-label="Dismiss">✕</button>
-      </div>
-    </div>
-
     <script type="application/json" id="i18nDict">
     {
       "tr": {
         "skip": "İçeriğe atla",
         "masjid": "Mescid",
+        "appTitle": "Mescid Vakitleri",
+        "todaySubtitle": "Bugünün Vakitleri",
         "settings": "Ayarlar",
         "admin": "Admin",
         "copyLink": "Linki Kopyala",
         "install": "Yükle",
         "installTip": "iOS için: Paylaş → Ana Ekrana Ekle",
         "offline": "Çevrimdışı",
-        "updateAvailable": "Güncelleme hazır",
-        "reload": "Yenile",
         "slugTitle": "Mescid Linki",
         "slugHelp": "Bu sayfa genellikle paylaşılmış bir link ile açılır: /?m=mescid-slug. Slug yoksa aşağıdan gir.",
         "slugLabel": "Mescid Slug",
@@ -746,14 +740,14 @@
       "en": {
         "skip": "Skip to content",
         "masjid": "Masjid",
+        "appTitle": "Masjid Timings",
+        "todaySubtitle": "Today's Timings",
         "settings": "Settings",
         "admin": "Admin",
         "copyLink": "Copy link",
         "install": "Install",
         "installTip": "On iOS: Share → Add to Home Screen",
         "offline": "Offline",
-        "updateAvailable": "Update available",
-        "reload": "Reload",
         "slugTitle": "Masjid Link",
         "slugHelp": "This page is usually opened via a shared link: /?m=masjid-slug. If missing, enter it below.",
         "slugLabel": "Masjid Slug",
