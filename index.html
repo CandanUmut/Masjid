@@ -51,7 +51,11 @@
         <button class="btn btn--ghost" id="settingsBtn" type="button" aria-label="Ayarları aç" data-i18n="settings">
           Ayarlar
         </button>
-        <button class="btn btn--ghost" id="adminBtn" type="button" aria-label="Yönetim panelini aç" data-i18n="admin">
+        <span class="user-badge" id="userBadge" hidden></span>
+        <button class="btn btn--ghost" id="loginBtn" type="button" aria-label="Giriş yap" data-i18n="login">
+          Login
+        </button>
+        <button class="btn btn--ghost" id="adminBtn" type="button" aria-label="Yönetim panelini aç" data-i18n="admin" hidden>
           Admin
         </button>
         <button class="btn btn--ghost" id="langToggleBtn" type="button" aria-label="Dil değiştir">
@@ -69,6 +73,27 @@
       <div class="notice__dot" aria-hidden="true"></div>
       <div class="notice__text" id="noticeText">Yükleniyor…</div>
       <button class="notice__close" id="noticeClose" type="button" aria-label="Bildirimi kapat">✕</button>
+    </section>
+    <section class="setup-check" id="setupCheck" hidden>
+      <div class="setup-check__header">
+        <h2 class="h2">Setup Check</h2>
+        <button class="btn btn--ghost" id="setupCheckClose" type="button" aria-label="Kapat">✕</button>
+      </div>
+      <p class="muted" data-i18n="setupCheckIntro">
+        Supabase API yalnızca public şemayı görüyor. prayer_hub şemasını açmanız gerekiyor.
+      </p>
+      <ol class="setup-check__list">
+        <li data-i18n="setupCheckStep1">Supabase Dashboard → Settings → API → Exposed schemas içine <strong>prayer_hub</strong> ekleyin.</li>
+        <li data-i18n="setupCheckStep2">Anon/authenticated rollerine schema ve tablo izinleri verin.</li>
+      </ol>
+      <div class="setup-check__code">
+        <pre id="setupCheckSql">grant usage on schema prayer_hub to anon, authenticated;
+grant select on table prayer_hub.masjids to anon;
+grant select, insert, update, delete on table prayer_hub.masjids to authenticated;
+grant select on table prayer_hub.overrides to anon;
+grant select, insert, update, delete on table prayer_hub.overrides to authenticated;</pre>
+        <button class="btn btn--ghost btn--small" id="copySetupSql" type="button" data-i18n="copySql">SQL kopyala</button>
+      </div>
     </section>
 
     <div class="install-tip" id="iosInstallTip" data-i18n="installTip" hidden>
@@ -137,15 +162,18 @@
             <div class="kv__v" id="providerStatus">—</div>
           </div>
           <div class="kv" id="iqamaSetWrap">
-            <div class="kv__k" data-i18n="iqamaSet">İkame Seti</div>
-            <div class="kv__v">
-              <select id="iqamaSetSelect" class="select" aria-label="İkame seti seç">
-                <option value="">—</option>
-              </select>
-              <div class="helper" id="iqamaSetHelper"></div>
-            </div>
+          <div class="kv__k" data-i18n="iqamaSet">İkame Seti</div>
+          <div class="kv__v">
+            <select id="iqamaSetSelect" class="select" aria-label="İkame seti seç">
+              <option value="">—</option>
+            </select>
+            <div class="helper" id="iqamaSetHelper"></div>
+            <button class="btn btn--ghost btn--tiny" id="iqamaSetCreateBtn" type="button" data-i18n="createDefaultSet" hidden>
+              Varsayılan set oluştur
+            </button>
           </div>
         </div>
+      </div>
 
         <details class="details" id="manualLocationDetails">
           <summary data-i18n="manualLocationSummary">Konum izni yoksa şehir/adres gir</summary>
@@ -298,7 +326,7 @@
       <button class="action-bar__btn" id="actionRefreshBtn" type="button" data-i18n="refresh">Yenile</button>
       <button class="action-bar__btn" id="actionLocationBtn" type="button" data-i18n="getLocation">Konum Al</button>
       <button class="action-bar__btn" id="actionSettingsBtn" type="button" data-i18n="settings">Ayarlar</button>
-      <button class="action-bar__btn" id="actionAdminBtn" type="button" data-i18n="admin">Admin</button>
+      <button class="action-bar__btn" id="actionAdminBtn" type="button" data-i18n="admin" hidden>Admin</button>
     </div>
 
     <div class="modal" id="settingsModal" hidden>
@@ -398,327 +426,226 @@
       </div>
     </div>
 
+    <div class="modal" id="loginModal" hidden>
+      <div class="modal__backdrop" data-close="login"></div>
+      <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+        <div class="modal__header">
+          <h2 class="h2" id="loginTitle" data-i18n="login">Login</h2>
+          <button class="btn btn--ghost" id="loginCloseBtn" type="button" aria-label="Kapat">✕</button>
+        </div>
+        <div class="modal__body">
+          <p class="muted small" data-i18n="loginHelp">Giriş linki e-posta adresinize gönderilir.</p>
+          <div class="row row--wrap">
+            <label class="field grow">
+              <span class="field__label" data-i18n="email">E-posta</span>
+              <input id="loginEmailInput" class="input" type="email" placeholder="you@example.com" autocomplete="email" />
+            </label>
+            <button id="loginSendBtn" class="btn" type="button" data-i18n="sendLogin">Giriş linki gönder</button>
+          </div>
+          <div class="muted small" id="loginStatus">—</div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal" id="adminModal" hidden>
       <div class="modal__backdrop" data-close="admin"></div>
-      <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+      <div class="modal__panel modal__panel--wide" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
         <div class="modal__header">
-          <h2 class="h2" id="adminTitle" data-i18n="admin">Admin</h2>
+          <h2 class="h2" id="adminTitle" data-i18n="masjidBuilderTitle">Masjid Builder</h2>
           <button class="btn btn--ghost" id="adminCloseBtn" type="button" aria-label="Kapat">✕</button>
         </div>
         <div class="modal__body">
-          <section class="settings-section">
-            <h3 class="h3" data-i18n="authTitle">Oturum</h3>
+          <div class="builder-meta">
+            <span class="muted small" id="authStatus">—</span>
+            <button id="signOutBtn" class="btn btn--ghost btn--small" type="button" data-i18n="signOut">Çıkış</button>
+          </div>
+
+          <div class="builder-steps" role="tablist" aria-label="Masjid Builder steps">
+            <button class="builder-step-btn is-active" type="button" data-step="1" data-i18n="stepBasics">Basics</button>
+            <button class="builder-step-btn" type="button" data-step="2" data-i18n="stepIqama">Iqama</button>
+            <button class="builder-step-btn" type="button" data-step="3" data-i18n="stepMethod">Method</button>
+            <button class="builder-step-btn" type="button" data-step="4" data-i18n="stepSafety">Safety & Publish</button>
+          </div>
+
+          <div class="builder-panel is-active" data-step="1">
+            <div class="row row--wrap">
+              <label class="field">
+                <span class="field__label" data-i18n="language">Dil</span>
+                <select id="builderLangSelect" class="select" aria-label="Language">
+                  <option value="tr">TR</option>
+                  <option value="en">EN</option>
+                </select>
+              </label>
+              <div class="builder-inline" id="builderEditWrap" hidden>
+                <span class="pill" id="builderEditLabel">—</span>
+                <button class="btn btn--ghost btn--small" id="builderUseCurrentBtn" type="button" data-i18n="editMasjid">
+                  Mescid Düzenle
+                </button>
+              </div>
+            </div>
+
             <div class="row row--wrap">
               <label class="field grow">
-                <span class="field__label" data-i18n="email">E-posta</span>
-                <input id="authEmailInput" class="input" type="email" placeholder="you@example.com" autocomplete="email" />
+                <span class="field__label" data-i18n="masjidName">Mescid İsmi</span>
+                <input id="builderNameMain" class="input" type="text" required />
               </label>
-              <button id="signInBtn" class="btn" type="button" data-i18n="sendLogin">Giriş linki gönder</button>
-              <button id="signOutBtn" class="btn btn--ghost" type="button" data-i18n="signOut" hidden>Çıkış</button>
+              <label class="field field--toggle">
+                <span class="field__label" data-i18n="addEnglish">Add English translation</span>
+                <input id="builderNameEnToggle" type="checkbox" />
+              </label>
             </div>
-            <div class="muted small" id="authStatus">—</div>
-          </section>
+            <div class="row row--wrap" id="builderNameEnRow" hidden>
+              <label class="field grow">
+                <span class="field__label">English (optional)</span>
+                <input id="builderNameEn" class="input" type="text" />
+              </label>
+            </div>
 
-          <section class="settings-section">
-            <h3 class="h3" data-i18n="myMasjids">Mescidlerim</h3>
             <div class="row row--wrap">
               <label class="field grow">
-                <span class="field__label" data-i18n="myMasjidsLabel">Sahip olduğum mescidler</span>
-                <select id="myMasjidsSelect" class="select" aria-label="My masjids"></select>
+                <span class="field__label" data-i18n="city">Şehir</span>
+                <input id="builderCityMain" class="input" type="text" />
               </label>
-              <button id="openMasjidBtn" class="btn" type="button" data-i18n="open">Aç</button>
+              <label class="field field--toggle">
+                <span class="field__label" data-i18n="addEnglish">Add English translation</span>
+                <input id="builderCityEnToggle" type="checkbox" />
+              </label>
             </div>
-            <p class="muted small" data-i18n="myMasjidsNote">Sadece size ait mescidler listelenir.</p>
-          </section>
+            <div class="row row--wrap" id="builderCityEnRow" hidden>
+              <label class="field grow">
+                <span class="field__label">English (optional)</span>
+                <input id="builderCityEn" class="input" type="text" />
+              </label>
+            </div>
 
-          <details class="details" open>
-            <summary data-i18n="createMasjid">Mescid Oluştur</summary>
-            <form id="createMasjidForm" class="form">
+            <div class="row row--wrap">
+              <label class="field grow">
+                <span class="field__label" data-i18n="slugLabel">Mescid Slug</span>
+                <input id="builderSlugInput" class="input" type="text" placeholder="ornek-mescid" autocomplete="off" />
+              </label>
+              <button id="builderCheckSlugBtn" class="btn btn--ghost" type="button" data-i18n="checkAvailability">Check availability</button>
+            </div>
+            <div class="helper" id="slugStatus"></div>
+            <div class="helper" id="slugSuggestions"></div>
+
+            <section class="builder-card">
+              <h3 class="h3" data-i18n="myMasjids">Mescidlerim</h3>
               <div class="row row--wrap">
                 <label class="field grow">
-                  <span class="field__label" data-i18n="slugLabel">Mescid Slug</span>
-                  <input id="createSlugInput" class="input" type="text" placeholder="ornek-mescid" autocomplete="off" />
+                  <span class="field__label" data-i18n="myMasjidsLabel">Sahip olduğum mescidler</span>
+                  <select id="myMasjidsSelect" class="select" aria-label="My masjids"></select>
                 </label>
-                <button id="generateSlugBtn" class="btn btn--ghost" type="button" data-i18n="generateSlug">Slug üret</button>
+                <button id="openMasjidBtn" class="btn" type="button" data-i18n="open">Aç</button>
               </div>
-              <div class="helper" id="slugStatus"></div>
-              <div class="helper" id="slugSuggestions"></div>
+              <p class="muted small" data-i18n="myMasjidsNote">Sadece size ait mescidler listelenir.</p>
+            </section>
+          </div>
 
+          <div class="builder-panel" data-step="2">
+            <div class="row row--wrap">
+              <label class="field grow">
+                <span class="field__label" data-i18n="iqamaSet">İkame Seti</span>
+                <select id="builderIqamaSetSelect" class="select"></select>
+              </label>
+              <button id="builderAddIqamaSetBtn" class="btn btn--ghost" type="button" data-i18n="addIqamaSet">Set ekle</button>
+              <button id="builderRemoveIqamaSetBtn" class="btn btn--ghost" type="button" data-i18n="remove">Sil</button>
+            </div>
+            <div class="iqama-editor" id="builderIqamaEditor"></div>
+          </div>
+
+          <div class="builder-panel" data-step="3">
+            <div class="row row--wrap">
+              <label class="field">
+                <span class="field__label" data-i18n="methodId">Method ID</span>
+                <select id="builderMethodId" class="select"></select>
+              </label>
+              <label class="field">
+                <span class="field__label" data-i18n="asrSchool">Asr (School)</span>
+                <select id="builderSchool" class="select">
+                  <option value="standard">Standard</option>
+                  <option value="hanafi">Hanafi</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field__label" data-i18n="highLat">High Latitude Rule</span>
+                <select id="builderHighLat" class="select">
+                  <option value="angleBased">Angle-based</option>
+                  <option value="midnight">Midnight</option>
+                  <option value="oneSeventh">One-Seventh</option>
+                </select>
+              </label>
+            </div>
+            <details class="details">
+              <summary data-i18n="advanced">Advanced tune</summary>
               <div class="row row--wrap">
                 <label class="field">
-                  <span class="field__label" data-i18n="nameTr">İsim (TR)</span>
-                  <input id="createNameTr" class="input" type="text" required />
+                  <span class="field__label" data-i18n="tuneFajr">Tune Fajr</span>
+                  <input id="builderTuneFajr" class="input" type="number" inputmode="numeric" placeholder="0" />
                 </label>
                 <label class="field">
-                  <span class="field__label" data-i18n="nameEn">Name (EN)</span>
-                  <input id="createNameEn" class="input" type="text" required />
-                </label>
-              </div>
-
-              <div class="row row--wrap">
-                <label class="field">
-                  <span class="field__label" data-i18n="cityTr">Şehir (TR)</span>
-                  <input id="createCityTr" class="input" type="text" />
+                  <span class="field__label" data-i18n="tuneDhuhr">Tune Dhuhr</span>
+                  <input id="builderTuneDhuhr" class="input" type="number" inputmode="numeric" placeholder="0" />
                 </label>
                 <label class="field">
-                  <span class="field__label" data-i18n="cityEn">City (EN)</span>
-                  <input id="createCityEn" class="input" type="text" />
-                </label>
-              </div>
-
-              <div class="row row--wrap">
-                <label class="field grow">
-                  <span class="field__label" data-i18n="timezone">Timezone</span>
-                  <input id="createTimezone" class="input" type="text" list="timezones" placeholder="Europe/Istanbul" />
+                  <span class="field__label" data-i18n="tuneAsr">Tune Asr</span>
+                  <input id="builderTuneAsr" class="input" type="number" inputmode="numeric" placeholder="0" />
                 </label>
                 <label class="field">
-                  <span class="field__label" data-i18n="isPublic">Public</span>
-                  <select id="createIsPublic" class="select">
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
-                  </select>
-                </label>
-              </div>
-
-              <div class="settings-subsection">
-                <h4 class="h4" data-i18n="calcMethod">Hesaplama yöntemi</h4>
-                <div class="row row--wrap">
-                  <label class="field">
-                    <span class="field__label" data-i18n="methodId">Method ID</span>
-                    <select id="createMethodId" class="select"></select>
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="asrSchool">Asr (School)</span>
-                    <select id="createSchool" class="select">
-                      <option value="standard">Standard</option>
-                      <option value="hanafi">Hanafi</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="highLat">High Latitude Rule</span>
-                    <select id="createHighLat" class="select">
-                      <option value="angleBased">Angle-based</option>
-                      <option value="midnight">Midnight</option>
-                      <option value="oneSeventh">One-Seventh</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="row row--wrap">
-                  <label class="field">
-                    <span class="field__label" data-i18n="tuneFajr">Tune Fajr</span>
-                    <input id="createTuneFajr" class="input" type="number" inputmode="numeric" placeholder="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="tuneDhuhr">Tune Dhuhr</span>
-                    <input id="createTuneDhuhr" class="input" type="number" inputmode="numeric" placeholder="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="tuneAsr">Tune Asr</span>
-                    <input id="createTuneAsr" class="input" type="number" inputmode="numeric" placeholder="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="tuneMaghrib">Tune Maghrib</span>
-                    <input id="createTuneMaghrib" class="input" type="number" inputmode="numeric" placeholder="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="tuneIsha">Tune Isha</span>
-                    <input id="createTuneIsha" class="input" type="number" inputmode="numeric" placeholder="0" />
-                  </label>
-                </div>
-                <div class="row row--wrap">
-                  <label class="field grow">
-                    <span class="field__label" data-i18n="tuneAdvanced">Gelişmiş tune (AlAdhan)</span>
-                    <input id="createTuneAdvanced" class="input mono" type="text" placeholder="0,0,0,0,0,0,0,0,0" />
-                  </label>
-                </div>
-              </div>
-
-              <div class="settings-subsection">
-                <h4 class="h4" data-i18n="safetyOffsets">İhtiyat dakikaları</h4>
-                <div class="row row--wrap">
-                  <label class="field">
-                    <span class="field__label">Fajr</span>
-                    <input id="createSafetyFajr" class="input" type="number" inputmode="numeric" min="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Dhuhr</span>
-                    <input id="createSafetyDhuhr" class="input" type="number" inputmode="numeric" min="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Asr</span>
-                    <input id="createSafetyAsr" class="input" type="number" inputmode="numeric" min="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Maghrib</span>
-                    <input id="createSafetyMaghrib" class="input" type="number" inputmode="numeric" min="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Isha</span>
-                    <input id="createSafetyIsha" class="input" type="number" inputmode="numeric" min="0" />
-                  </label>
-                </div>
-              </div>
-
-              <div class="settings-subsection">
-                <div class="section-header">
-                  <h4 class="h4" data-i18n="iqamaSets">İkame Setleri</h4>
-                  <button class="btn btn--ghost" id="addIqamaSetBtn" type="button" data-i18n="addSet">Set Ekle</button>
-                </div>
-                <div id="iqamaSetsEditor" class="iqama-sets"></div>
-                <p class="muted small" data-i18n="iqamaSetsHint">
-                  Offset boşsa sabit saat kullanılır. Sabit saat formatı: HH:MM.
-                </p>
-              </div>
-
-              <div class="row row--wrap">
-                <button class="btn" id="createMasjidBtn" type="submit" data-i18n="create">Oluştur</button>
-              </div>
-            </form>
-          </details>
-
-          <details class="details" id="editMasjidDetails" hidden>
-            <summary data-i18n="editMasjid">Mescid Düzenle</summary>
-            <form id="editMasjidForm" class="form">
-              <div class="row row--wrap">
-                <label class="field grow">
-                  <span class="field__label" data-i18n="slugLabel">Mescid Slug</span>
-                  <input id="editSlugInput" class="input" type="text" disabled />
-                </label>
-              </div>
-
-              <div class="row row--wrap">
-                <label class="field">
-                  <span class="field__label" data-i18n="nameTr">İsim (TR)</span>
-                  <input id="editNameTr" class="input" type="text" required />
+                  <span class="field__label" data-i18n="tuneMaghrib">Tune Maghrib</span>
+                  <input id="builderTuneMaghrib" class="input" type="number" inputmode="numeric" placeholder="0" />
                 </label>
                 <label class="field">
-                  <span class="field__label" data-i18n="nameEn">Name (EN)</span>
-                  <input id="editNameEn" class="input" type="text" required />
+                  <span class="field__label" data-i18n="tuneIsha">Tune Isha</span>
+                  <input id="builderTuneIsha" class="input" type="number" inputmode="numeric" placeholder="0" />
                 </label>
               </div>
+            </details>
+          </div>
 
-              <div class="row row--wrap">
-                <label class="field">
-                  <span class="field__label" data-i18n="cityTr">Şehir (TR)</span>
-                  <input id="editCityTr" class="input" type="text" />
-                </label>
-                <label class="field">
-                  <span class="field__label" data-i18n="cityEn">City (EN)</span>
-                  <input id="editCityEn" class="input" type="text" />
-                </label>
-              </div>
+          <div class="builder-panel" data-step="4">
+            <div class="row row--wrap">
+              <label class="field">
+                <span class="field__label" data-i18n="safetyFajr">Fajr</span>
+                <input id="builderSafetyFajr" class="input" type="number" inputmode="numeric" placeholder="0" />
+              </label>
+              <label class="field">
+                <span class="field__label" data-i18n="safetyDhuhr">Dhuhr</span>
+                <input id="builderSafetyDhuhr" class="input" type="number" inputmode="numeric" placeholder="0" />
+              </label>
+              <label class="field">
+                <span class="field__label" data-i18n="safetyAsr">Asr</span>
+                <input id="builderSafetyAsr" class="input" type="number" inputmode="numeric" placeholder="0" />
+              </label>
+              <label class="field">
+                <span class="field__label" data-i18n="safetyMaghrib">Maghrib</span>
+                <input id="builderSafetyMaghrib" class="input" type="number" inputmode="numeric" placeholder="0" />
+              </label>
+              <label class="field">
+                <span class="field__label" data-i18n="safetyIsha">Isha</span>
+                <input id="builderSafetyIsha" class="input" type="number" inputmode="numeric" placeholder="0" />
+              </label>
+            </div>
 
-              <div class="row row--wrap">
-                <label class="field grow">
-                  <span class="field__label" data-i18n="timezone">Timezone</span>
-                  <input id="editTimezone" class="input" type="text" list="timezones" placeholder="Europe/Istanbul" />
-                </label>
-                <label class="field">
-                  <span class="field__label" data-i18n="isPublic">Public</span>
-                  <select id="editIsPublic" class="select">
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
-                  </select>
-                </label>
-              </div>
+            <div class="row row--wrap">
+              <label class="field grow">
+                <span class="field__label" data-i18n="timezone">Timezone</span>
+                <input id="builderTimezone" class="input" type="text" list="timezones" placeholder="Europe/Istanbul" />
+              </label>
+              <label class="field">
+                <span class="field__label" data-i18n="isPublic">Public</span>
+                <select id="builderIsPublic" class="select">
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </label>
+            </div>
+          </div>
 
-              <div class="settings-subsection">
-                <h4 class="h4" data-i18n="calcMethod">Hesaplama yöntemi</h4>
-                <div class="row row--wrap">
-                  <label class="field">
-                    <span class="field__label" data-i18n="methodId">Method ID</span>
-                    <select id="editMethodId" class="select"></select>
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="asrSchool">Asr (School)</span>
-                    <select id="editSchool" class="select">
-                      <option value="standard">Standard</option>
-                      <option value="hanafi">Hanafi</option>
-                    </select>
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="highLat">High Latitude Rule</span>
-                    <select id="editHighLat" class="select">
-                      <option value="angleBased">Angle-based</option>
-                      <option value="midnight">Midnight</option>
-                      <option value="oneSeventh">One-Seventh</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="row row--wrap">
-                  <label class="field">
-                    <span class="field__label" data-i18n="tuneFajr">Tune Fajr</span>
-                    <input id="editTuneFajr" class="input" type="number" inputmode="numeric" placeholder="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="tuneDhuhr">Tune Dhuhr</span>
-                    <input id="editTuneDhuhr" class="input" type="number" inputmode="numeric" placeholder="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="tuneAsr">Tune Asr</span>
-                    <input id="editTuneAsr" class="input" type="number" inputmode="numeric" placeholder="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="tuneMaghrib">Tune Maghrib</span>
-                    <input id="editTuneMaghrib" class="input" type="number" inputmode="numeric" placeholder="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label" data-i18n="tuneIsha">Tune Isha</span>
-                    <input id="editTuneIsha" class="input" type="number" inputmode="numeric" placeholder="0" />
-                  </label>
-                </div>
-                <div class="row row--wrap">
-                  <label class="field grow">
-                    <span class="field__label" data-i18n="tuneAdvanced">Gelişmiş tune (AlAdhan)</span>
-                    <input id="editTuneAdvanced" class="input mono" type="text" placeholder="0,0,0,0,0,0,0,0,0" />
-                  </label>
-                </div>
-              </div>
-
-              <div class="settings-subsection">
-                <h4 class="h4" data-i18n="safetyOffsets">İhtiyat dakikaları</h4>
-                <div class="row row--wrap">
-                  <label class="field">
-                    <span class="field__label">Fajr</span>
-                    <input id="editSafetyFajr" class="input" type="number" inputmode="numeric" min="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Dhuhr</span>
-                    <input id="editSafetyDhuhr" class="input" type="number" inputmode="numeric" min="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Asr</span>
-                    <input id="editSafetyAsr" class="input" type="number" inputmode="numeric" min="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Maghrib</span>
-                    <input id="editSafetyMaghrib" class="input" type="number" inputmode="numeric" min="0" />
-                  </label>
-                  <label class="field">
-                    <span class="field__label">Isha</span>
-                    <input id="editSafetyIsha" class="input" type="number" inputmode="numeric" min="0" />
-                  </label>
-                </div>
-              </div>
-
-              <div class="settings-subsection">
-                <div class="section-header">
-                  <h4 class="h4" data-i18n="iqamaSets">İkame Setleri</h4>
-                  <button class="btn btn--ghost" id="editAddIqamaSetBtn" type="button" data-i18n="addSet">Set Ekle</button>
-                </div>
-                <div id="editIqamaSetsEditor" class="iqama-sets"></div>
-                <p class="muted small" data-i18n="iqamaSetsHint">
-                  Offset boşsa sabit saat kullanılır. Sabit saat formatı: HH:MM.
-                </p>
-              </div>
-
-              <div class="row row--wrap">
-                <button class="btn" id="saveMasjidBtn" type="submit" data-i18n="save">Kaydet</button>
-                <button class="btn btn--ghost" id="resetMasjidBtn" type="button" data-i18n="reset">Sıfırla</button>
-                <button class="btn btn--ghost" id="deleteMasjidBtn" type="button" data-i18n="delete">Sil</button>
-              </div>
-            </form>
-          </details>
+          <div class="builder-footer">
+            <button class="btn btn--ghost" id="builderPrevBtn" type="button" data-i18n="back">Geri</button>
+            <button class="btn btn--ghost" id="builderNextBtn" type="button" data-i18n="next">İleri</button>
+            <button class="btn btn--primary" id="saveMasjidBtn" type="button" data-i18n="saveMasjid">Kaydet</button>
+          </div>
         </div>
       </div>
     </div>
