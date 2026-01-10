@@ -80,6 +80,10 @@
     setupBannerText: $("#setupBannerText"),
     setupBannerClose: $("#setupBannerClose"),
     copySetupStepsBtn: $("#copySetupStepsBtn"),
+    updateToast: $("#updateToast"),
+    updateToastText: $("#updateToastText"),
+    updateToastRefresh: $("#updateToastRefresh"),
+    updateToastClose: $("#updateToastClose"),
 
     tzBadge: $("#tzBadge"),
     nextPrayerLabel: $("#nextPrayerLabel"),
@@ -215,6 +219,9 @@
     slugStatusTimer: null,
     deferredPrompt: null,
     swRegistration: null,
+    notice: null,
+    setupBannerDismissed: sessionStorage.getItem("prayerhub_setup_dismissed") === "1",
+    updateToastDismissed: sessionStorage.getItem("prayerhub_update_dismissed") === "1",
     builder: {
       step: 1,
       iqamaSets: [],
@@ -235,6 +242,7 @@
     wireRefresh();
     wireManualLocation();
     wireNotice();
+    wireUpdateToast();
     wireSettings();
     wireSavedLocations();
     wireAdmin();
@@ -1285,6 +1293,7 @@
     el.noticeClose?.addEventListener("click", clearNotice);
     el.setupBannerClose?.addEventListener("click", () => {
       if (el.setupBanner) el.setupBanner.hidden = true;
+      state.setupBannerDismissed = true;
       sessionStorage.setItem("prayerhub_setup_dismissed", "1");
     });
     el.copySetupStepsBtn?.addEventListener("click", async () => {
@@ -1294,6 +1303,19 @@
       } catch {
         showNotice(t("copyFailed") || "Copy failed.", "warn");
       }
+    });
+  }
+
+  function wireUpdateToast() {
+    el.updateToastClose?.addEventListener("click", () => {
+      if (el.updateToast) el.updateToast.hidden = true;
+      state.updateToastDismissed = true;
+      sessionStorage.setItem("prayerhub_update_dismissed", "1");
+    });
+    el.updateToastRefresh?.addEventListener("click", () => {
+      if (!state.swRegistration?.waiting) return;
+      state.swRegistration.waiting.postMessage({ type: "SKIP_WAITING" });
+      if (el.updateToast) el.updateToast.hidden = true;
     });
   }
 
@@ -1535,6 +1557,16 @@
     try {
       const registration = await navigator.serviceWorker.register("./service-worker.js");
       state.swRegistration = registration;
+      maybeShowUpdateToast(registration);
+      registration.addEventListener("updatefound", () => {
+        const worker = registration.installing;
+        if (!worker) return;
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "installed" && navigator.serviceWorker.controller) {
+            maybeShowUpdateToast(registration);
+          }
+        });
+      });
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         window.location.reload();
       });
@@ -2480,7 +2512,8 @@
     if (!error) return false;
     const code = typeof error === "object" ? String(error.code || "") : "";
     const message = typeof error === "string" ? error : String(error.message || "");
-    return code === "PGRST106" || message.includes("schema must be one of the following");
+    const normalized = message.toLowerCase();
+    return code === "PGRST106" || normalized.includes("the schema must be one of");
   }
 
   function friendlySupabaseError(error) {
@@ -2497,7 +2530,6 @@
   function handleSupabaseError(error, context, options = {}) {
     if (!error) return;
     if (isSchemaExposeError(error)) {
-      sessionStorage.removeItem("prayerhub_setup_dismissed");
       showSetupBanner();
     }
     if (options.notify && String(error.code || "").startsWith("PGRST")) {
@@ -2510,7 +2542,7 @@
 
   function showSetupBanner() {
     if (!el.setupBanner) return;
-    if (sessionStorage.getItem("prayerhub_setup_dismissed") === "1") return;
+    if (state.setupBannerDismissed) return;
     el.setupBanner.hidden = false;
   }
 
@@ -2528,6 +2560,8 @@
       todaySubtitle: "Bugünün Vakitleri",
       install: "Yükle",
       installTip: "iOS için: Paylaş → Ana Ekrana Ekle",
+      updateAvailable: "Güncelleme mevcut",
+      refreshPage: "Yenile",
       offline: "Çevrimdışı",
       login: "Giriş",
       loginHelp: "Giriş linki e-posta adresinize gönderilir.",
@@ -2628,6 +2662,8 @@
       todaySubtitle: "Today's Timings",
       install: "Install",
       installTip: "On iOS: Share → Add to Home Screen",
+      updateAvailable: "Update available",
+      refreshPage: "Refresh",
       offline: "Offline",
       login: "Login",
       loginHelp: "A login link will be sent to your email.",
@@ -2725,23 +2761,36 @@
     return document.querySelector(sel);
   }
 
-  function showNotice(text, type = "info") {
+  function setNotice(next) {
     if (!el.notice || !el.noticeText) return;
-    const message = String(text ?? "").trim();
+    const message = String(next?.text ?? "").trim();
     if (!message) {
-      clearNotice();
+      state.notice = null;
+      el.notice.hidden = true;
+      el.noticeText.textContent = "";
+      delete el.notice.dataset.type;
       return;
     }
+    const type = next?.type || "info";
+    state.notice = { text: message, type };
     el.notice.hidden = false;
     el.noticeText.textContent = message;
     el.notice.dataset.type = type;
   }
 
+  function showNotice(text, type = "info") {
+    setNotice({ text, type });
+  }
+
   function clearNotice() {
-    if (!el.notice) return;
-    el.notice.hidden = true;
-    if (el.noticeText) el.noticeText.textContent = "";
-    delete el.notice.dataset.type;
+    setNotice(null);
+  }
+
+  function maybeShowUpdateToast(registration) {
+    if (!el.updateToast) return;
+    if (state.updateToastDismissed) return;
+    if (!registration?.waiting) return;
+    el.updateToast.hidden = false;
   }
 
   function setTodayDate(tz) {
@@ -2773,6 +2822,7 @@
   }
 
   function pickLang(obj, lang) {
+    if (typeof obj === "string") return obj;
     const o = safeJson(obj, {});
     return o?.[lang] || o?.tr || o?.en || "";
   }
