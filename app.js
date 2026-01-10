@@ -74,6 +74,9 @@
     openSlugBtn: $("#openSlugBtn"),
 
     tzBadge: $("#tzBadge"),
+    nowPrayerName: $("#nowPrayerName"),
+    nowPrayerStatus: $("#nowPrayerStatus"),
+    nowPrayerStart: $("#nowPrayerStart"),
     nextPrayerLabel: $("#nextPrayerLabel"),
     nextPrayerTime: $("#nextPrayerTime"),
     nextTypePill: $("#nextTypePill"),
@@ -84,6 +87,7 @@
     refreshBtn: $("#refreshBtn"),
     useLocationBtn: $("#useLocationBtn"),
     locationStatus: $("#locationStatus"),
+    locationCoords: $("#locationCoords"),
     providerStatus: $("#providerStatus"),
     iqamaSetSelect: $("#iqamaSetSelect"),
     iqamaSetWrap: $("#iqamaSetWrap"),
@@ -611,6 +615,18 @@
       searching: t("locSearching") || "Searching…",
     };
     el.locationStatus.textContent = map[mode] || "—";
+    renderLocationCoords();
+  }
+
+  function renderLocationCoords() {
+    if (!el.locationCoords) return;
+    if (!state.coords || !isFinite(state.coords.lat) || !isFinite(state.coords.lon)) {
+      el.locationCoords.textContent = "—";
+      return;
+    }
+    const lat = Number(state.coords.lat).toFixed(4);
+    const lon = Number(state.coords.lon).toFixed(4);
+    el.locationCoords.textContent = `${t("gps") || "GPS"}: ${lat}, ${lon}`;
   }
 
   async function refreshAll({ preferCache }) {
@@ -833,13 +849,6 @@
       iqama[p] = iq;
     }
 
-    const timeline = [];
-    for (const p of PRAYERS) {
-      timeline.push({ kind: "adhan", prayer: p, at: adhanSafe[p] });
-      if (hasIqama && iqama[p]) timeline.push({ kind: "iqama", prayer: p, at: iqama[p] });
-    }
-    timeline.sort((a, b) => a.at - b.at);
-
     const tomorrowISO = isoDateInTZ(addDays(now, 1), tz);
     const tomorrowBase = tomorrowTimings || baseTimings;
     const tomorrowFajrBase = dateFromHHMMInTZ(tomorrowISO, tomorrowBase.fajr, tz);
@@ -854,23 +863,21 @@
       isha: tomorrowFajrAdhan,
     };
 
-    const next = findNextEvent({
-      timeline,
-      now,
-      tz,
-      baseTimings,
-      safetyOffsets,
-      iqamaSet,
-      tomorrowTimings,
-      tomorrowSafetyOffsets,
-      tomorrowIqamaSet,
-    });
-
     return {
       tz,
       todayISO,
       baseTimings,
+      tomorrowTimings,
+      tomorrowSafetyOffsets,
       safetyOffsets,
+      tomorrowIqamaSet: tomorrowIqamaSet
+        ? {
+            id: tomorrowIqamaSet?.id || "main",
+            label: safeJson(tomorrowIqamaSet?.label, {}),
+            offsets: safeJson(tomorrowIqamaSet?.offsets, {}),
+            fixedTimes: tomorrowIqamaSet?.fixedTimes ? safeJson(tomorrowIqamaSet.fixedTimes, {}) : null,
+          }
+        : null,
       iqamaSet: iqamaSet
         ? {
             id: iqamaSet?.id || "main",
@@ -886,63 +893,41 @@
         ends: endTimes,
         sunrise: sunriseTime,
       },
-      next,
     };
   }
 
-  function findNextEvent({
-    timeline,
-    now,
-    tz,
-    baseTimings,
-    safetyOffsets,
-    iqamaSet,
-    tomorrowTimings,
-    tomorrowSafetyOffsets,
-    tomorrowIqamaSet,
-  }) {
-    const future = timeline.find((e) => e.at.getTime() > now.getTime());
-    if (future) {
-      return {
-        ...future,
-        adhanAt: timeline.find((t) => t.prayer === future.prayer && t.kind === "adhan")?.at,
-        iqamaAt: timeline.find((t) => t.prayer === future.prayer && t.kind === "iqama")?.at,
-      };
+  function findNextPrayerStart(now, schedule) {
+    const nowMs = now.getTime();
+    for (const p of PRAYERS) {
+      const start = schedule.times.adhanSafe?.[p];
+      if (start && start.getTime() > nowMs) {
+        return { prayer: p, at: start, _tomorrow: false };
+      }
     }
 
-    const tomorrowISO = isoDateInTZ(addDays(now, 1), tz);
-    const useTimings = tomorrowTimings || baseTimings;
-    const fajrBase = dateFromHHMMInTZ(tomorrowISO, useTimings.fajr, tz);
+    const tomorrowISO = isoDateInTZ(addDays(now, 1), schedule.tz);
+    const useTimings = schedule.tomorrowTimings || schedule.baseTimings;
+    const fajrBase = dateFromHHMMInTZ(tomorrowISO, useTimings.fajr, schedule.tz);
     const fajrAdhan = addMinutes(
       fajrBase,
-      Math.max(0, numOr((tomorrowSafetyOffsets || safetyOffsets)?.fajr, 0))
+      Math.max(0, numOr((schedule.tomorrowSafetyOffsets || schedule.safetyOffsets)?.fajr, 0))
     );
+    return { prayer: "fajr", at: fajrAdhan, _tomorrow: true };
+  }
 
-    const hasIqama = Boolean(tomorrowIqamaSet || iqamaSet);
-    const fixedTimes = tomorrowIqamaSet?.fixedTimes
-      ? safeJson(tomorrowIqamaSet.fixedTimes, {})
-      : iqamaSet?.fixedTimes
-      ? safeJson(iqamaSet.fixedTimes, {})
-      : null;
-    let fajrIqama = null;
-    if (hasIqama) {
-      if (fixedTimes?.fajr) {
-        fajrIqama = dateFromHHMMInTZ(tomorrowISO, fixedTimes.fajr, tz);
-      } else {
-        const off = Math.max(0, numOr((tomorrowIqamaSet || iqamaSet)?.offsets?.fajr, 0));
-        fajrIqama = addMinutes(fajrAdhan, off);
-      }
-      if (fajrIqama.getTime() < fajrAdhan.getTime()) fajrIqama = new Date(fajrAdhan.getTime());
+  function computeIqamaForStart(prayer, startAt, schedule, isTomorrow) {
+    const iqamaSet = isTomorrow ? schedule.tomorrowIqamaSet || schedule.iqamaSet : schedule.iqamaSet;
+    if (!iqamaSet) return null;
+    const fixedTimes = iqamaSet.fixedTimes ? safeJson(iqamaSet.fixedTimes, {}) : null;
+    if (fixedTimes?.[prayer]) {
+      const dateISO = isoDateInTZ(startAt, schedule.tz);
+      return dateFromHHMMInTZ(dateISO, fixedTimes[prayer], schedule.tz);
     }
-
-    return {
-      kind: "adhan",
-      prayer: "fajr",
-      at: fajrAdhan,
-      adhanAt: fajrAdhan,
-      iqamaAt: fajrIqama,
-      _tomorrow: true,
-    };
+    const offsets = safeJson(iqamaSet.offsets, {});
+    const off = Math.max(0, numOr(offsets?.[prayer], 0));
+    const iqamaAt = addMinutes(startAt, off);
+    if (iqamaAt.getTime() < startAt.getTime()) return new Date(startAt.getTime());
+    return iqamaAt;
   }
 
   function renderAll() {
@@ -956,6 +941,7 @@
     renderSafetyNote();
     renderMethodControls();
     renderSavedLocations();
+    renderLocationCoords();
   }
 
   function renderMasjidHeader() {
@@ -1092,7 +1078,7 @@
 
     const now = new Date();
     const rows = document.querySelectorAll("#timesTable tbody tr[data-prayer]");
-    rows.forEach((tr) => tr.classList.remove("is-active"));
+    rows.forEach((tr) => tr.classList.remove("is-current"));
 
     for (const p of PRAYERS) {
       const tr = document.querySelector(`#timesTable tbody tr[data-prayer="${p}"]`);
@@ -1107,55 +1093,88 @@
 
       const statusTd = tds[2];
       if (statusTd) {
-        const status = computeRowStatus(now, ad, c.times.ends?.[p]);
-        statusTd.textContent = status.text;
-        statusTd.className = status.className;
+        const status = computeRowStatus(now, p, ad, c.times.ends?.[p]);
+        statusTd.textContent = "";
+        if (status.isCurrent) {
+          const pill = document.createElement("span");
+          pill.className = "pill pill--current status-pill";
+          pill.textContent = t("current") || "Current";
+          statusTd.appendChild(pill);
+        }
+        statusTd.appendChild(document.createTextNode(status.text));
+        statusTd.className = `status ${status.className}`;
       }
 
-      const next = c.next;
-      if (next?.prayer === p) tr.classList.add("is-active");
+      if (statusTd?.classList.contains("status--current")) tr.classList.add("is-current");
     }
   }
 
-  function computeRowStatus(now, start, end) {
+  function computeRowStatus(now, prayer, start, end) {
     const n = now.getTime();
     const a = start.getTime();
     const e = end?.getTime?.() ?? a;
+    const prayerLabel = pickLang(PRAYER_LABELS[prayer], state.lang) || prayer;
 
-    if (n < a) return { text: `${t("startsIn")}: ${fmtDelta(a - n)}`, className: "status--upcoming" };
-    if (n >= a && n < e) {
-      return { text: `${t("inProgress")} • ${t("endsIn")}: ${fmtDelta(e - n)}`, className: "status--current" };
+    if (n < a) {
+      return { text: `${t("startsIn")}: ${fmtDelta(a - n)}`, className: "status--upcoming", isCurrent: false };
     }
-    return { text: `${t("ended")}`, className: "status--passed" };
+    if (n >= a && n < e) {
+      return {
+        text: `${t("inProgress")} (${prayerLabel}) • ${t("endsIn")}: ${fmtDelta(e - n)}`,
+        className: "status--current",
+        isCurrent: true,
+      };
+    }
+    return { text: `${t("ended")}`, className: "status--passed", isCurrent: false };
   }
 
   function renderNextCard() {
     const c = state.computed;
-    if (!c?.next) return;
+    if (!c) return;
 
-    const next = c.next;
-    const prayerLabel = pickLang(PRAYER_LABELS[next.prayer], state.lang) || next.prayer;
+    const now = new Date();
+    const activeWindow = findActivePrayerWindow(now, c);
+    const nextPrayer = findNextPrayerStart(now, c);
 
-    el.nextPrayerLabel.textContent = prayerLabel;
-    el.nextPrayerTime.textContent = fmtTime(next.at, c.tz);
-
-    const typeText = next.kind === "adhan" ? t("adhan") || "Adhan" : t("iqama") || "Iqama";
-    el.nextTypePill.textContent = typeText;
-
-    const metaParts = [];
-    if (next._tomorrow) metaParts.push(t("tomorrow") || "Tomorrow");
-    if (state.locationLabel) metaParts.push(state.locationLabel);
-    el.nextMeta.textContent = metaParts.join(" • ") || "—";
-
-    if (next.adhanAt) {
-      const adhanText = fmtTime(next.adhanAt, c.tz);
-      if (next.iqamaAt) {
-        const iqamaText = fmtTime(next.iqamaAt, c.tz);
-        el.nextIqamaLine.textContent = `${t("nextAdhan") || "Adhan"}: ${adhanText} • ${t("nextIqama") || "Iqama"}: ${iqamaText}`;
-      } else {
-        el.nextIqamaLine.textContent = `${t("nextAdhan") || "Adhan"}: ${adhanText}`;
+    if (activeWindow) {
+      const activeLabel = pickLang(PRAYER_LABELS[activeWindow.prayer], state.lang) || activeWindow.prayer;
+      if (el.nowPrayerName) el.nowPrayerName.textContent = activeLabel;
+      if (el.nowPrayerStatus) {
+        el.nowPrayerStatus.textContent = `${t("inProgress")} (${activeLabel}) • ${t("endsIn")}: ${fmtDelta(
+          activeWindow.end.getTime() - now.getTime()
+        )}`;
+      }
+      if (el.nowPrayerStart) {
+        el.nowPrayerStart.textContent = `${t("beganAt")}: ${fmtTime(activeWindow.start, c.tz)}`;
       }
     } else {
+      if (el.nowPrayerName) el.nowPrayerName.textContent = "—";
+      if (el.nowPrayerStatus) el.nowPrayerStatus.textContent = "—";
+      if (el.nowPrayerStart) el.nowPrayerStart.textContent = "—";
+    }
+
+    if (nextPrayer) {
+      const prayerLabel = pickLang(PRAYER_LABELS[nextPrayer.prayer], state.lang) || nextPrayer.prayer;
+      el.nextPrayerLabel.textContent = prayerLabel;
+      el.nextTypePill.textContent = t("begins") || "Begins";
+      el.nextPrayerTime.textContent = fmtTime(nextPrayer.at, c.tz);
+
+      const startsInText = `${t("startsIn")}: ${fmtDelta(nextPrayer.at.getTime() - now.getTime())}`;
+      const nextMetaParts = [startsInText];
+      if (nextPrayer._tomorrow) nextMetaParts.push(t("tomorrow") || "Tomorrow");
+      el.nextMeta.textContent = nextMetaParts.join(" • ");
+
+      const iqamaAt = computeIqamaForStart(nextPrayer.prayer, nextPrayer.at, c, nextPrayer._tomorrow);
+      if (iqamaAt) {
+        el.nextIqamaLine.textContent = `${t("iqama") || "Iqama"}: ${fmtTime(iqamaAt, c.tz)}`;
+      } else {
+        el.nextIqamaLine.textContent = "—";
+      }
+    } else {
+      el.nextPrayerLabel.textContent = "—";
+      el.nextTypePill.textContent = t("begins") || "Begins";
+      el.nextPrayerTime.textContent = "--:--";
+      el.nextMeta.textContent = "—";
       el.nextIqamaLine.textContent = "—";
     }
 
@@ -1196,7 +1215,7 @@
 
   function updateCountdown() {
     const c = state.computed;
-    if (!c?.next) return;
+    if (!c) return;
 
     const now = new Date();
     const activeWindow = findActivePrayerWindow(now, c);
@@ -1207,21 +1226,25 @@
         scheduleSoftRefresh();
         return;
       }
+      const prayerLabel = pickLang(PRAYER_LABELS[activeWindow.prayer], state.lang) || activeWindow.prayer;
       if (el.countdownLabel) {
-        el.countdownLabel.textContent = `${t("inProgress")} • ${t("endsIn")}`;
+        el.countdownLabel.textContent = `${t("inProgress")} (${prayerLabel}) • ${t("endsIn")}`;
       }
       el.countdown.textContent = fmtHMS(diff);
       return;
     }
 
-    const diff = c.next.at.getTime() - now.getTime();
+    const nextPrayer = findNextPrayerStart(now, c);
+    if (!nextPrayer) return;
+    const diff = nextPrayer.at.getTime() - now.getTime();
     if (diff <= 0) {
       el.countdown.textContent = "00:00:00";
       scheduleSoftRefresh();
       return;
     }
     if (el.countdownLabel) {
-      el.countdownLabel.textContent = t("startsIn") || "Starts in";
+      const prayerLabel = pickLang(PRAYER_LABELS[nextPrayer.prayer], state.lang) || nextPrayer.prayer;
+      el.countdownLabel.textContent = `${t("startsIn")} (${prayerLabel})`;
     }
     el.countdown.textContent = fmtHMS(diff);
   }
@@ -2499,10 +2522,23 @@
     if (el.saveLocationLabelInput) {
       el.saveLocationLabelInput.placeholder = lang === "en" ? "e.g. Home" : "ör: Ev";
     }
+    updateTableLabels();
   }
 
   function t(key) {
     return i18n?.[state.lang]?.[key] || i18n?.tr?.[key] || "";
+  }
+
+  function updateTableLabels() {
+    const begins = t("begins") || "Begins";
+    const iqama = t("iqama") || "Iqama";
+    const status = t("status") || "Status";
+    document.querySelectorAll("#timesTable tbody tr").forEach((tr) => {
+      const cells = tr.querySelectorAll("td");
+      if (cells[0]) cells[0].setAttribute("data-label", begins);
+      if (cells[1]) cells[1].setAttribute("data-label", iqama);
+      if (cells[2]) cells[2].setAttribute("data-label", status);
+    });
   }
 
   function isSchemaExposeError(error) {
@@ -2559,9 +2595,15 @@
       enterSlug: "Slug gir.",
       needLocation: "Konum izni ver veya şehir/adres gir.",
       startsIn: "Başlamasına",
-      inProgress: "Vakit girdi",
+      inProgress: "Vakit devam ediyor",
       endsIn: "Bitmesine",
       ended: "Vakit çıktı",
+      now: "Şimdi",
+      next: "Sıradaki",
+      begins: "Vakit girişi",
+      beganAt: "Başladı",
+      gps: "GPS",
+      current: "Şu an",
       adhan: "Adhan",
       iqama: "İkame (Cemaat)",
       tomorrow: "Yarın",
@@ -2580,7 +2622,7 @@
       usingCache: "Önbellek verisi kullanılıyor (canlı istek başarısız).",
       selectSaved: "Seç",
       noSaved: "Kayıtlı konum yok",
-      safetyNoteNone: "Görüntülenen adhan vakitlerinde ihtiyat payı yok.",
+      safetyNoteNone: "Görüntülenen vakit girişlerinde ihtiyat payı yok.",
       loginRequired: "Login required",
       loginSentSuccess: "Link gönderildi. E-postanı kontrol et.",
       emailInvalid: "Geçerli bir e-posta girin.",
@@ -2665,6 +2707,12 @@
       inProgress: "In progress",
       endsIn: "Ends in",
       ended: "Ended",
+      now: "Now",
+      next: "Next",
+      begins: "Begins",
+      beganAt: "Began at",
+      gps: "GPS",
+      current: "Current",
       adhan: "Adhan",
       iqama: "Iqama (Congregation)",
       tomorrow: "Tomorrow",
@@ -2683,7 +2731,7 @@
       usingCache: "Using cached data (live fetch failed).",
       selectSaved: "Select",
       noSaved: "No saved locations",
-      safetyNoteNone: "Displayed adhan times have no safety offset.",
+      safetyNoteNone: "Displayed begin times have no safety offset.",
       loginRequired: "Login required",
       loginSentSuccess: "Link sent. Check your email.",
       emailInvalid: "Enter a valid email.",

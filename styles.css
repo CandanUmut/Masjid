@@ -327,6 +327,19 @@ main.container{
   font-size: 13px;
 }
 
+.now-next{
+  display: grid;
+  gap: 16px;
+}
+.now-next__block{
+  padding-bottom: 12px;
+  border-bottom: 1px dashed color-mix(in oklab, var(--line), transparent 30%);
+}
+.now-next__block:last-child{
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
 .pill{
   display:inline-flex;
   align-items:center;
@@ -386,6 +399,12 @@ main.container{
   font-weight: 600;
   word-break: break-word;
 }
+.kv__sub{
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  word-break: break-word;
+}
 
 .helper{
   margin-top: 6px;
@@ -422,7 +441,7 @@ main.container{
 .table tbody tr:last-child td{
   border-bottom: none;
 }
-.table tbody tr.is-active{
+.table tbody tr.is-current{
   background: color-mix(in oklab, var(--accent), transparent 92%);
 }
 .table tbody tr:hover{
@@ -432,6 +451,15 @@ main.container{
 .status--upcoming{ color: var(--text); }
 .status--current{ color: var(--accent2); font-weight: 700; }
 .status--passed{ color: var(--muted); }
+.status-pill{
+  margin-right: 8px;
+}
+.pill--current{
+  background: color-mix(in oklab, var(--accent2), transparent 80%);
+  border-color: color-mix(in oklab, var(--accent2), transparent 60%);
+  color: var(--accent2);
+  font-weight: 700;
+}
 
 .mono{ font-family: var(--mono); }
 
