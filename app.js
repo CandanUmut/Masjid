@@ -62,6 +62,11 @@
     shareLinkInput: $("#shareLinkInput"),
     settingsBtn: $("#settingsBtn"),
     adminBtn: $("#adminBtn"),
+    installBtn: $("#installBtn"),
+    iosInstallTip: $("#iosInstallTip"),
+    offlineBadge: $("#offlineBadge"),
+    updateToast: $("#updateToast"),
+    reloadBtn: $("#reloadBtn"),
 
     slugGate: $("#slugGate"),
     slugInput: $("#slugInput"),
@@ -218,6 +223,8 @@
     timingsCacheKey: null,
     geocodeCache: {},
     slugStatusTimer: null,
+    deferredPrompt: null,
+    swRegistration: null,
   };
 
   boot().catch((err) => {
@@ -235,6 +242,9 @@
     wireSettings();
     wireSavedLocations();
     wireAdmin();
+    wireConnectivity();
+    wirePwaInstall();
+    initServiceWorker();
 
     applyLanguage(state.lang);
 
@@ -1429,6 +1439,84 @@
     });
   }
 
+  function wireConnectivity() {
+    updateConnectivity();
+    window.addEventListener("online", updateConnectivity);
+    window.addEventListener("offline", updateConnectivity);
+  }
+
+  function updateConnectivity() {
+    if (!el.offlineBadge) return;
+    el.offlineBadge.hidden = navigator.onLine;
+  }
+
+  function wirePwaInstall() {
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      state.deferredPrompt = event;
+      if (el.installBtn) el.installBtn.hidden = false;
+    });
+
+    window.addEventListener("appinstalled", () => {
+      state.deferredPrompt = null;
+      if (el.installBtn) el.installBtn.hidden = true;
+    });
+
+    el.installBtn?.addEventListener("click", async () => {
+      if (!state.deferredPrompt) return;
+      state.deferredPrompt.prompt();
+      try {
+        await state.deferredPrompt.userChoice;
+      } finally {
+        state.deferredPrompt = null;
+        if (el.installBtn) el.installBtn.hidden = true;
+      }
+    });
+
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+    if (el.iosInstallTip) el.iosInstallTip.hidden = !(isIos && !isStandalone);
+  }
+
+  async function initServiceWorker() {
+    if (!("serviceWorker" in navigator)) return;
+    try {
+      const registration = await navigator.serviceWorker.register("./service-worker.js");
+      state.swRegistration = registration;
+
+      if (registration.waiting) {
+        showUpdateToast();
+      }
+
+      registration.addEventListener("updatefound", () => {
+        const installing = registration.installing;
+        if (!installing) return;
+        installing.addEventListener("statechange", () => {
+          if (installing.state === "installed" && navigator.serviceWorker.controller) {
+            showUpdateToast();
+          }
+        });
+      });
+
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        window.location.reload();
+      });
+
+      el.reloadBtn?.addEventListener("click", () => {
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: "SKIP_WAITING" });
+        }
+      });
+    } catch (err) {
+      console.warn("Service worker registration failed", err);
+    }
+  }
+
+  function showUpdateToast() {
+    if (!el.updateToast) return;
+    el.updateToast.hidden = false;
+  }
+
   function renderMethodOptions() {
     const selects = [el.methodSelect, el.createMethodId, el.editMethodId];
     selects.forEach((select) => {
@@ -2164,6 +2252,11 @@
   i18n.tr = Object.assign(
     {
       loadingMasjid: "Mescid profili yükleniyor…",
+      install: "Yükle",
+      installTip: "iOS için: Paylaş → Ana Ekrana Ekle",
+      offline: "Çevrimdışı",
+      updateAvailable: "Güncelleme hazır",
+      reload: "Yenile",
       locResolving: "Konum alınıyor…",
       locManual: "Konum kapalı — şehir/adres gir.",
       locSearching: "Konum aranıyor…",
@@ -2228,6 +2321,11 @@
   i18n.en = Object.assign(
     {
       loadingMasjid: "Loading masjid profile…",
+      install: "Install",
+      installTip: "On iOS: Share → Add to Home Screen",
+      offline: "Offline",
+      updateAvailable: "Update available",
+      reload: "Reload",
       locResolving: "Getting location…",
       locManual: "Location blocked — enter city/address.",
       locSearching: "Searching location…",
