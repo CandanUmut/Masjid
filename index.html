@@ -84,7 +84,7 @@
   <main id="main" class="container">
     <section class="notice" id="notice" role="status" aria-live="polite" hidden>
       <div class="notice__dot" aria-hidden="true"></div>
-      <div class="notice__text" id="noticeText">Yükleniyor…</div>
+      <div class="notice__text" id="noticeText"></div>
       <button class="notice__close" id="noticeClose" type="button" aria-label="Bildirimi kapat">✕</button>
     </section>
     <section class="setup-banner" id="setupBanner" role="status" aria-live="polite" hidden>
@@ -94,6 +94,13 @@
       <div class="setup-banner__actions">
         <button class="btn btn--ghost btn--small" id="copySetupStepsBtn" type="button" data-i18n="copyFixSteps">Copy fix steps</button>
         <button class="btn btn--ghost btn--small" id="setupBannerClose" type="button" aria-label="Dismiss">✕</button>
+      </div>
+    </section>
+    <section class="toast" id="updateToast" role="status" aria-live="polite" hidden>
+      <div class="toast__text" id="updateToastText" data-i18n="updateAvailable">Update available</div>
+      <div class="toast__actions">
+        <button class="btn btn--ghost btn--small" id="updateToastRefresh" type="button" data-i18n="refreshPage">Refresh</button>
+        <button class="btn btn--ghost btn--small" id="updateToastClose" type="button" aria-label="Dismiss">✕</button>
       </div>
     </section>
 
@@ -668,6 +675,8 @@
         "copyLink": "Linki Kopyala",
         "install": "Yükle",
         "installTip": "iOS için: Paylaş → Ana Ekrana Ekle",
+        "updateAvailable": "Güncelleme mevcut",
+        "refreshPage": "Yenile",
         "offline": "Çevrimdışı",
         "slugTitle": "Mescid Linki",
         "slugHelp": "Bu sayfa genellikle paylaşılmış bir link ile açılır: /?m=mescid-slug. Slug yoksa aşağıdan gir.",
@@ -758,6 +767,8 @@
         "copyLink": "Copy link",
         "install": "Install",
         "installTip": "On iOS: Share → Add to Home Screen",
+        "updateAvailable": "Update available",
+        "refreshPage": "Refresh",
         "offline": "Offline",
         "slugTitle": "Masjid Link",
         "slugHelp": "This page is usually opened via a shared link: /?m=masjid-slug. If missing, enter it below.",
