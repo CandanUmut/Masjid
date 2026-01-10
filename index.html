@@ -108,19 +108,30 @@
     <section class="grid">
       <section class="card card--highlight">
         <div class="card__header">
-          <h2 class="h2" data-i18n="nextTitle">Sıradaki Vakit</h2>
+          <h2 class="h2" data-i18n="nextTitle">Şimdi / Sıradaki</h2>
           <span class="badge" id="tzBadge" title="Saat dilimi">TZ: —</span>
         </div>
 
         <div class="next">
           <div class="next__left">
-            <div class="next__label" id="nextPrayerLabel">—</div>
-            <div class="next__time" id="nextPrayerTime">--:--</div>
-            <div class="next__meta">
-              <span class="pill" id="nextTypePill" data-i18n="adhanOrIqama">—</span>
-              <span class="muted" id="nextMeta">—</span>
+            <div class="now-next">
+              <div class="now-next__block">
+                <div class="next__label" data-i18n="now">Şimdi</div>
+                <div class="next__time" id="nowPrayerName">—</div>
+                <div class="next__meta" id="nowPrayerStatus">—</div>
+                <div class="next__sub" id="nowPrayerStart">—</div>
+              </div>
+              <div class="now-next__block">
+                <div class="next__label" data-i18n="next">Sıradaki</div>
+                <div class="next__time" id="nextPrayerLabel">—</div>
+                <div class="next__meta">
+                  <span class="pill" id="nextTypePill" data-i18n="begins">Vakit girişi</span>
+                  <span class="muted mono" id="nextPrayerTime">--:--</span>
+                </div>
+                <div class="next__sub" id="nextMeta">—</div>
+                <div class="next__sub" id="nextIqamaLine">—</div>
+              </div>
             </div>
-            <div class="next__sub" id="nextIqamaLine">—</div>
           </div>
 
           <div class="next__right">
@@ -142,6 +153,7 @@
           <div class="kv">
             <div class="kv__k" data-i18n="location">Konum</div>
             <div class="kv__v" id="locationStatus">—</div>
+            <div class="kv__sub" id="locationCoords">—</div>
           </div>
           <div class="kv">
             <div class="kv__k" data-i18n="source">Kaynak</div>
@@ -195,33 +207,33 @@
             <tbody>
               <tr data-prayer="fajr">
                 <th scope="row">Fajr</th>
-                <td data-label="Adhan" class="mono">--:--</td>
-                <td data-label="Iqama" class="mono">--:--</td>
-                <td data-label="Status" class="muted">—</td>
+                <td data-label="Vakit girişi" class="mono">--:--</td>
+                <td data-label="İkame" class="mono">--:--</td>
+                <td data-label="Durum" class="muted">—</td>
               </tr>
               <tr data-prayer="dhuhr">
                 <th scope="row">Dhuhr</th>
-                <td data-label="Adhan" class="mono">--:--</td>
-                <td data-label="Iqama" class="mono">--:--</td>
-                <td data-label="Status" class="muted">—</td>
+                <td data-label="Vakit girişi" class="mono">--:--</td>
+                <td data-label="İkame" class="mono">--:--</td>
+                <td data-label="Durum" class="muted">—</td>
               </tr>
               <tr data-prayer="asr">
                 <th scope="row">Asr</th>
-                <td data-label="Adhan" class="mono">--:--</td>
-                <td data-label="Iqama" class="mono">--:--</td>
-                <td data-label="Status" class="muted">—</td>
+                <td data-label="Vakit girişi" class="mono">--:--</td>
+                <td data-label="İkame" class="mono">--:--</td>
+                <td data-label="Durum" class="muted">—</td>
               </tr>
               <tr data-prayer="maghrib">
                 <th scope="row">Maghrib</th>
-                <td data-label="Adhan" class="mono">--:--</td>
-                <td data-label="Iqama" class="mono">--:--</td>
-                <td data-label="Status" class="muted">—</td>
+                <td data-label="Vakit girişi" class="mono">--:--</td>
+                <td data-label="İkame" class="mono">--:--</td>
+                <td data-label="Durum" class="muted">—</td>
               </tr>
               <tr data-prayer="isha">
                 <th scope="row">Isha</th>
-                <td data-label="Adhan" class="mono">--:--</td>
-                <td data-label="Iqama" class="mono">--:--</td>
-                <td data-label="Status" class="muted">—</td>
+                <td data-label="Vakit girişi" class="mono">--:--</td>
+                <td data-label="İkame" class="mono">--:--</td>
+                <td data-label="Durum" class="muted">—</td>
               </tr>
             </tbody>
           </table>
@@ -229,7 +241,7 @@
 
         <div class="foot">
           <div class="muted small" id="safetyNote" data-i18n="safetyNote">
-            Görüntülenen adhan vakitleri ihtiyat payı içerir.
+            Görüntülenen vakit girişleri ihtiyat payı içerir.
           </div>
           <div class="muted small" id="disclaimer" data-i18n="disclaimer">
             İhtiyat ve yöntem detayları aşağıdaki “Detaylar” bölümünde görünür.
@@ -661,11 +673,16 @@
         "slugLabel": "Mescid Slug",
         "open": "Aç",
         "slugExample": "Örnek: ?m=sanjose-umut-mescid | İkame seti: &set=main",
-        "nextTitle": "Sıradaki Vakit",
-        "adhanOrIqama": "—",
+        "nextTitle": "Şimdi / Sıradaki",
+        "now": "Şimdi",
+        "next": "Sıradaki",
+        "begins": "Vakit girişi",
+        "beganAt": "Başladı",
+        "gps": "GPS",
+        "current": "Şu an",
         "remaining": "Başlamasına",
         "startsIn": "Başlamasına",
-        "inProgress": "Vakit girdi",
+        "inProgress": "Vakit devam ediyor",
         "endsIn": "Bitmesine",
         "ended": "Vakit çıktı",
         "refresh": "Yenile",
@@ -679,10 +696,10 @@
         "manualLocationNote": "Not: Bu giriş yaklaşık konumla vakit çekmek içindir. En doğru sonuç için konum izni önerilir.",
         "todayTitle": "Bugünün Vakitleri",
         "prayer": "Vakit",
-        "adhanSafe": "Vakit Girişi (İhtiyatlı)",
+        "adhanSafe": "Vakit girişi (İhtiyatlı)",
         "iqama": "İkame (Cemaat)",
         "status": "Durum",
-        "safetyNote": "Görüntülenen adhan vakitleri ihtiyat payı içerir.",
+        "safetyNote": "Görüntülenen vakit girişleri ihtiyat payı içerir.",
         "disclaimer": "İhtiyat ve yöntem detayları aşağıdaki “Detaylar” bölümünde görünür.",
         "detailsTitle": "Ayarlar / Detaylar",
         "calcSummary": "Hesaplama yöntemi",
@@ -757,8 +774,13 @@
         "slugLabel": "Masjid Slug",
         "open": "Open",
         "slugExample": "Example: ?m=sanjose-umut-mescid | Iqama set: &set=main",
-        "nextTitle": "Next Prayer",
-        "adhanOrIqama": "—",
+        "nextTitle": "Now / Next",
+        "now": "Now",
+        "next": "Next",
+        "begins": "Begins",
+        "beganAt": "Began at",
+        "gps": "GPS",
+        "current": "Current",
         "remaining": "Starts in",
         "startsIn": "Starts in",
         "inProgress": "In progress",
@@ -778,7 +800,7 @@
         "adhanSafe": "Begins (Safety-adjusted)",
         "iqama": "Iqama (Congregation)",
         "status": "Status",
-        "safetyNote": "Displayed adhan times include safety offsets.",
+        "safetyNote": "Displayed begin times include safety offsets.",
         "disclaimer": "Safety offsets and calculation details are shown in the “Details” section below.",
         "detailsTitle": "Settings / Details",
         "calcSummary": "Calculation method",
