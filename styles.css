@@ -1,4 +1,3 @@
-/* styles.css */
 :root{
   --bg: #0b0f14;
   --card: #121826;
@@ -9,6 +8,8 @@
   --accent: #7dd3fc;
   --accent2: #a7f3d0;
   --danger: #fb7185;
+  --info: #60a5fa;
+  --success: #34d399;
 
   --radius: 16px;
   --shadow: 0 10px 30px rgba(0,0,0,.35);
@@ -113,6 +114,8 @@ body{
   display:flex;
   align-items:center;
   gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 main.container{
@@ -148,6 +151,7 @@ main.container{
 .h1{ margin:0 0 8px; font-size: 18px; }
 .h2{ margin:0; font-size: 16px; }
 .h3{ margin:0 0 10px; font-size: 14.5px; }
+.h4{ margin:0 0 8px; font-size: 13.5px; }
 .muted{ color: var(--muted); }
 .small{ font-size: 12.5px; }
 
@@ -162,7 +166,7 @@ main.container{
 }
 .grow{ flex: 1 1 auto; }
 
-.field{ display:block; min-width: 260px; }
+.field{ display:block; min-width: 220px; }
 .field__label{
   display:block;
   font-size: 12.5px;
@@ -198,6 +202,10 @@ main.container{
 }
 .btn:hover{ filter: brightness(1.05); }
 .btn:active{ transform: translateY(1px); }
+.btn[disabled]{
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
 .btn--ghost{
   background: transparent;
@@ -323,6 +331,14 @@ main.container{
   word-break: break-word;
 }
 
+.helper{
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.helper.is-success{ color: var(--success); }
+.helper.is-danger{ color: var(--danger); }
+
 .table-wrap{
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -402,14 +418,19 @@ main.container{
   padding: 10px 12px;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: color-mix(in oklab, var(--danger), transparent 88%);
   margin-top: 14px;
+  background: color-mix(in oklab, var(--info), transparent 88%);
 }
+.notice[data-type="error"]{
+  background: color-mix(in oklab, var(--danger), transparent 88%);
+}
+.notice[data-type="error"] .notice__dot{ background: var(--danger); }
+.notice[data-type="info"] .notice__dot{ background: var(--info); }
 .notice__dot{
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--danger);
+  background: var(--info);
 }
 .notice__text{ flex: 1 1 auto; }
 .notice__close{
@@ -471,7 +492,7 @@ main.container{
 .modal__panel{
   position: relative;
   width: min(720px, calc(100% - 24px));
-  max-height: min(85vh, 640px);
+  max-height: min(85vh, 680px);
   overflow: auto;
   background: var(--card);
   border-radius: 18px;
@@ -496,12 +517,53 @@ main.container{
   padding: 12px;
   background: color-mix(in oklab, var(--card2), transparent 0%);
 }
+.settings-subsection{
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.section-header{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.form{
+  display: grid;
+  gap: 12px;
+}
+
+.iqama-sets{
+  display: grid;
+  gap: 12px;
+}
+
+.iqama-set{
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--card2), transparent 0%);
+}
+
+.iqama-set__header{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.iqama-set__grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
 
 @media (max-width: 720px){
   .action-bar{ display: flex; }
 }
 
-/* Responsive table -> stacked cards */
 @media (max-width: 560px){
   .table thead{ display:none; }
   .table, .table tbody, .table tr, .table th, .table td{ display:block; width: 100%; }

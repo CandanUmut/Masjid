@@ -1,13 +1,6 @@
-// app.js
-// Masjid Prayer Times + Iqama
-// Uses Supabase schema: prayer_hub (tables: masjids, overrides)
-// Prayer times provider: AlAdhan (timings)
-// TR/EN support via #i18nDict in index.html
-
 (() => {
   "use strict";
 
-  // ---------- Constants ----------
   const PRAYERS = ["fajr", "dhuhr", "asr", "maghrib", "isha"];
   const PRAYER_LABELS = {
     fajr: { tr: "Fajr", en: "Fajr" },
@@ -36,53 +29,48 @@
   const DEFAULT_METHOD = {
     provider: "aladhan",
     methodId: 2,
-    school: "standard", // "hanafi" or "standard"
-    highLatRule: "angleBased", // angleBased|midnight|oneSeventh
-    tune: {},
+    school: "standard",
+    highLatRule: "angleBased",
+    tune: { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0 },
   };
 
   const STORAGE_KEYS = {
     lang: "prayerhub_lang",
-    methodGlobal: "prayerhub:method:global",
-    methodSlug: (slug) => `prayerhub:method:${slug}`,
-    savedLocations: "prayerhub:saved_locations",
+    locations: "prayerhub_locations_v1",
+    viewPrefs: "prayerhub_viewprefs_v1",
+    tempMethod: "prayerhub_temp_method_v1",
     masjidCache: (slug) => `prayerhub:masjid:${slug}`,
     timingsCache: (key) => `prayerhub:timings:${key}`,
+    geocodeCache: "prayerhub_geocode_cache_v1",
   };
 
-  const CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes
-  const MASJID_CACHE_TTL_MS = 1000 * 60 * 10; // 10 minutes
-  const TIMINGS_CACHE_TTL_MS = 1000 * 60 * 60; // 60 minutes
+  const MASJID_CACHE_TTL_MS = 1000 * 60 * 10;
+  const TIMINGS_CACHE_TTL_MS = 1000 * 60 * 60;
+  const GEO_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
   const COUNTDOWN_TICK_MS = 1000;
   const RETRY_LIMIT = 2;
 
-  // ---------- DOM ----------
   const el = {
     root: document.documentElement,
-
-    // header
     masjidName: $("#masjidName"),
     masjidCity: $("#masjidCity"),
     todayDate: $("#todayDate"),
-
     langToggleBtn: $("#langToggleBtn"),
     langToggleBtn2: $("#langToggleBtn2"),
     copyLinkBtn: $("#copyLinkBtn"),
     copyLinkBtn2: $("#copyLinkBtn2"),
     shareLinkInput: $("#shareLinkInput"),
     settingsBtn: $("#settingsBtn"),
+    adminBtn: $("#adminBtn"),
 
-    // slug gate
     slugGate: $("#slugGate"),
     slugInput: $("#slugInput"),
     openSlugBtn: $("#openSlugBtn"),
 
-    // status/notice
     notice: $("#notice"),
     noticeText: $("#noticeText"),
     noticeClose: $("#noticeClose"),
 
-    // next card
     tzBadge: $("#tzBadge"),
     nextPrayerLabel: $("#nextPrayerLabel"),
     nextPrayerTime: $("#nextPrayerTime"),
@@ -96,14 +84,13 @@
     providerStatus: $("#providerStatus"),
     iqamaSetSelect: $("#iqamaSetSelect"),
     iqamaSetWrap: $("#iqamaSetWrap"),
+    iqamaSetHelper: $("#iqamaSetHelper"),
     dataFreshnessBadge: $("#dataFreshnessBadge"),
 
-    // manual location
     manualLocationDetails: $("#manualLocationDetails"),
     manualLocationInput: $("#manualLocationInput"),
     manualLocationBtn: $("#manualLocationBtn"),
 
-    // details
     methodBadge: $("#methodBadge"),
     calcProvider: $("#calcProvider"),
     calcMethodId: $("#calcMethodId"),
@@ -112,12 +99,17 @@
     calcTune: $("#calcTune"),
     safetyNote: $("#safetyNote"),
 
-    // settings modal
     settingsModal: $("#settingsModal"),
     settingsCloseBtn: $("#settingsCloseBtn"),
     methodSelect: $("#methodSelect"),
     schoolSelect: $("#schoolSelect"),
     highLatSelect: $("#highLatSelect"),
+    tuneFajrInput: $("#tuneFajrInput"),
+    tuneDhuhrInput: $("#tuneDhuhrInput"),
+    tuneAsrInput: $("#tuneAsrInput"),
+    tuneMaghribInput: $("#tuneMaghribInput"),
+    tuneIshaInput: $("#tuneIshaInput"),
+    tuneAdvancedInput: $("#tuneAdvancedInput"),
     resetMethodBtn: $("#resetMethodBtn"),
     methodScopeNote: $("#methodScopeNote"),
 
@@ -127,49 +119,107 @@
     saveLocationLabelInput: $("#saveLocationLabelInput"),
     saveLocationBtn: $("#saveLocationBtn"),
 
-    // action bar
     actionRefreshBtn: $("#actionRefreshBtn"),
     actionLocationBtn: $("#actionLocationBtn"),
     actionSettingsBtn: $("#actionSettingsBtn"),
+    actionAdminBtn: $("#actionAdminBtn"),
+
+    adminModal: $("#adminModal"),
+    adminCloseBtn: $("#adminCloseBtn"),
+    authEmailInput: $("#authEmailInput"),
+    signInBtn: $("#signInBtn"),
+    signOutBtn: $("#signOutBtn"),
+    authStatus: $("#authStatus"),
+
+    myMasjidsSelect: $("#myMasjidsSelect"),
+    openMasjidBtn: $("#openMasjidBtn"),
+
+    createMasjidForm: $("#createMasjidForm"),
+    createSlugInput: $("#createSlugInput"),
+    generateSlugBtn: $("#generateSlugBtn"),
+    createNameTr: $("#createNameTr"),
+    createNameEn: $("#createNameEn"),
+    createCityTr: $("#createCityTr"),
+    createCityEn: $("#createCityEn"),
+    createTimezone: $("#createTimezone"),
+    createIsPublic: $("#createIsPublic"),
+    createMethodId: $("#createMethodId"),
+    createSchool: $("#createSchool"),
+    createHighLat: $("#createHighLat"),
+    createTuneFajr: $("#createTuneFajr"),
+    createTuneDhuhr: $("#createTuneDhuhr"),
+    createTuneAsr: $("#createTuneAsr"),
+    createTuneMaghrib: $("#createTuneMaghrib"),
+    createTuneIsha: $("#createTuneIsha"),
+    createTuneAdvanced: $("#createTuneAdvanced"),
+    createSafetyFajr: $("#createSafetyFajr"),
+    createSafetyDhuhr: $("#createSafetyDhuhr"),
+    createSafetyAsr: $("#createSafetyAsr"),
+    createSafetyMaghrib: $("#createSafetyMaghrib"),
+    createSafetyIsha: $("#createSafetyIsha"),
+    addIqamaSetBtn: $("#addIqamaSetBtn"),
+    iqamaSetsEditor: $("#iqamaSetsEditor"),
+    slugStatus: $("#slugStatus"),
+    slugSuggestions: $("#slugSuggestions"),
+
+    editMasjidDetails: $("#editMasjidDetails"),
+    editMasjidForm: $("#editMasjidForm"),
+    editSlugInput: $("#editSlugInput"),
+    editNameTr: $("#editNameTr"),
+    editNameEn: $("#editNameEn"),
+    editCityTr: $("#editCityTr"),
+    editCityEn: $("#editCityEn"),
+    editTimezone: $("#editTimezone"),
+    editIsPublic: $("#editIsPublic"),
+    editMethodId: $("#editMethodId"),
+    editSchool: $("#editSchool"),
+    editHighLat: $("#editHighLat"),
+    editTuneFajr: $("#editTuneFajr"),
+    editTuneDhuhr: $("#editTuneDhuhr"),
+    editTuneAsr: $("#editTuneAsr"),
+    editTuneMaghrib: $("#editTuneMaghrib"),
+    editTuneIsha: $("#editTuneIsha"),
+    editTuneAdvanced: $("#editTuneAdvanced"),
+    editSafetyFajr: $("#editSafetyFajr"),
+    editSafetyDhuhr: $("#editSafetyDhuhr"),
+    editSafetyAsr: $("#editSafetyAsr"),
+    editSafetyMaghrib: $("#editSafetyMaghrib"),
+    editSafetyIsha: $("#editSafetyIsha"),
+    editAddIqamaSetBtn: $("#editAddIqamaSetBtn"),
+    editIqamaSetsEditor: $("#editIqamaSetsEditor"),
+    saveMasjidBtn: $("#saveMasjidBtn"),
+    resetMasjidBtn: $("#resetMasjidBtn"),
+    deleteMasjidBtn: $("#deleteMasjidBtn"),
   };
 
   const i18n = loadI18n();
 
-  // ---------- State ----------
   const state = {
     lang: detectInitialLang(),
     supabase: null,
-
+    session: null,
+    user: null,
     slug: null,
     setId: null,
-
     masjid: null,
-    iqamaSet: null,
+    isOwner: false,
     iqamaSets: [],
-
+    iqamaSet: null,
     methodOverride: null,
-
     coords: null,
     locationLabel: null,
     locationSource: null,
     manualLocation: null,
-
     savedLocations: [],
-
     computed: null,
-
     countdownTimer: null,
     refreshTimer: null,
-
-    lastFetchInfo: {
-      source: null,
-      at: null,
-    },
-
+    lastFetchInfo: { source: null, at: null },
     timingsCacheKey: null,
+    geocodeCache: {},
+    slugStatusTimer: null,
   };
 
-  // ---------- Init ----------
   boot().catch((err) => {
     console.error(err);
     showNotice(err?.message || "Unexpected error", "error");
@@ -184,6 +234,7 @@
     wireNotice();
     wireSettings();
     wireSavedLocations();
+    wireAdmin();
 
     applyLanguage(state.lang);
 
@@ -195,11 +246,13 @@
       el.slugGate.hidden = false;
     }
 
+    state.supabase = createSupabaseClient();
+    if (state.supabase) {
+      await initAuth();
+    }
+
     if (state.slug) {
-      state.supabase = createSupabaseClient();
-      if (state.supabase) {
-        await loadMasjid(state.slug);
-      }
+      await loadMasjid(state.slug);
     }
 
     if (!state.masjid) {
@@ -208,6 +261,7 @@
 
     loadSavedLocations();
     hydrateMethodOverride();
+    loadGeocodeCache();
     renderMethodOptions();
     renderMethodControls();
 
@@ -217,15 +271,15 @@
     pickInitialIqamaSet();
     renderIqamaSelect();
     setShareLink(makeShareLink(state.slug, state.iqamaSet?.id));
+    populateAdminDefaults();
+    if (state.isOwner) populateEditForm();
 
     await resolveLocation();
-
     await refreshAll({ preferCache: true });
 
     startCountdownLoop();
   }
 
-  // ---------- Supabase ----------
   function createSupabaseClient() {
     const url = window.__SUPABASE_URL || "";
     const key = window.__SUPABASE_ANON_KEY || "";
@@ -243,8 +297,49 @@
       return null;
     }
     return window.supabase.createClient(url, key, {
-      auth: { persistSession: false },
+      auth: { persistSession: true },
     });
+  }
+
+  async function initAuth() {
+    const { data } = await state.supabase.auth.getSession();
+    state.session = data?.session || null;
+    state.user = state.session?.user || null;
+    updateAuthUI();
+
+    state.supabase.auth.onAuthStateChange((_, session) => {
+      state.session = session;
+      state.user = session?.user || null;
+      updateAuthUI();
+      if (state.user) {
+        loadOwnedMasjids().catch((err) => console.warn(err));
+      } else {
+        state.isOwner = false;
+        renderOwnerControls();
+      }
+    });
+
+    if (state.user) {
+      await loadOwnedMasjids();
+    }
+  }
+
+  async function loadOwnedMasjids() {
+    if (!state.supabase || !state.user) return;
+    const { data, error } = await state.supabase
+      .schema("prayer_hub")
+      .from("masjids")
+      .select("id,slug,name,city")
+      .eq("owner_id", state.user.id)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.warn(error.message);
+      return;
+    }
+
+    state.ownedMasjids = Array.isArray(data) ? data : [];
+    renderOwnedMasjids();
   }
 
   async function loadMasjid(slug) {
@@ -256,6 +351,8 @@
       renderMasjidHeader();
     }
 
+    if (!state.supabase) return;
+
     try {
       const { data, error } = await state.supabase
         .schema("prayer_hub")
@@ -264,21 +361,20 @@
         .eq("slug", slug)
         .single();
 
-      if (error) {
-        throw new Error(error.message);
-      }
-      if (!data) {
-        throw new Error(t("masjidNotFound") || `Masjid not found for slug: ${slug}`);
-      }
+      if (error) throw new Error(error.message);
+      if (!data) throw new Error(t("masjidNotFound") || `Masjid not found for slug: ${slug}`);
 
       state.masjid = normalizeMasjid(data);
+      state.isOwner = Boolean(state.user && data.owner_id === state.user.id);
       writeMasjidCache(slug, state.masjid);
       renderMasjidHeader();
       renderMethodDetails();
       loadIqamaSets();
       pickInitialIqamaSet();
       renderIqamaSelect();
+      renderOwnerControls();
       clearNotice();
+      if (state.isOwner) populateEditForm();
     } catch (err) {
       console.warn("Masjid load failed:", err?.message);
       showNotice(t("masjidNotFound") || "Masjid not found. Check the link or slug.", "error");
@@ -325,12 +421,20 @@
 
   function mergeCalcMethod(calc_method) {
     const obj = safeJson(calc_method, {});
+    const tune = safeJson(obj.tune, {});
     return {
       provider: obj.provider || DEFAULT_METHOD.provider,
       methodId: numOr(obj.methodId, DEFAULT_METHOD.methodId),
       school: obj.school || DEFAULT_METHOD.school,
       highLatRule: obj.highLatRule || DEFAULT_METHOD.highLatRule,
-      tune: safeJson(obj.tune, {}),
+      tune: {
+        fajr: numOr(tune.fajr, 0),
+        dhuhr: numOr(tune.dhuhr, 0),
+        asr: numOr(tune.asr, 0),
+        maghrib: numOr(tune.maghrib, 0),
+        isha: numOr(tune.isha, 0),
+        aladhan_tune: typeof tune.aladhan_tune === "string" ? tune.aladhan_tune : "",
+      },
     };
   }
 
@@ -343,7 +447,6 @@
     return out;
   }
 
-  // ---------- Overrides ----------
   async function loadOverridesForDay(isoDate) {
     if (!state.supabase || !state.masjid?.id) return [];
 
@@ -404,9 +507,17 @@
     return set;
   }
 
-  // ---------- Location ----------
   async function resolveLocation() {
     updateLocationStatus("resolving");
+
+    const viewPrefs = readViewPrefs();
+    if (viewPrefs?.lastLocationId) {
+      const saved = state.savedLocations.find((loc) => loc.id === viewPrefs.lastLocationId);
+      if (saved) {
+        applySavedLocation(saved, true);
+        return;
+      }
+    }
 
     const ok = await tryGeolocation();
     if (ok) return;
@@ -438,7 +549,7 @@
           updateLocationStatus("blocked");
           resolve(false);
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
       );
     });
   }
@@ -449,6 +560,12 @@
 
     updateLocationStatus("searching");
 
+    const cached = readGeocodeCache(q);
+    if (cached) {
+      applyGeocodeResult(cached, q, "manual");
+      return;
+    }
+
     const url =
       "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" +
       encodeURIComponent(q);
@@ -458,15 +575,23 @@
     const arr = await res.json();
     if (!Array.isArray(arr) || !arr[0]) throw new Error(t("locNotFound") || "Location not found.");
 
-    const lat = parseFloat(arr[0].lat);
-    const lon = parseFloat(arr[0].lon);
-    if (!isFinite(lat) || !isFinite(lon)) throw new Error(t("locNotFound") || "Location not found.");
+    const result = {
+      lat: parseFloat(arr[0].lat),
+      lon: parseFloat(arr[0].lon),
+      display_name: arr[0].display_name || q,
+    };
+    if (!isFinite(result.lat) || !isFinite(result.lon)) throw new Error(t("locNotFound") || "Location not found.");
 
-    state.coords = { lat, lon };
-    state.locationLabel = arr[0].display_name || q;
-    state.locationSource = "manual";
-    state.manualLocation = q;
-    updateLocationStatus("manual");
+    writeGeocodeCache(q, result);
+    applyGeocodeResult(result, q, "manual");
+  }
+
+  function applyGeocodeResult(result, query, source) {
+    state.coords = { lat: result.lat, lon: result.lon };
+    state.locationLabel = result.display_name || query;
+    state.locationSource = source;
+    state.manualLocation = query;
+    updateLocationStatus(source === "saved" ? "saved" : "manual");
   }
 
   function updateLocationStatus(mode) {
@@ -481,7 +606,6 @@
     el.locationStatus.textContent = map[mode] || "—";
   }
 
-  // ---------- Prayer Times Fetch ----------
   async function refreshAll({ preferCache }) {
     if (!state.masjid) return;
 
@@ -653,7 +777,6 @@
     return [0, Math.floor(F), 0, Math.floor(D), Math.floor(A), 0, Math.floor(M), Math.floor(I), 0].join(",");
   }
 
-  // ---------- Computation ----------
   function computeSchedule({
     tz,
     baseTimings,
@@ -723,12 +846,14 @@
       todayISO,
       baseTimings,
       safetyOffsets,
-      iqamaSet: {
-        id: iqamaSet?.id || "main",
-        label: safeJson(iqamaSet?.label, {}),
-        offsets: safeJson(iqamaSet?.offsets, {}),
-        fixedTimes: fixedTimes,
-      },
+      iqamaSet: iqamaSet
+        ? {
+            id: iqamaSet?.id || "main",
+            label: safeJson(iqamaSet?.label, {}),
+            offsets: safeJson(iqamaSet?.offsets, {}),
+            fixedTimes: fixedTimes,
+          }
+        : null,
       times: {
         base: baseDates,
         adhanSafe,
@@ -793,7 +918,6 @@
     };
   }
 
-  // ---------- Rendering ----------
   function renderAll() {
     setTodayDate(state.masjid?.timezone);
     renderMasjidHeader();
@@ -827,8 +951,14 @@
     el.calcHighLat.textContent = (m.highLatRule || "angleBased").toLowerCase();
 
     const tuneObj = safeJson(m.tune, {});
-    const tuneStr = Object.keys(tuneObj).length ? JSON.stringify(tuneObj) : "—";
-    el.calcTune.textContent = tuneStr;
+    const tuneParts = [
+      `fajr:${numOr(tuneObj.fajr, 0)}`,
+      `dhuhr:${numOr(tuneObj.dhuhr, 0)}`,
+      `asr:${numOr(tuneObj.asr, 0)}`,
+      `maghrib:${numOr(tuneObj.maghrib, 0)}`,
+      `isha:${numOr(tuneObj.isha, 0)}`,
+    ];
+    el.calcTune.textContent = tuneParts.join(" • ");
   }
 
   function renderSafetyDetails() {
@@ -892,11 +1022,19 @@
       opt.textContent = "—";
       sel.appendChild(opt);
       if (el.iqamaSetWrap) el.iqamaSetWrap.classList.add("is-disabled");
+      if (el.iqamaSetHelper) {
+        el.iqamaSetHelper.textContent = state.slug
+          ? state.isOwner
+            ? t("iqamaMissingOwner") || "No iqama sets yet. Add one in Admin → Edit Masjid."
+            : t("iqamaMissing") || "Iqama sets are not configured yet."
+          : t("iqamaMissingPublic") || "Iqama sets appear when a masjid link is used.";
+      }
       return;
     }
 
     sel.disabled = false;
     if (el.iqamaSetWrap) el.iqamaSetWrap.classList.remove("is-disabled");
+    if (el.iqamaSetHelper) el.iqamaSetHelper.textContent = "";
 
     for (const s of state.iqamaSets) {
       const opt = document.createElement("option");
@@ -1009,7 +1147,6 @@
         : `${t("live") || "Live"} • ${min}m`;
   }
 
-  // ---------- Countdown ----------
   function startCountdownLoop() {
     if (state.countdownTimer) clearInterval(state.countdownTimer);
     state.countdownTimer = setInterval(() => {
@@ -1040,7 +1177,6 @@
     }, 2500);
   }
 
-  // ---------- UI wiring ----------
   function wireLanguage() {
     const toggle = () => {
       state.lang = state.lang === "tr" ? "en" : "tr";
@@ -1050,6 +1186,7 @@
       renderMethodOptions();
       renderMethodControls();
       renderSavedLocations();
+      renderOwnedMasjids();
     };
 
     el.langToggleBtn?.addEventListener("click", toggle);
@@ -1115,7 +1252,7 @@
       state.manualLocation = q;
       await resolveManualLocation(q);
       await refreshAll({ preferCache: false });
-    }, 500);
+    }, 550);
 
     el.manualLocationBtn?.addEventListener("click", async () => {
       const q = (el.manualLocationInput?.value || "").trim();
@@ -1153,6 +1290,12 @@
     el.methodSelect?.addEventListener("change", onMethodChange);
     el.schoolSelect?.addEventListener("change", onMethodChange);
     el.highLatSelect?.addEventListener("change", onMethodChange);
+    el.tuneFajrInput?.addEventListener("change", onMethodChange);
+    el.tuneDhuhrInput?.addEventListener("change", onMethodChange);
+    el.tuneAsrInput?.addEventListener("change", onMethodChange);
+    el.tuneMaghribInput?.addEventListener("change", onMethodChange);
+    el.tuneIshaInput?.addEventListener("change", onMethodChange);
+    el.tuneAdvancedInput?.addEventListener("change", onMethodChange);
 
     el.resetMethodBtn?.addEventListener("click", () => {
       clearMethodOverride();
@@ -1183,33 +1326,143 @@
     });
   }
 
-  // ---------- Method Switching ----------
-  function hydrateMethodOverride() {
-    const key = state.slug ? STORAGE_KEYS.methodSlug(state.slug) : STORAGE_KEYS.methodGlobal;
-    const raw = localStorage.getItem(key);
-    if (!raw) return;
-    try {
-      const obj = JSON.parse(raw);
-      if (obj && typeof obj === "object") {
-        state.methodOverride = {
-          methodId: numOr(obj.methodId, DEFAULT_METHOD.methodId),
-          school: obj.school || DEFAULT_METHOD.school,
-          highLatRule: obj.highLatRule || DEFAULT_METHOD.highLatRule,
-        };
+  function wireAdmin() {
+    const open = () => {
+      if (!el.adminModal) return;
+      el.adminModal.hidden = false;
+    };
+    const close = () => {
+      if (!el.adminModal) return;
+      el.adminModal.hidden = true;
+    };
+
+    el.adminBtn?.addEventListener("click", open);
+    el.actionAdminBtn?.addEventListener("click", open);
+    el.adminCloseBtn?.addEventListener("click", close);
+    el.adminModal?.querySelector("[data-close='admin']")?.addEventListener("click", close);
+
+    el.signInBtn?.addEventListener("click", async () => {
+      const email = (el.authEmailInput?.value || "").trim();
+      if (!email) return showNotice(t("enterEmail") || "Enter an email.", "info");
+      if (!state.supabase) return;
+      const { error } = await state.supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: location.origin + location.pathname },
+      });
+      if (error) {
+        showNotice(error.message, "error");
+        return;
       }
-    } catch {
-      state.methodOverride = null;
-    }
+      showNotice(t("loginSent") || "Login link sent. Check your email.", "info");
+    });
+
+    el.signOutBtn?.addEventListener("click", async () => {
+      if (!state.supabase) return;
+      await state.supabase.auth.signOut();
+      showNotice(t("signedOut") || "Signed out.", "info");
+    });
+
+    el.generateSlugBtn?.addEventListener("click", () => {
+      const name = el.createNameTr?.value || el.createNameEn?.value || "";
+      const city = el.createCityTr?.value || el.createCityEn?.value || "";
+      const slug = slugify(`${name} ${city}`.trim());
+      if (el.createSlugInput) {
+        el.createSlugInput.value = slug;
+        checkSlugAvailability(slug);
+      }
+    });
+
+    el.createSlugInput?.addEventListener("input", () => {
+      const slug = (el.createSlugInput?.value || "").trim();
+      if (state.slugStatusTimer) clearTimeout(state.slugStatusTimer);
+      state.slugStatusTimer = setTimeout(() => checkSlugAvailability(slug), 500);
+    });
+
+    el.createMasjidForm?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await handleCreateMasjid();
+    });
+
+    el.addIqamaSetBtn?.addEventListener("click", () => {
+      addIqamaSetRow(el.iqamaSetsEditor);
+    });
+
+    el.editAddIqamaSetBtn?.addEventListener("click", () => {
+      addIqamaSetRow(el.editIqamaSetsEditor);
+    });
+
+    el.openMasjidBtn?.addEventListener("click", () => {
+      const slug = el.myMasjidsSelect?.value;
+      if (!slug) return;
+      const url = new URL(location.href);
+      url.searchParams.set("m", slug);
+      location.href = url.toString();
+    });
+
+    el.editMasjidForm?.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await handleUpdateMasjid();
+    });
+
+    el.resetMasjidBtn?.addEventListener("click", async () => {
+      if (state.slug) await loadMasjid(state.slug);
+      if (state.isOwner) populateEditForm();
+      showNotice(t("resetDone") || "Reset to latest saved values.", "info");
+    });
+
+    el.deleteMasjidBtn?.addEventListener("click", async () => {
+      if (!state.isOwner || !state.supabase || !state.masjid?.id) return;
+      const confirmed = confirm(t("deleteConfirm") || "Delete this masjid? This cannot be undone.");
+      if (!confirmed) return;
+      const { error } = await state.supabase
+        .schema("prayer_hub")
+        .from("masjids")
+        .delete()
+        .eq("id", state.masjid.id)
+        .eq("owner_id", state.user?.id);
+      if (error) {
+        showNotice(error.message, "error");
+        return;
+      }
+      showNotice(t("deleted") || "Masjid deleted.", "info");
+      location.href = location.origin + location.pathname;
+    });
   }
 
-  function getActiveMethod(baseMethod = state.masjid?.calc_method || DEFAULT_METHOD) {
-    if (state.methodOverride) {
-      return {
-        ...baseMethod,
-        ...state.methodOverride,
-      };
+  function renderMethodOptions() {
+    const selects = [el.methodSelect, el.createMethodId, el.editMethodId];
+    selects.forEach((select) => {
+      if (!select) return;
+      select.innerHTML = "";
+      for (const option of METHOD_OPTIONS) {
+        const opt = document.createElement("option");
+        opt.value = String(option.id);
+        opt.textContent = pickLang(option.label, state.lang) || `Method ${option.id}`;
+        select.appendChild(opt);
+      }
+    });
+  }
+
+  function renderMethodControls() {
+    const method = getActiveMethod();
+    if (el.methodSelect) el.methodSelect.value = String(numOr(method.methodId, DEFAULT_METHOD.methodId));
+    if (el.schoolSelect) el.schoolSelect.value = method.school || "standard";
+    if (el.highLatSelect) el.highLatSelect.value = method.highLatRule || "angleBased";
+    if (el.tuneFajrInput) el.tuneFajrInput.value = numOr(method.tune?.fajr, 0);
+    if (el.tuneDhuhrInput) el.tuneDhuhrInput.value = numOr(method.tune?.dhuhr, 0);
+    if (el.tuneAsrInput) el.tuneAsrInput.value = numOr(method.tune?.asr, 0);
+    if (el.tuneMaghribInput) el.tuneMaghribInput.value = numOr(method.tune?.maghrib, 0);
+    if (el.tuneIshaInput) el.tuneIshaInput.value = numOr(method.tune?.isha, 0);
+    if (el.tuneAdvancedInput) el.tuneAdvancedInput.value = method.tune?.aladhan_tune || "";
+
+    if (el.resetMethodBtn) el.resetMethodBtn.disabled = !state.slug && !state.methodOverride;
+    if (el.methodScopeNote) {
+      el.methodScopeNote.textContent = state.slug
+        ? state.methodOverride
+          ? t("methodScopeMasjidOverride") || "Overriding masjid defaults (local only)."
+          : t("methodScopeMasjid") || "Using masjid defaults."
+        : t("methodScopeGlobal") || "Using global defaults.";
     }
-    return baseMethod;
   }
 
   function onMethodChange() {
@@ -1218,53 +1471,91 @@
       methodId: numOr(el.methodSelect.value, DEFAULT_METHOD.methodId),
       school: el.schoolSelect.value,
       highLatRule: el.highLatSelect.value,
+      tune: {
+        fajr: numOr(el.tuneFajrInput?.value, 0),
+        dhuhr: numOr(el.tuneDhuhrInput?.value, 0),
+        asr: numOr(el.tuneAsrInput?.value, 0),
+        maghrib: numOr(el.tuneMaghribInput?.value, 0),
+        isha: numOr(el.tuneIshaInput?.value, 0),
+        aladhan_tune: (el.tuneAdvancedInput?.value || "").trim(),
+      },
     };
     state.methodOverride = next;
 
-    const key = state.slug ? STORAGE_KEYS.methodSlug(state.slug) : STORAGE_KEYS.methodGlobal;
-    localStorage.setItem(key, JSON.stringify(next));
-
+    writeMethodOverride(next);
     renderMethodControls();
     refreshAll({ preferCache: false }).catch((e) => showNotice(e.message, "error"));
   }
 
+  function hydrateMethodOverride() {
+    const raw = localStorage.getItem(STORAGE_KEYS.tempMethod);
+    if (!raw) return;
+    try {
+      const obj = JSON.parse(raw);
+      if (!obj || typeof obj !== "object") return;
+      if (state.slug && obj.slugs?.[state.slug]) {
+        state.methodOverride = obj.slugs[state.slug];
+        return;
+      }
+      if (!state.slug && obj.global) {
+        state.methodOverride = obj.global;
+      }
+    } catch {
+      state.methodOverride = null;
+    }
+  }
+
+  function writeMethodOverride(override) {
+    const raw = localStorage.getItem(STORAGE_KEYS.tempMethod);
+    let obj = { global: null, slugs: {} };
+    try {
+      if (raw) obj = JSON.parse(raw);
+    } catch {
+      obj = { global: null, slugs: {} };
+    }
+    if (state.slug) {
+      obj.slugs = obj.slugs || {};
+      obj.slugs[state.slug] = override;
+    } else {
+      obj.global = override;
+    }
+    localStorage.setItem(STORAGE_KEYS.tempMethod, JSON.stringify(obj));
+  }
+
   function clearMethodOverride() {
-    const key = state.slug ? STORAGE_KEYS.methodSlug(state.slug) : STORAGE_KEYS.methodGlobal;
-    localStorage.removeItem(key);
+    const raw = localStorage.getItem(STORAGE_KEYS.tempMethod);
+    if (!raw) {
+      state.methodOverride = null;
+      return;
+    }
+    try {
+      const obj = JSON.parse(raw);
+      if (state.slug && obj.slugs) {
+        delete obj.slugs[state.slug];
+      } else {
+        obj.global = null;
+      }
+      localStorage.setItem(STORAGE_KEYS.tempMethod, JSON.stringify(obj));
+    } catch {
+      localStorage.removeItem(STORAGE_KEYS.tempMethod);
+    }
     state.methodOverride = null;
   }
 
-  function renderMethodOptions() {
-    if (!el.methodSelect) return;
-    el.methodSelect.innerHTML = "";
-    for (const option of METHOD_OPTIONS) {
-      const opt = document.createElement("option");
-      opt.value = String(option.id);
-      opt.textContent = pickLang(option.label, state.lang) || `Method ${option.id}`;
-      el.methodSelect.appendChild(opt);
+  function getActiveMethod(baseMethod = state.masjid?.calc_method || DEFAULT_METHOD) {
+    if (state.methodOverride) {
+      return {
+        ...baseMethod,
+        ...state.methodOverride,
+        tune: { ...baseMethod.tune, ...state.methodOverride.tune },
+      };
     }
+    return baseMethod;
   }
 
-  function renderMethodControls() {
-    const method = getActiveMethod();
-    if (el.methodSelect) el.methodSelect.value = String(numOr(method.methodId, DEFAULT_METHOD.methodId));
-    if (el.schoolSelect) el.schoolSelect.value = method.school || "standard";
-    if (el.highLatSelect) el.highLatSelect.value = method.highLatRule || "angleBased";
-
-    if (el.resetMethodBtn) el.resetMethodBtn.disabled = !state.slug;
-    if (el.methodScopeNote) {
-      el.methodScopeNote.textContent = state.slug
-        ? state.methodOverride
-          ? t("methodScopeMasjidOverride") || "Overriding masjid defaults (local only)."
-          : t("methodScopeMasjid") || "Using masjid defaults."
-        : t("methodScopeGlobal") || "Using global defaults."
-    }
-  }
-
-  // ---------- Saved Locations ----------
   function loadSavedLocations() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEYS.savedLocations);
+      const raw = localStorage.getItem(STORAGE_KEYS.locations);
       if (!raw) return;
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) state.savedLocations = arr;
@@ -1275,7 +1566,7 @@
 
   function writeSavedLocations() {
     try {
-      localStorage.setItem(STORAGE_KEYS.savedLocations, JSON.stringify(state.savedLocations));
+      localStorage.setItem(STORAGE_KEYS.locations, JSON.stringify(state.savedLocations));
     } catch {
       // ignore
     }
@@ -1308,25 +1599,525 @@
       label,
       coords: state.coords,
       manualQuery: state.manualLocation || null,
+      type: state.locationSource || "manual",
     };
     state.savedLocations.push(entry);
     writeSavedLocations();
     renderSavedLocations();
     if (el.saveLocationLabelInput) el.saveLocationLabelInput.value = "";
+    writeViewPrefs({ lastLocationId: entry.id });
     showNotice(t("saved") || "Saved.", "info");
   }
 
-  function applySavedLocation(loc) {
+  function applySavedLocation(loc, silent = false) {
     if (!loc?.coords) return;
     state.coords = loc.coords;
     state.manualLocation = loc.manualQuery || null;
     state.locationLabel = loc.label;
     state.locationSource = "saved";
     updateLocationStatus("saved");
-    refreshAll({ preferCache: true }).catch((e) => showNotice(e.message, "error"));
+    writeViewPrefs({ lastLocationId: loc.id });
+    if (!silent) refreshAll({ preferCache: true }).catch((e) => showNotice(e.message, "error"));
   }
 
-  // ---------- Language (TR/EN) ----------
+  function readViewPrefs() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.viewPrefs);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeViewPrefs(next) {
+    const current = readViewPrefs();
+    const merged = { ...current, ...next };
+    localStorage.setItem(STORAGE_KEYS.viewPrefs, JSON.stringify(merged));
+  }
+
+  function loadGeocodeCache() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.geocodeCache);
+      state.geocodeCache = raw ? JSON.parse(raw) : {};
+    } catch {
+      state.geocodeCache = {};
+    }
+  }
+
+  function readGeocodeCache(query) {
+    if (!query) return null;
+    const key = query.toLowerCase();
+    const entry = state.geocodeCache?.[key];
+    if (!entry) return null;
+    if (Date.now() - entry.savedAt > GEO_CACHE_TTL_MS) return null;
+    return entry.result;
+  }
+
+  function writeGeocodeCache(query, result) {
+    if (!query) return;
+    const key = query.toLowerCase();
+    state.geocodeCache[key] = { savedAt: Date.now(), result };
+    try {
+      localStorage.setItem(STORAGE_KEYS.geocodeCache, JSON.stringify(state.geocodeCache));
+    } catch {
+      // ignore
+    }
+  }
+
+  function updateAuthUI() {
+    if (!el.authStatus) return;
+    if (state.user) {
+      el.authStatus.textContent = `${t("signedInAs") || "Signed in as"}: ${state.user.email}`;
+      if (el.signOutBtn) el.signOutBtn.hidden = false;
+      if (el.signInBtn) el.signInBtn.hidden = true;
+    } else {
+      el.authStatus.textContent = t("signedOutState") || "Not signed in";
+      if (el.signOutBtn) el.signOutBtn.hidden = true;
+      if (el.signInBtn) el.signInBtn.hidden = false;
+    }
+    renderOwnerControls();
+  }
+
+  function renderOwnedMasjids() {
+    if (!el.myMasjidsSelect) return;
+    el.myMasjidsSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = state.ownedMasjids?.length ? t("selectMasjid") || "Select" : t("noMasjid") || "No masjid yet";
+    el.myMasjidsSelect.appendChild(placeholder);
+
+    (state.ownedMasjids || []).forEach((masjid) => {
+      const opt = document.createElement("option");
+      opt.value = masjid.slug;
+      const name = pickLang(safeJson(masjid.name, {}), state.lang) || masjid.slug;
+      const city = masjid.city ? pickLang(safeJson(masjid.city, {}), state.lang) : "";
+      opt.textContent = city ? `${name} • ${city}` : name;
+      el.myMasjidsSelect.appendChild(opt);
+    });
+  }
+
+  function renderOwnerControls() {
+    if (!el.editMasjidDetails) return;
+    el.editMasjidDetails.hidden = !state.isOwner;
+    if (!state.isOwner) return;
+    populateEditForm();
+  }
+
+  function populateAdminDefaults() {
+    if (el.createTimezone) {
+      el.createTimezone.value = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+    addIqamaSetRow(el.iqamaSetsEditor);
+  }
+
+  function populateEditForm() {
+    if (!state.masjid || !state.isOwner) return;
+    const m = state.masjid;
+    if (el.editSlugInput) el.editSlugInput.value = m.slug || "";
+    if (el.editNameTr) el.editNameTr.value = m.name?.tr || "";
+    if (el.editNameEn) el.editNameEn.value = m.name?.en || "";
+    if (el.editCityTr) el.editCityTr.value = m.city?.tr || "";
+    if (el.editCityEn) el.editCityEn.value = m.city?.en || "";
+    if (el.editTimezone) el.editTimezone.value = m.timezone || "";
+    if (el.editIsPublic) el.editIsPublic.value = m.is_public ? "true" : "false";
+
+    if (el.editMethodId) el.editMethodId.value = String(numOr(m.calc_method?.methodId, DEFAULT_METHOD.methodId));
+    if (el.editSchool) el.editSchool.value = m.calc_method?.school || "standard";
+    if (el.editHighLat) el.editHighLat.value = m.calc_method?.highLatRule || "angleBased";
+    if (el.editTuneFajr) el.editTuneFajr.value = numOr(m.calc_method?.tune?.fajr, 0);
+    if (el.editTuneDhuhr) el.editTuneDhuhr.value = numOr(m.calc_method?.tune?.dhuhr, 0);
+    if (el.editTuneAsr) el.editTuneAsr.value = numOr(m.calc_method?.tune?.asr, 0);
+    if (el.editTuneMaghrib) el.editTuneMaghrib.value = numOr(m.calc_method?.tune?.maghrib, 0);
+    if (el.editTuneIsha) el.editTuneIsha.value = numOr(m.calc_method?.tune?.isha, 0);
+    if (el.editTuneAdvanced) el.editTuneAdvanced.value = m.calc_method?.tune?.aladhan_tune || "";
+
+    if (el.editSafetyFajr) el.editSafetyFajr.value = numOr(m.safety_offsets?.fajr, 0);
+    if (el.editSafetyDhuhr) el.editSafetyDhuhr.value = numOr(m.safety_offsets?.dhuhr, 0);
+    if (el.editSafetyAsr) el.editSafetyAsr.value = numOr(m.safety_offsets?.asr, 0);
+    if (el.editSafetyMaghrib) el.editSafetyMaghrib.value = numOr(m.safety_offsets?.maghrib, 0);
+    if (el.editSafetyIsha) el.editSafetyIsha.value = numOr(m.safety_offsets?.isha, 0);
+
+    if (el.editIqamaSetsEditor) {
+      el.editIqamaSetsEditor.innerHTML = "";
+      const sets = Array.isArray(m.iqama_sets) && m.iqama_sets.length ? m.iqama_sets : [defaultIqamaSet()];
+      sets.forEach((set) => addIqamaSetRow(el.editIqamaSetsEditor, set));
+    }
+  }
+
+  async function handleCreateMasjid() {
+    if (!state.user) {
+      showNotice(t("loginRequired") || "Please sign in to create a masjid.", "info");
+      return;
+    }
+    const slug = (el.createSlugInput?.value || "").trim();
+    const nameTr = (el.createNameTr?.value || "").trim();
+    const nameEn = (el.createNameEn?.value || "").trim();
+    if (!slug || !nameTr || !nameEn) {
+      showNotice(t("requiredFields") || "Slug and names are required.", "error");
+      return;
+    }
+    if (!isValidTimezone(el.createTimezone?.value)) {
+      showNotice(t("timezoneInvalid") || "Timezone is invalid.", "error");
+      return;
+    }
+
+    const iqamaParse = parseIqamaSets(el.iqamaSetsEditor);
+    if (iqamaParse.error) {
+      showNotice(iqamaParse.error, "error");
+      return;
+    }
+
+    const payload = {
+      slug,
+      name: { tr: nameTr, en: nameEn },
+      city: buildCity(el.createCityTr?.value, el.createCityEn?.value),
+      timezone: el.createTimezone?.value || Intl.DateTimeFormat().resolvedOptions().timeZone,
+      calc_method: {
+        provider: "aladhan",
+        methodId: numOr(el.createMethodId?.value, DEFAULT_METHOD.methodId),
+        school: el.createSchool?.value || "standard",
+        highLatRule: el.createHighLat?.value || "angleBased",
+        tune: {
+          fajr: numOr(el.createTuneFajr?.value, 0),
+          dhuhr: numOr(el.createTuneDhuhr?.value, 0),
+          asr: numOr(el.createTuneAsr?.value, 0),
+          maghrib: numOr(el.createTuneMaghrib?.value, 0),
+          isha: numOr(el.createTuneIsha?.value, 0),
+          aladhan_tune: (el.createTuneAdvanced?.value || "").trim(),
+        },
+      },
+      safety_offsets: clampSafetyOffsets({
+        fajr: numOr(el.createSafetyFajr?.value, 0),
+        dhuhr: numOr(el.createSafetyDhuhr?.value, 0),
+        asr: numOr(el.createSafetyAsr?.value, 0),
+        maghrib: numOr(el.createSafetyMaghrib?.value, 0),
+        isha: numOr(el.createSafetyIsha?.value, 0),
+      }),
+      iqama_sets: iqamaParse.sets,
+      meta: {},
+      is_public: el.createIsPublic?.value !== "false",
+      owner_id: state.user.id,
+    };
+
+    const { data, error } = await state.supabase
+      .schema("prayer_hub")
+      .from("masjids")
+      .insert(payload)
+      .select("slug,iqama_sets")
+      .single();
+
+    if (error) {
+      handleInsertError(error, slug, payload.name, payload.city);
+      return;
+    }
+
+    const firstSetId = data?.iqama_sets?.[0]?.id || "";
+    const url = new URL(location.href);
+    url.searchParams.set("m", data.slug);
+    if (firstSetId) url.searchParams.set("set", firstSetId);
+    location.href = url.toString();
+  }
+
+  async function handleUpdateMasjid() {
+    if (!state.user || !state.isOwner || !state.supabase || !state.masjid?.id) return;
+    const nameTr = (el.editNameTr?.value || "").trim();
+    const nameEn = (el.editNameEn?.value || "").trim();
+    if (!nameTr || !nameEn) {
+      showNotice(t("requiredFields") || "Slug and names are required.", "error");
+      return;
+    }
+    if (!isValidTimezone(el.editTimezone?.value)) {
+      showNotice(t("timezoneInvalid") || "Timezone is invalid.", "error");
+      return;
+    }
+
+    const iqamaParse = parseIqamaSets(el.editIqamaSetsEditor);
+    if (iqamaParse.error) {
+      showNotice(iqamaParse.error, "error");
+      return;
+    }
+
+    const payload = {
+      name: { tr: nameTr, en: nameEn },
+      city: buildCity(el.editCityTr?.value, el.editCityEn?.value),
+      timezone: el.editTimezone?.value || state.masjid.timezone,
+      calc_method: {
+        provider: "aladhan",
+        methodId: numOr(el.editMethodId?.value, DEFAULT_METHOD.methodId),
+        school: el.editSchool?.value || "standard",
+        highLatRule: el.editHighLat?.value || "angleBased",
+        tune: {
+          fajr: numOr(el.editTuneFajr?.value, 0),
+          dhuhr: numOr(el.editTuneDhuhr?.value, 0),
+          asr: numOr(el.editTuneAsr?.value, 0),
+          maghrib: numOr(el.editTuneMaghrib?.value, 0),
+          isha: numOr(el.editTuneIsha?.value, 0),
+          aladhan_tune: (el.editTuneAdvanced?.value || "").trim(),
+        },
+      },
+      safety_offsets: clampSafetyOffsets({
+        fajr: numOr(el.editSafetyFajr?.value, 0),
+        dhuhr: numOr(el.editSafetyDhuhr?.value, 0),
+        asr: numOr(el.editSafetyAsr?.value, 0),
+        maghrib: numOr(el.editSafetyMaghrib?.value, 0),
+        isha: numOr(el.editSafetyIsha?.value, 0),
+      }),
+      iqama_sets: iqamaParse.sets,
+      is_public: el.editIsPublic?.value !== "false",
+    };
+
+    const { error } = await state.supabase
+      .schema("prayer_hub")
+      .from("masjids")
+      .update(payload)
+      .eq("id", state.masjid.id)
+      .eq("owner_id", state.user.id);
+
+    if (error) {
+      showNotice(error.message, "error");
+      return;
+    }
+
+    showNotice(t("saved") || "Saved.", "info");
+    await loadMasjid(state.masjid.slug);
+    await refreshAll({ preferCache: false });
+  }
+
+  function handleInsertError(error, slug, name, city) {
+    if (error?.code === "23505") {
+      const detail = error.details || "";
+      if (detail.includes("slug")) {
+        showNotice(t("slugTaken") || "This slug is taken. Try another.", "error");
+        showSlugSuggestions(slug, name, city);
+        return;
+      }
+      showNotice(t("nameTaken") || "A masjid with this name and city already exists.", "error");
+      return;
+    }
+    showNotice(error.message, "error");
+  }
+
+  async function checkSlugAvailability(slug) {
+    if (!slug) {
+      setSlugStatus("");
+      return;
+    }
+    const normalized = slugify(slug);
+    if (normalized !== slug && el.createSlugInput) {
+      el.createSlugInput.value = normalized;
+    }
+    if (!state.supabase) {
+      setSlugStatus("");
+      return;
+    }
+    const { data, error } = await state.supabase
+      .schema("prayer_hub")
+      .from("masjids")
+      .select("id")
+      .eq("slug", normalized)
+      .maybeSingle();
+
+    if (error) {
+      setSlugStatus("");
+      return;
+    }
+    if (data) {
+      setSlugStatus(t("slugTaken") || "This slug is taken.", "danger");
+      showSlugSuggestions(normalized, buildName(), buildCityObject());
+    } else {
+      setSlugStatus(t("slugAvailable") || "Slug is available.", "success");
+      if (el.slugSuggestions) el.slugSuggestions.textContent = "";
+    }
+  }
+
+  function setSlugStatus(text, type) {
+    if (!el.slugStatus) return;
+    el.slugStatus.textContent = text;
+    el.slugStatus.className = "helper";
+    if (type === "danger") el.slugStatus.classList.add("is-danger");
+    if (type === "success") el.slugStatus.classList.add("is-success");
+  }
+
+  function showSlugSuggestions(slug, name, city) {
+    if (!el.slugSuggestions) return;
+    const base = slug || slugify(`${name?.tr || name?.en || ""} ${city?.tr || city?.en || ""}`.trim());
+    const suggestions = [
+      base,
+      `${base}-${randomSuffix()}`,
+      `${base}-${new Date().getFullYear()}`,
+    ].filter(Boolean);
+    el.slugSuggestions.textContent = `${t("slugSuggestions") || "Suggestions"}: ${suggestions.join(", ")}`;
+  }
+
+  function buildName() {
+    return { tr: el.createNameTr?.value || "", en: el.createNameEn?.value || "" };
+  }
+
+  function buildCityObject() {
+    return buildCity(el.createCityTr?.value, el.createCityEn?.value);
+  }
+
+  function buildCity(tr, en) {
+    const tVal = (tr || "").trim();
+    const eVal = (en || "").trim();
+    if (!tVal && !eVal) return null;
+    return { tr: tVal, en: eVal };
+  }
+
+  function addIqamaSetRow(container, preset = null) {
+    if (!container) return;
+    const set = preset || defaultIqamaSet();
+    const wrapper = document.createElement("div");
+    wrapper.className = "iqama-set";
+    wrapper.innerHTML = `
+      <div class="iqama-set__header">
+        <strong>${t("iqamaSet") || "Iqama Set"}</strong>
+        <button class="btn btn--ghost" type="button" data-action="remove">${t("remove") || "Remove"}</button>
+      </div>
+      <div class="row row--wrap">
+        <label class="field">
+          <span class="field__label">ID</span>
+          <input class="input" data-field="id" value="${escapeHtml(set.id || "")}" placeholder="main" />
+        </label>
+        <label class="field">
+          <span class="field__label">Label (TR)</span>
+          <input class="input" data-field="labelTr" value="${escapeHtml(set.label?.tr || "")}" />
+        </label>
+        <label class="field">
+          <span class="field__label">Label (EN)</span>
+          <input class="input" data-field="labelEn" value="${escapeHtml(set.label?.en || "")}" />
+        </label>
+      </div>
+      <div class="iqama-set__grid">
+        ${PRAYERS.map((p) => {
+          const offset = numOr(set.offsets?.[p], "");
+          const fixed = set.fixedTimes?.[p] || "";
+          return `
+            <label class="field">
+              <span class="field__label">${p} offset</span>
+              <input class="input" data-field="offset-${p}" type="number" min="0" inputmode="numeric" value="${offset}" />
+            </label>
+            <label class="field">
+              <span class="field__label">${p} fixed</span>
+              <input class="input" data-field="fixed-${p}" placeholder="HH:MM" value="${escapeHtml(fixed)}" />
+            </label>
+          `;
+        }).join("")}
+      </div>
+    `;
+    wrapper.querySelector("[data-action='remove']")?.addEventListener("click", () => {
+      wrapper.remove();
+    });
+    container.appendChild(wrapper);
+  }
+
+  function parseIqamaSets(container) {
+    if (!container) return { sets: [] };
+    const nodes = Array.from(container.querySelectorAll(".iqama-set"));
+    const sets = [];
+    const seen = new Set();
+
+    for (const node of nodes) {
+      const id = (node.querySelector("[data-field='id']")?.value || "").trim();
+      if (!id) return { error: t("iqamaIdRequired") || "Each iqama set needs an id." };
+      if (seen.has(id)) return { error: t("iqamaIdUnique") || "Iqama set ids must be unique." };
+      seen.add(id);
+
+      const labelTr = (node.querySelector("[data-field='labelTr']")?.value || "").trim();
+      const labelEn = (node.querySelector("[data-field='labelEn']")?.value || "").trim();
+
+      const offsets = {};
+      const fixedTimes = {};
+      for (const p of PRAYERS) {
+        const offVal = node.querySelector(`[data-field='offset-${p}']`)?.value;
+        if (offVal !== "" && offVal != null) {
+          offsets[p] = Math.max(0, Math.floor(numOr(offVal, 0)));
+        }
+        const fixedVal = (node.querySelector(`[data-field='fixed-${p}']`)?.value || "").trim();
+        if (fixedVal) {
+          if (!/^\d{2}:\d{2}$/.test(fixedVal)) {
+            return { error: t("iqamaFixedInvalid") || "Fixed time must be HH:MM." };
+          }
+          fixedTimes[p] = fixedVal;
+        }
+      }
+
+      sets.push({
+        id,
+        label: { tr: labelTr, en: labelEn },
+        offsets,
+        fixedTimes: Object.keys(fixedTimes).length ? fixedTimes : null,
+      });
+    }
+
+    return { sets };
+  }
+
+  function defaultIqamaSet() {
+    return {
+      id: "main",
+      label: { tr: "Ana", en: "Main" },
+      offsets: { fajr: 20, dhuhr: 10, asr: 10, maghrib: 5, isha: 10 },
+      fixedTimes: null,
+    };
+  }
+
+  function readMasjidCache(slug) {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.masjidCache(slug));
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj?.savedAt) return null;
+      const age = Date.now() - new Date(obj.savedAt).getTime();
+      if (age > MASJID_CACHE_TTL_MS) return null;
+      return obj.data || null;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeMasjidCache(slug, data) {
+    try {
+      localStorage.setItem(
+        STORAGE_KEYS.masjidCache(slug),
+        JSON.stringify({
+          savedAt: new Date().toISOString(),
+          data,
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  function readTimingsCache(key) {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.timingsCache(key));
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj?.savedAt) return null;
+      const age = Date.now() - new Date(obj.savedAt).getTime();
+      if (age > TIMINGS_CACHE_TTL_MS) return null;
+      return obj;
+    } catch {
+      return null;
+    }
+  }
+
+  function writeTimingsCache(key, payload) {
+    try {
+      localStorage.setItem(
+        STORAGE_KEYS.timingsCache(key),
+        JSON.stringify({
+          savedAt: new Date().toISOString(),
+          ...payload,
+        })
+      );
+    } catch {
+      // ignore
+    }
+  }
+
   function loadI18n() {
     const dictEl = document.getElementById("i18nDict");
     if (!dictEl) return { tr: {}, en: {} };
@@ -1407,6 +2198,29 @@
       selectSaved: "Seç",
       noSaved: "Kayıtlı konum yok",
       safetyNoteNone: "Görüntülenen adhan vakitlerinde ihtiyat payı yok.",
+      loginRequired: "Lütfen giriş yapın.",
+      enterEmail: "E-posta girin.",
+      loginSent: "Giriş linki gönderildi.",
+      signedOut: "Çıkış yapıldı.",
+      signedInAs: "Giriş yapan",
+      signedOutState: "Giriş yapılmadı",
+      selectMasjid: "Seç",
+      noMasjid: "Henüz mescid yok",
+      requiredFields: "Slug ve isim alanları zorunlu.",
+      timezoneInvalid: "Saat dilimi geçersiz.",
+      slugTaken: "Bu slug kullanımda.",
+      slugAvailable: "Slug kullanılabilir.",
+      slugSuggestions: "Öneriler",
+      nameTaken: "Bu isim ve şehirde bir mescid zaten var.",
+      resetDone: "Kayıtlı değerlere dönüldü.",
+      deleteConfirm: "Bu mescidi silmek istiyor musunuz?",
+      deleted: "Mescid silindi.",
+      iqamaIdRequired: "Her ikame seti için id gerekli.",
+      iqamaIdUnique: "Ikame set id'leri benzersiz olmalı.",
+      iqamaFixedInvalid: "Sabit saat HH:MM formatında olmalı.",
+      iqamaMissingOwner: "İkame seti yok. Admin → Mescid Düzenle ile ekleyin.",
+      iqamaMissing: "İkame setleri henüz tanımlı değil.",
+      iqamaMissingPublic: "İkame setleri mescid linkiyle görünür.",
     },
     i18n.tr || {}
   );
@@ -1448,17 +2262,43 @@
       selectSaved: "Select",
       noSaved: "No saved locations",
       safetyNoteNone: "Displayed adhan times have no safety offset.",
+      loginRequired: "Please sign in.",
+      enterEmail: "Enter an email.",
+      loginSent: "Login link sent.",
+      signedOut: "Signed out.",
+      signedInAs: "Signed in as",
+      signedOutState: "Not signed in",
+      selectMasjid: "Select",
+      noMasjid: "No masjid yet",
+      requiredFields: "Slug and name fields are required.",
+      timezoneInvalid: "Timezone is invalid.",
+      slugTaken: "This slug is taken.",
+      slugAvailable: "Slug is available.",
+      slugSuggestions: "Suggestions",
+      nameTaken: "A masjid with this name and city already exists.",
+      resetDone: "Reset to saved values.",
+      deleteConfirm: "Delete this masjid?",
+      deleted: "Masjid deleted.",
+      iqamaIdRequired: "Each iqama set needs an id.",
+      iqamaIdUnique: "Iqama set ids must be unique.",
+      iqamaFixedInvalid: "Fixed time must be HH:MM.",
+      iqamaMissingOwner: "No iqama sets yet. Add one in Admin → Edit Masjid.",
+      iqamaMissing: "Iqama sets are not configured yet.",
+      iqamaMissingPublic: "Iqama sets appear when a masjid link is used.",
     },
     i18n.en || {}
   );
 
-  // ---------- Helpers ----------
   function $(sel) {
     return document.querySelector(sel);
   }
 
   function showNotice(text, type = "info") {
     if (!el.notice || !el.noticeText) return;
+    if (!text) {
+      clearNotice();
+      return;
+    }
     el.notice.hidden = false;
     el.noticeText.textContent = text;
     el.notice.dataset.type = type;
@@ -1467,7 +2307,7 @@
   function clearNotice() {
     if (!el.notice) return;
     el.notice.hidden = true;
-    el.noticeText.textContent = "";
+    if (el.noticeText) el.noticeText.textContent = "";
     delete el.notice.dataset.type;
   }
 
@@ -1611,62 +2451,6 @@
     return `${date}:${tz}:${loc}:${method.methodId}:${method.school}:${method.highLatRule}:${tuneKey}`;
   }
 
-  function readTimingsCache(key) {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.timingsCache(key));
-      if (!raw) return null;
-      const obj = JSON.parse(raw);
-      if (!obj?.savedAt) return null;
-      const age = Date.now() - new Date(obj.savedAt).getTime();
-      if (age > TIMINGS_CACHE_TTL_MS) return null;
-      return obj;
-    } catch {
-      return null;
-    }
-  }
-
-  function writeTimingsCache(key, payload) {
-    try {
-      localStorage.setItem(
-        STORAGE_KEYS.timingsCache(key),
-        JSON.stringify({
-          savedAt: new Date().toISOString(),
-          ...payload,
-        })
-      );
-    } catch {
-      // ignore
-    }
-  }
-
-  function readMasjidCache(slug) {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEYS.masjidCache(slug));
-      if (!raw) return null;
-      const obj = JSON.parse(raw);
-      if (!obj?.savedAt) return null;
-      const age = Date.now() - new Date(obj.savedAt).getTime();
-      if (age > MASJID_CACHE_TTL_MS) return null;
-      return obj.data || null;
-    } catch {
-      return null;
-    }
-  }
-
-  function writeMasjidCache(slug, data) {
-    try {
-      localStorage.setItem(
-        STORAGE_KEYS.masjidCache(slug),
-        JSON.stringify({
-          savedAt: new Date().toISOString(),
-          data,
-        })
-      );
-    } catch {
-      // ignore
-    }
-  }
-
   async function fetchWithRetry(url, options = {}) {
     let lastError = null;
     for (let attempt = 0; attempt <= RETRY_LIMIT; attempt += 1) {
@@ -1703,5 +2487,39 @@
         }, wait);
       });
     };
+  }
+
+  function slugify(text) {
+    return (text || "")
+      .toString()
+      .normalize("NFKD")
+      .replace(/[^\w\s-]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  function randomSuffix() {
+    return Math.random().toString(36).slice(2, 6);
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function isValidTimezone(tz) {
+    if (!tz) return false;
+    try {
+      Intl.DateTimeFormat("en-US", { timeZone: tz });
+      return true;
+    } catch {
+      return false;
+    }
   }
 })();
