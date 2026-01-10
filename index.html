@@ -74,25 +74,13 @@
       <div class="notice__text" id="noticeText">Yükleniyor…</div>
       <button class="notice__close" id="noticeClose" type="button" aria-label="Bildirimi kapat">✕</button>
     </section>
-    <section class="setup-check" id="setupCheck" hidden>
-      <div class="setup-check__header">
-        <h2 class="h2">Setup Check</h2>
-        <button class="btn btn--ghost" id="setupCheckClose" type="button" aria-label="Kapat">✕</button>
+    <section class="setup-banner" id="setupBanner" role="status" aria-live="polite" hidden>
+      <div class="setup-banner__text" id="setupBannerText" data-i18n="schemaExposeBanner">
+        Expose prayer_hub in Supabase Settings → API → Exposed schemas
       </div>
-      <p class="muted" data-i18n="setupCheckIntro">
-        Supabase API yalnızca public şemayı görüyor. prayer_hub şemasını açmanız gerekiyor.
-      </p>
-      <ol class="setup-check__list">
-        <li data-i18n="setupCheckStep1">Supabase Dashboard → Settings → API → Exposed schemas içine <strong>prayer_hub</strong> ekleyin.</li>
-        <li data-i18n="setupCheckStep2">Anon/authenticated rollerine schema ve tablo izinleri verin.</li>
-      </ol>
-      <div class="setup-check__code">
-        <pre id="setupCheckSql">grant usage on schema prayer_hub to anon, authenticated;
-grant select on table prayer_hub.masjids to anon;
-grant select, insert, update, delete on table prayer_hub.masjids to authenticated;
-grant select on table prayer_hub.overrides to anon;
-grant select, insert, update, delete on table prayer_hub.overrides to authenticated;</pre>
-        <button class="btn btn--ghost btn--small" id="copySetupSql" type="button" data-i18n="copySql">SQL kopyala</button>
+      <div class="setup-banner__actions">
+        <button class="btn btn--ghost btn--small" id="copySetupStepsBtn" type="button" data-i18n="copyFixSteps">Copy fix steps</button>
+        <button class="btn btn--ghost btn--small" id="setupBannerClose" type="button" aria-label="Dismiss">✕</button>
       </div>
     </section>
 
@@ -468,21 +456,14 @@ grant select, insert, update, delete on table prayer_hub.overrides to authentica
           </div>
 
           <div class="builder-panel is-active" data-step="1">
-            <div class="row row--wrap">
-              <label class="field">
-                <span class="field__label" data-i18n="language">Dil</span>
-                <select id="builderLangSelect" class="select" aria-label="Language">
-                  <option value="tr">TR</option>
-                  <option value="en">EN</option>
-                </select>
-              </label>
-              <div class="builder-inline" id="builderEditWrap" hidden>
-                <span class="pill" id="builderEditLabel">—</span>
-                <button class="btn btn--ghost btn--small" id="builderUseCurrentBtn" type="button" data-i18n="editMasjid">
-                  Mescid Düzenle
-                </button>
-              </div>
+          <div class="row row--wrap">
+            <div class="builder-inline" id="builderEditWrap" hidden>
+              <span class="pill" id="builderEditLabel">—</span>
+              <button class="btn btn--ghost btn--small" id="builderUseCurrentBtn" type="button" data-i18n="editMasjid">
+                Mescid Düzenle
+              </button>
             </div>
+          </div>
 
             <div class="row row--wrap">
               <label class="field grow">
@@ -664,7 +645,10 @@ grant select, insert, update, delete on table prayer_hub.overrides to authentica
 
     <div class="toast" id="updateToast" role="status" aria-live="polite" hidden>
       <div class="toast__text" data-i18n="updateAvailable">Güncelleme hazır</div>
-      <button class="btn btn--primary" id="reloadBtn" type="button" data-i18n="reload">Yenile</button>
+      <div class="toast__actions">
+        <button class="btn btn--primary" id="reloadBtn" type="button" data-i18n="reload">Yenile</button>
+        <button class="btn btn--ghost btn--small" id="dismissUpdateBtn" type="button" aria-label="Dismiss">✕</button>
+      </div>
     </div>
 
     <script type="application/json" id="i18nDict">
