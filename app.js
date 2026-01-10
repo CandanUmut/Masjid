@@ -73,18 +73,6 @@
     slugInput: $("#slugInput"),
     openSlugBtn: $("#openSlugBtn"),
 
-    notice: $("#notice"),
-    noticeText: $("#noticeText"),
-    noticeClose: $("#noticeClose"),
-    setupBanner: $("#setupBanner"),
-    setupBannerText: $("#setupBannerText"),
-    setupBannerClose: $("#setupBannerClose"),
-    copySetupStepsBtn: $("#copySetupStepsBtn"),
-    updateToast: $("#updateToast"),
-    updateToastText: $("#updateToastText"),
-    updateToastRefresh: $("#updateToastRefresh"),
-    updateToastClose: $("#updateToastClose"),
-
     tzBadge: $("#tzBadge"),
     nextPrayerLabel: $("#nextPrayerLabel"),
     nextPrayerTime: $("#nextPrayerTime"),
@@ -219,9 +207,6 @@
     slugStatusTimer: null,
     deferredPrompt: null,
     swRegistration: null,
-    notice: null,
-    setupBannerDismissed: sessionStorage.getItem("prayerhub_setup_dismissed") === "1",
-    updateToastDismissed: sessionStorage.getItem("prayerhub_update_dismissed") === "1",
     builder: {
       step: 1,
       iqamaSets: [],
@@ -241,8 +226,6 @@
     wireSlugGate();
     wireRefresh();
     wireManualLocation();
-    wireNotice();
-    wireUpdateToast();
     wireSettings();
     wireSavedLocations();
     wireAdmin();
@@ -1289,36 +1272,6 @@
     });
   }
 
-  function wireNotice() {
-    el.noticeClose?.addEventListener("click", clearNotice);
-    el.setupBannerClose?.addEventListener("click", () => {
-      if (el.setupBanner) el.setupBanner.hidden = true;
-      state.setupBannerDismissed = true;
-      sessionStorage.setItem("prayerhub_setup_dismissed", "1");
-    });
-    el.copySetupStepsBtn?.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(buildSetupStepsText());
-        showNotice(t("copied") || "Copied!", "success");
-      } catch {
-        showNotice(t("copyFailed") || "Copy failed.", "warn");
-      }
-    });
-  }
-
-  function wireUpdateToast() {
-    el.updateToastClose?.addEventListener("click", () => {
-      if (el.updateToast) el.updateToast.hidden = true;
-      state.updateToastDismissed = true;
-      sessionStorage.setItem("prayerhub_update_dismissed", "1");
-    });
-    el.updateToastRefresh?.addEventListener("click", () => {
-      if (!state.swRegistration?.waiting) return;
-      state.swRegistration.waiting.postMessage({ type: "SKIP_WAITING" });
-      if (el.updateToast) el.updateToast.hidden = true;
-    });
-  }
-
   function wireSettings() {
     const open = () => {
       if (!el.settingsModal) return;
@@ -1557,16 +1510,6 @@
     try {
       const registration = await navigator.serviceWorker.register("./service-worker.js");
       state.swRegistration = registration;
-      maybeShowUpdateToast(registration);
-      registration.addEventListener("updatefound", () => {
-        const worker = registration.installing;
-        if (!worker) return;
-        worker.addEventListener("statechange", () => {
-          if (worker.state === "installed" && navigator.serviceWorker.controller) {
-            maybeShowUpdateToast(registration);
-          }
-        });
-      });
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         window.location.reload();
       });
@@ -2529,28 +2472,12 @@
 
   function handleSupabaseError(error, context, options = {}) {
     if (!error) return;
-    if (isSchemaExposeError(error)) {
-      showSetupBanner();
-    }
     if (options.notify && String(error.code || "").startsWith("PGRST")) {
       showNotice(friendlySupabaseError(error), "error");
     }
     if (context) {
       console.warn(`Supabase error in ${context}:`, error);
     }
-  }
-
-  function showSetupBanner() {
-    if (!el.setupBanner) return;
-    if (state.setupBannerDismissed) return;
-    el.setupBanner.hidden = false;
-  }
-
-  function buildSetupStepsText() {
-    return [
-      "Expose prayer_hub in Supabase Settings → API → Exposed schemas.",
-      "Ensure anon/authenticated roles have schema usage and table permissions.",
-    ].join("\n");
   }
 
   i18n.tr = Object.assign(
@@ -2784,13 +2711,6 @@
 
   function clearNotice() {
     setNotice(null);
-  }
-
-  function maybeShowUpdateToast(registration) {
-    if (!el.updateToast) return;
-    if (state.updateToastDismissed) return;
-    if (!registration?.waiting) return;
-    el.updateToast.hidden = false;
   }
 
   function setTodayDate(tz) {
