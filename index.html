@@ -1,0 +1,369 @@
+<!-- index.html -->
+<!doctype html>
+<html lang="tr" data-lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Mescid namaz vakitleri ve cemaat (ikame) saatleri — konuma göre otomatik, paylaşılabilir." />
+  <title>Mescid Vakitleri</title>
+
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" href="data:,">
+
+  <!-- Supabase JS (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+
+  <!-- Minimal config placeholders (fill later) -->
+  <script>
+    // TODO: Fill these before deploying
+    window.__SUPABASE_URL = "";       // e.g. https://xxxx.supabase.co
+    window.__SUPABASE_ANON_KEY = "";  // e.g. eyJhbGciOi...
+  </script>
+
+  <!-- App logic (will be created later) -->
+  <script src="./app.js" defer></script>
+</head>
+
+<body>
+  <a class="skip-link" href="#main" data-i18n="skip">İçeriğe atla</a>
+
+  <header class="topbar">
+    <div class="container topbar__inner">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">🕌</div>
+        <div class="brand__text">
+          <div class="brand__title" id="masjidName" data-i18n="masjid">Mescid</div>
+          <div class="brand__subtitle">
+            <span id="masjidCity">—</span>
+            <span class="dot" aria-hidden="true">•</span>
+            <span id="todayDate">—</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="topbar__actions">
+        <button class="btn btn--ghost" id="langToggleBtn" type="button" aria-label="Dil değiştir">
+          <span class="mono">TR / EN</span>
+        </button>
+        <button class="btn btn--ghost" id="copyLinkBtn" type="button" aria-label="Paylaşım linkini kopyala" data-i18n="copyLink">
+          Linki Kopyala
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="container">
+    <!-- Global status / errors -->
+    <section class="notice" id="notice" role="status" aria-live="polite" hidden>
+      <div class="notice__dot" aria-hidden="true"></div>
+      <div class="notice__text" id="noticeText">Yükleniyor…</div>
+      <button class="notice__close" id="noticeClose" type="button" aria-label="Bildirimi kapat">✕</button>
+    </section>
+
+    <!-- If slug is missing -->
+    <section class="card" id="slugGate" hidden>
+      <h1 class="h1" data-i18n="slugTitle">Mescid Linki</h1>
+      <p class="muted" data-i18n="slugHelp">
+        Bu sayfa genellikle paylaşılmış bir link ile açılır: /?m=mescid-slug. Slug yoksa aşağıdan gir.
+      </p>
+
+      <div class="row">
+        <label class="field">
+          <span class="field__label" data-i18n="slugLabel">Mescid Slug</span>
+          <input id="slugInput" class="input" type="text" placeholder="ör: sanjose-umut-mescid" autocomplete="off" />
+        </label>
+        <button id="openSlugBtn" class="btn" type="button" data-i18n="open">Aç</button>
+      </div>
+
+      <p class="muted small" data-i18n="slugExample">
+        Örnek: ?m=sanjose-umut-mescid | İkame seti: &set=main
+      </p>
+    </section>
+
+    <section class="grid">
+      <section class="card">
+        <div class="card__header">
+          <h2 class="h2" data-i18n="nextTitle">Sıradaki Vakit</h2>
+          <span class="badge" id="tzBadge" title="Saat dilimi">TZ: —</span>
+        </div>
+
+        <div class="next">
+          <div class="next__left">
+            <div class="next__label" id="nextPrayerLabel">—</div>
+            <div class="next__time" id="nextPrayerTime">--:--</div>
+            <div class="next__meta">
+              <span class="pill" id="nextTypePill" data-i18n="adhanOrIqama">—</span>
+              <span class="muted" id="nextMeta">—</span>
+            </div>
+          </div>
+
+          <div class="next__right">
+            <div class="countdown">
+              <div class="countdown__label" data-i18n="remaining">Kalan</div>
+              <div class="countdown__value" id="countdown">--:--:--</div>
+            </div>
+
+            <div class="stack">
+              <button class="btn btn--ghost" id="refreshBtn" type="button" data-i18n="refresh">Yenile</button>
+              <button class="btn btn--ghost" id="useLocationBtn" type="button" data-i18n="getLocation">Konum Al</button>
+            </div>
+          </div>
+        </div>
+
+        <hr class="sep" />
+
+        <div class="row row--wrap">
+          <div class="kv">
+            <div class="kv__k" data-i18n="location">Konum</div>
+            <div class="kv__v" id="locationStatus">—</div>
+          </div>
+          <div class="kv">
+            <div class="kv__k" data-i18n="source">Kaynak</div>
+            <div class="kv__v" id="providerStatus">—</div>
+          </div>
+          <div class="kv">
+            <div class="kv__k" data-i18n="iqamaSet">İkame Seti</div>
+            <div class="kv__v">
+              <select id="iqamaSetSelect" class="select" aria-label="İkame seti seç">
+                <option value="">—</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <details class="details" id="manualLocationDetails">
+          <summary data-i18n="manualLocationSummary">Konum izni yoksa şehir/adres gir</summary>
+          <div class="row row--wrap">
+            <label class="field grow">
+              <span class="field__label" data-i18n="manualLocationLabel">Şehir / Adres</span>
+              <input id="manualLocationInput" class="input" type="text" placeholder="ör: San Jose, CA" autocomplete="street-address" />
+            </label>
+            <button id="manualLocationBtn" class="btn" type="button" data-i18n="search">Ara</button>
+          </div>
+          <p class="muted small" data-i18n="manualLocationNote">
+            Not: Bu giriş yaklaşık konumla vakit çekmek içindir. En doğru sonuç için konum izni önerilir.
+          </p>
+        </details>
+      </section>
+
+      <section class="card">
+        <div class="card__header">
+          <h2 class="h2" data-i18n="todayTitle">Bugünün Vakitleri</h2>
+          <span class="badge" id="dataFreshnessBadge" title="Veri durumu">—</span>
+        </div>
+
+        <div class="table-wrap" role="region" aria-label="Namaz vakitleri tablosu" tabindex="0">
+          <table class="table" id="timesTable">
+            <thead>
+              <tr>
+                <th scope="col" data-i18n="prayer">Vakit</th>
+                <th scope="col" class="col-time" data-i18n="adhanSafe">Adhan (İhtiyatlı)</th>
+                <th scope="col" class="col-time" data-i18n="iqama">İkame</th>
+                <th scope="col" data-i18n="status">Durum</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-prayer="fajr">
+                <th scope="row">Fajr</th>
+                <td data-label="Adhan" class="mono">--:--</td>
+                <td data-label="Iqama" class="mono">--:--</td>
+                <td data-label="Status" class="muted">—</td>
+              </tr>
+              <tr data-prayer="dhuhr">
+                <th scope="row">Dhuhr</th>
+                <td data-label="Adhan" class="mono">--:--</td>
+                <td data-label="Iqama" class="mono">--:--</td>
+                <td data-label="Status" class="muted">—</td>
+              </tr>
+              <tr data-prayer="asr">
+                <th scope="row">Asr</th>
+                <td data-label="Adhan" class="mono">--:--</td>
+                <td data-label="Iqama" class="mono">--:--</td>
+                <td data-label="Status" class="muted">—</td>
+              </tr>
+              <tr data-prayer="maghrib">
+                <th scope="row">Maghrib</th>
+                <td data-label="Adhan" class="mono">--:--</td>
+                <td data-label="Iqama" class="mono">--:--</td>
+                <td data-label="Status" class="muted">—</td>
+              </tr>
+              <tr data-prayer="isha">
+                <th scope="row">Isha</th>
+                <td data-label="Adhan" class="mono">--:--</td>
+                <td data-label="Iqama" class="mono">--:--</td>
+                <td data-label="Status" class="muted">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="foot">
+          <div class="muted small" id="disclaimer" data-i18n="disclaimer">
+            İhtiyat ve yöntem detayları aşağıdaki “Detaylar” bölümünde görünür.
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="card">
+      <div class="card__header">
+        <h2 class="h2" data-i18n="detailsTitle">Ayarlar / Detaylar</h2>
+        <span class="badge badge--soft" id="methodBadge">Method: —</span>
+      </div>
+
+      <div class="details-grid">
+        <details class="details" open>
+          <summary data-i18n="calcSummary">Hesaplama yöntemi</summary>
+          <div class="kvlist">
+            <div class="kv">
+              <div class="kv__k" data-i18n="provider">Provider</div>
+              <div class="kv__v" id="calcProvider">—</div>
+            </div>
+            <div class="kv">
+              <div class="kv__k" data-i18n="methodId">Method ID</div>
+              <div class="kv__v" id="calcMethodId">—</div>
+            </div>
+            <div class="kv">
+              <div class="kv__k" data-i18n="asrSchool">Asr (School)</div>
+              <div class="kv__v" id="calcSchool">—</div>
+            </div>
+            <div class="kv">
+              <div class="kv__k" data-i18n="highLat">High Latitude Rule</div>
+              <div class="kv__v" id="calcHighLat">—</div>
+            </div>
+            <div class="kv">
+              <div class="kv__k" data-i18n="tune">Tune/Adjust</div>
+              <div class="kv__v" id="calcTune">—</div>
+            </div>
+          </div>
+
+          <p class="muted small" data-i18n="asrNote">
+            Not: Asr “hanafi” daha geç çıkabilir. Bu ayar mescid profilinde şeffafça belirtilir.
+          </p>
+        </details>
+
+        <details class="details">
+          <summary data-i18n="safetySummary">İhtiyat (Safety Buffer) dakikaları</summary>
+          <div class="kvlist" id="safetyList">
+            <div class="kv"><div class="kv__k">Fajr</div><div class="kv__v mono" data-safety="fajr">—</div></div>
+            <div class="kv"><div class="kv__k">Dhuhr</div><div class="kv__v mono" data-safety="dhuhr">—</div></div>
+            <div class="kv"><div class="kv__k">Asr</div><div class="kv__v mono" data-safety="asr">—</div></div>
+            <div class="kv"><div class="kv__k">Maghrib</div><div class="kv__v mono" data-safety="maghrib">—</div></div>
+            <div class="kv"><div class="kv__k">Isha</div><div class="kv__v mono" data-safety="isha">—</div></div>
+          </div>
+        </details>
+
+        <details class="details">
+          <summary data-i18n="shareSummary">Paylaş</summary>
+          <div class="row row--wrap">
+            <label class="field grow">
+              <span class="field__label" data-i18n="shareLinkLabel">Paylaşım Linki</span>
+              <input class="input mono" id="shareLinkInput" type="text" readonly value="" />
+            </label>
+            <button class="btn" id="copyLinkBtn2" type="button" data-i18n="copy">Kopyala</button>
+          </div>
+          <p class="muted small" data-i18n="shareNote">
+            Link formatı: <code>/?m=&lt;slug&gt;</code> veya <code>/?m=&lt;slug&gt;&amp;set=&lt;iqamaSetId&gt;</code>
+          </p>
+        </details>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="muted small" data-i18n="footer">
+        Kaynaklar ve yöntem bilgisi mescid profilinden gelir. Bu sayfa yalnızca bilgi amaçlıdır.
+      </div>
+    </footer>
+
+    <!-- Hidden i18n dictionary (app.js will use these keys) -->
+    <script type="application/json" id="i18nDict">
+    {
+      "tr": {
+        "skip": "İçeriğe atla",
+        "masjid": "Mescid",
+        "copyLink": "Linki Kopyala",
+        "slugTitle": "Mescid Linki",
+        "slugHelp": "Bu sayfa genellikle paylaşılmış bir link ile açılır: /?m=mescid-slug. Slug yoksa aşağıdan gir.",
+        "slugLabel": "Mescid Slug",
+        "open": "Aç",
+        "slugExample": "Örnek: ?m=sanjose-umut-mescid | İkame seti: &set=main",
+        "nextTitle": "Sıradaki Vakit",
+        "adhanOrIqama": "—",
+        "remaining": "Kalan",
+        "refresh": "Yenile",
+        "getLocation": "Konum Al",
+        "location": "Konum",
+        "source": "Kaynak",
+        "iqamaSet": "İkame Seti",
+        "manualLocationSummary": "Konum izni yoksa şehir/adres gir",
+        "manualLocationLabel": "Şehir / Adres",
+        "search": "Ara",
+        "manualLocationNote": "Not: Bu giriş yaklaşık konumla vakit çekmek içindir. En doğru sonuç için konum izni önerilir.",
+        "todayTitle": "Bugünün Vakitleri",
+        "prayer": "Vakit",
+        "adhanSafe": "Adhan (İhtiyatlı)",
+        "iqama": "İkame",
+        "status": "Durum",
+        "disclaimer": "İhtiyat ve yöntem detayları aşağıdaki “Detaylar” bölümünde görünür.",
+        "detailsTitle": "Ayarlar / Detaylar",
+        "calcSummary": "Hesaplama yöntemi",
+        "provider": "Provider",
+        "methodId": "Method ID",
+        "asrSchool": "Asr (School)",
+        "highLat": "High Latitude Rule",
+        "tune": "Tune/Adjust",
+        "asrNote": "Not: Asr “hanafi” daha geç çıkabilir. Bu ayar mescid profilinde şeffafça belirtilir.",
+        "safetySummary": "İhtiyat (Safety Buffer) dakikaları",
+        "shareSummary": "Paylaş",
+        "shareLinkLabel": "Paylaşım Linki",
+        "copy": "Kopyala",
+        "shareNote": "Link formatı: /?m=<slug> veya /?m=<slug>&set=<iqamaSetId>",
+        "footer": "Kaynaklar ve yöntem bilgisi mescid profilinden gelir. Bu sayfa yalnızca bilgi amaçlıdır."
+      },
+      "en": {
+        "skip": "Skip to content",
+        "masjid": "Masjid",
+        "copyLink": "Copy link",
+        "slugTitle": "Masjid Link",
+        "slugHelp": "This page is usually opened via a shared link: /?m=masjid-slug. If missing, enter it below.",
+        "slugLabel": "Masjid Slug",
+        "open": "Open",
+        "slugExample": "Example: ?m=sanjose-umut-mescid | Iqama set: &set=main",
+        "nextTitle": "Next Prayer",
+        "adhanOrIqama": "—",
+        "remaining": "Remaining",
+        "refresh": "Refresh",
+        "getLocation": "Get location",
+        "location": "Location",
+        "source": "Source",
+        "iqamaSet": "Iqama Set",
+        "manualLocationSummary": "If location is blocked, enter city/address",
+        "manualLocationLabel": "City / Address",
+        "search": "Search",
+        "manualLocationNote": "Note: This uses an approximate location to fetch timings. For best accuracy, allow location access.",
+        "todayTitle": "Today's Timings",
+        "prayer": "Prayer",
+        "adhanSafe": "Adhan (Safety-adjusted)",
+        "iqama": "Iqama",
+        "status": "Status",
+        "disclaimer": "Safety offsets and calculation details are shown in the “Details” section below.",
+        "detailsTitle": "Settings / Details",
+        "calcSummary": "Calculation method",
+        "provider": "Provider",
+        "methodId": "Method ID",
+        "asrSchool": "Asr (School)",
+        "highLat": "High Latitude Rule",
+        "tune": "Tune/Adjust",
+        "asrNote": "Note: Hanafi Asr can be later. This will be transparently shown in the masjid profile.",
+        "safetySummary": "Safety offsets (minutes)",
+        "shareSummary": "Share",
+        "shareLinkLabel": "Share link",
+        "copy": "Copy",
+        "shareNote": "Link format: /?m=<slug> or /?m=<slug>&set=<iqamaSetId>",
+        "footer": "Method and settings come from the masjid profile. This page is informational."
+      }
+    }
+    </script>
+  </main>
+</body>
+</html>
