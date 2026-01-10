@@ -53,6 +53,8 @@
   const el = {
     root: document.documentElement,
     masjidName: $("#masjidName"),
+    masjidSubtitle: $("#masjidSubtitle"),
+    masjidSubtitleSep: $("#masjidSubtitleSep"),
     masjidCity: $("#masjidCity"),
     todayDate: $("#todayDate"),
     langToggleBtn: $("#langToggleBtn"),
@@ -67,10 +69,6 @@
     installBtn: $("#installBtn"),
     iosInstallTip: $("#iosInstallTip"),
     offlineBadge: $("#offlineBadge"),
-    updateToast: $("#updateToast"),
-    reloadBtn: $("#reloadBtn"),
-    dismissUpdateBtn: $("#dismissUpdateBtn"),
-
     slugGate: $("#slugGate"),
     slugInput: $("#slugInput"),
     openSlugBtn: $("#openSlugBtn"),
@@ -390,7 +388,7 @@
     } catch (err) {
       console.warn("Masjid load failed:", err?.message);
       const msg = String(err?.message || "");
-      const noticeText = msg.includes("schema must be one of the following")
+      const noticeText = isSchemaExposeError({ code: err?.code, message: msg })
         ? friendlySupabaseError({ code: "PGRST", message: msg })
         : t("masjidNotFound") || "Masjid not found. Check the link or slug.";
       showNotice(noticeText, "error");
@@ -950,10 +948,20 @@
 
   function renderMasjidHeader() {
     if (!state.masjid) return;
-    const name = pickLang(state.masjid.name, state.lang) || t("masjid") || "Masjid";
-    const city = state.masjid.city ? pickLang(state.masjid.city, state.lang) : null;
+    const hasSlug = Boolean(state.slug);
+    const masjidName = pickLang(state.masjid.name, state.lang) || t("masjid") || "Masjid";
+    const name = hasSlug ? masjidName : t("appTitle") || "Mescid Vakitleri";
+    const city = hasSlug && state.masjid.city ? pickLang(state.masjid.city, state.lang) : null;
+    const subtitleText = hasSlug ? t("todaySubtitle") || "Today's Timings" : "";
 
     el.masjidName.textContent = name;
+    if (el.masjidSubtitle) {
+      el.masjidSubtitle.textContent = subtitleText;
+      el.masjidSubtitle.hidden = !subtitleText;
+    }
+    if (el.masjidSubtitleSep) {
+      el.masjidSubtitleSep.hidden = !subtitleText;
+    }
     el.masjidCity.textContent = city || "—";
   }
 
@@ -1527,42 +1535,12 @@
     try {
       const registration = await navigator.serviceWorker.register("./service-worker.js");
       state.swRegistration = registration;
-
-      if (registration.waiting) {
-        showUpdateToast();
-      }
-
-      registration.addEventListener("updatefound", () => {
-        const installing = registration.installing;
-        if (!installing) return;
-        installing.addEventListener("statechange", () => {
-          if (installing.state === "installed" && navigator.serviceWorker.controller) {
-            showUpdateToast();
-          }
-        });
-      });
-
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         window.location.reload();
-      });
-
-      el.reloadBtn?.addEventListener("click", () => {
-        if (registration.waiting) registration.waiting.postMessage({ type: "SKIP_WAITING" });
-        setTimeout(() => window.location.reload(), 150);
-      });
-      el.dismissUpdateBtn?.addEventListener("click", () => {
-        if (el.updateToast) el.updateToast.hidden = true;
-        sessionStorage.setItem("prayerhub_update_dismissed", "1");
       });
     } catch (err) {
       console.warn("Service worker registration failed", err);
     }
-  }
-
-  function showUpdateToast() {
-    if (!el.updateToast) return;
-    if (sessionStorage.getItem("prayerhub_update_dismissed") === "1") return;
-    el.updateToast.hidden = false;
   }
 
   function renderMethodOptions() {
@@ -2498,10 +2476,17 @@
     return i18n?.[state.lang]?.[key] || i18n?.tr?.[key] || "";
   }
 
+  function isSchemaExposeError(error) {
+    if (!error) return false;
+    const code = typeof error === "object" ? String(error.code || "") : "";
+    const message = typeof error === "string" ? error : String(error.message || "");
+    return code === "PGRST106" || message.includes("schema must be one of the following");
+  }
+
   function friendlySupabaseError(error) {
     if (!error) return "";
     if (String(error.code || "").startsWith("PGRST")) {
-      if (String(error.message || "").includes("schema must be one of the following")) {
+      if (isSchemaExposeError(error)) {
         return t("schemaExposeBanner") || "Expose prayer_hub in Supabase Settings → API → Exposed schemas";
       }
       return t("pgrstError") || "Supabase API is not available for this request.";
@@ -2511,7 +2496,8 @@
 
   function handleSupabaseError(error, context, options = {}) {
     if (!error) return;
-    if (String(error.message || "").includes("schema must be one of the following")) {
+    if (isSchemaExposeError(error)) {
+      sessionStorage.removeItem("prayerhub_setup_dismissed");
       showSetupBanner();
     }
     if (options.notify && String(error.code || "").startsWith("PGRST")) {
@@ -2538,13 +2524,13 @@
   i18n.tr = Object.assign(
     {
       loadingMasjid: "Mescid profili yükleniyor…",
+      appTitle: "Mescid Vakitleri",
+      todaySubtitle: "Bugünün Vakitleri",
       install: "Yükle",
       installTip: "iOS için: Paylaş → Ana Ekrana Ekle",
       offline: "Çevrimdışı",
       login: "Giriş",
       loginHelp: "Giriş linki e-posta adresinize gönderilir.",
-      updateAvailable: "Güncelleme hazır",
-      reload: "Yenile",
       locResolving: "Konum alınıyor…",
       locManual: "Konum kapalı — şehir/adres gir.",
       locSearching: "Konum aranıyor…",
@@ -2638,13 +2624,13 @@
   i18n.en = Object.assign(
     {
       loadingMasjid: "Loading masjid profile…",
+      appTitle: "Masjid Timings",
+      todaySubtitle: "Today's Timings",
       install: "Install",
       installTip: "On iOS: Share → Add to Home Screen",
       offline: "Offline",
       login: "Login",
       loginHelp: "A login link will be sent to your email.",
-      updateAvailable: "Update available",
-      reload: "Reload",
       locResolving: "Getting location…",
       locManual: "Location blocked — enter city/address.",
       locSearching: "Searching location…",
@@ -2741,12 +2727,13 @@
 
   function showNotice(text, type = "info") {
     if (!el.notice || !el.noticeText) return;
-    if (!text) {
+    const message = String(text ?? "").trim();
+    if (!message) {
       clearNotice();
       return;
     }
     el.notice.hidden = false;
-    el.noticeText.textContent = text;
+    el.noticeText.textContent = message;
     el.notice.dataset.type = type;
   }
 
