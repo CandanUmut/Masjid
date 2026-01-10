@@ -69,6 +69,7 @@
     offlineBadge: $("#offlineBadge"),
     updateToast: $("#updateToast"),
     reloadBtn: $("#reloadBtn"),
+    dismissUpdateBtn: $("#dismissUpdateBtn"),
 
     slugGate: $("#slugGate"),
     slugInput: $("#slugInput"),
@@ -77,10 +78,10 @@
     notice: $("#notice"),
     noticeText: $("#noticeText"),
     noticeClose: $("#noticeClose"),
-    setupCheck: $("#setupCheck"),
-    setupCheckClose: $("#setupCheckClose"),
-    setupCheckSql: $("#setupCheckSql"),
-    copySetupSql: $("#copySetupSql"),
+    setupBanner: $("#setupBanner"),
+    setupBannerText: $("#setupBannerText"),
+    setupBannerClose: $("#setupBannerClose"),
+    copySetupStepsBtn: $("#copySetupStepsBtn"),
 
     tzBadge: $("#tzBadge"),
     nextPrayerLabel: $("#nextPrayerLabel"),
@@ -147,7 +148,6 @@
     signOutBtn: $("#signOutBtn"),
     authStatus: $("#authStatus"),
 
-    builderLangSelect: $("#builderLangSelect"),
     builderEditWrap: $("#builderEditWrap"),
     builderEditLabel: $("#builderEditLabel"),
     builderUseCurrentBtn: $("#builderUseCurrentBtn"),
@@ -1275,15 +1275,13 @@
 
   function wireNotice() {
     el.noticeClose?.addEventListener("click", clearNotice);
-    el.setupCheckClose?.addEventListener("click", () => {
-      if (el.setupCheck) el.setupCheck.hidden = true;
-      localStorage.setItem("prayerhub_setup_dismissed", "1");
+    el.setupBannerClose?.addEventListener("click", () => {
+      if (el.setupBanner) el.setupBanner.hidden = true;
+      sessionStorage.setItem("prayerhub_setup_dismissed", "1");
     });
-    el.copySetupSql?.addEventListener("click", async () => {
-      const text = el.setupCheckSql?.textContent || "";
-      if (!text) return;
+    el.copySetupStepsBtn?.addEventListener("click", async () => {
       try {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.writeText(buildSetupStepsText());
         showNotice(t("copied") || "Copied!", "success");
       } catch {
         showNotice(t("copyFailed") || "Copy failed.", "warn");
@@ -1374,38 +1372,46 @@
     el.loginModal?.querySelector("[data-close='login']")?.addEventListener("click", closeLogin);
 
     el.loginSendBtn?.addEventListener("click", async () => {
+      if (el.loginSendBtn?.disabled) return;
       const email = (el.loginEmailInput?.value || "").trim();
-      if (!email) return showNotice(t("enterEmail") || "Enter an email.", "info");
-      if (!state.supabase) return;
-      const baseUrl = location.origin + location.pathname;
-      const { error } = await state.supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: baseUrl },
-      });
-      if (error) {
-        showNotice(error.message, "error");
+      if (!email) {
+        showNotice(t("enterEmail") || "Enter an email.", "info");
+        if (el.loginStatus) el.loginStatus.textContent = t("enterEmail") || "Enter an email.";
         return;
       }
-      if (el.loginStatus) el.loginStatus.textContent = t("loginSent") || "Login link sent.";
-      showNotice(t("loginSent") || "Login link sent. Check your email.", "info");
+      if (!isValidEmail(email)) {
+        showNotice(t("emailInvalid") || "Enter a valid email.", "error");
+        if (el.loginStatus) el.loginStatus.textContent = t("emailInvalid") || "Enter a valid email.";
+        return;
+      }
+      if (!state.supabase) return;
+      const baseUrl = location.origin + location.pathname;
+      const original = el.loginSendBtn.textContent;
+      el.loginSendBtn.disabled = true;
+      el.loginSendBtn.textContent = t("sending") || "Sending...";
+      try {
+        const { error } = await state.supabase.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: baseUrl },
+        });
+        if (error) {
+          showNotice(error.message, "error");
+          if (el.loginStatus) el.loginStatus.textContent = error.message;
+          return;
+        }
+        const successMsg = t("loginSentSuccess") || "Link sent. Check your email.";
+        if (el.loginStatus) el.loginStatus.textContent = successMsg;
+        showNotice(successMsg, "success");
+      } finally {
+        el.loginSendBtn.disabled = false;
+        el.loginSendBtn.textContent = original;
+      }
     });
 
     el.signOutBtn?.addEventListener("click", async () => {
       if (!state.supabase) return;
       await state.supabase.auth.signOut();
       showNotice(t("signedOut") || "Signed out.", "info");
-    });
-
-    el.builderLangSelect?.addEventListener("change", () => {
-      const nextLang = el.builderLangSelect.value;
-      if (nextLang !== "tr" && nextLang !== "en") return;
-      state.lang = nextLang;
-      localStorage.setItem(STORAGE_KEYS.lang, state.lang);
-      applyLanguage(state.lang);
-      renderMethodControls();
-      renderMethodOptions();
-      renderIqamaSelect();
-      renderBuilderIqamaSetSelect();
     });
 
     el.builderNameEnToggle?.addEventListener("change", () => {
@@ -1541,9 +1547,12 @@
       });
 
       el.reloadBtn?.addEventListener("click", () => {
-        if (registration.waiting) {
-          registration.waiting.postMessage({ type: "SKIP_WAITING" });
-        }
+        if (registration.waiting) registration.waiting.postMessage({ type: "SKIP_WAITING" });
+        setTimeout(() => window.location.reload(), 150);
+      });
+      el.dismissUpdateBtn?.addEventListener("click", () => {
+        if (el.updateToast) el.updateToast.hidden = true;
+        sessionStorage.setItem("prayerhub_update_dismissed", "1");
       });
     } catch (err) {
       console.warn("Service worker registration failed", err);
@@ -1552,6 +1561,7 @@
 
   function showUpdateToast() {
     if (!el.updateToast) return;
+    if (sessionStorage.getItem("prayerhub_update_dismissed") === "1") return;
     el.updateToast.hidden = false;
   }
 
@@ -1853,7 +1863,6 @@
   }
 
   function initBuilder() {
-    if (el.builderLangSelect) el.builderLangSelect.value = state.lang;
     if (state.isOwner && state.masjid) {
       syncBuilderFromMasjid(state.masjid);
     } else {
@@ -2091,7 +2100,7 @@
 
   async function handleSaveMasjid() {
     if (!state.user) {
-      showNotice(t("loginRequired") || "Please sign in to create a masjid.", "info");
+      showNotice(t("loginRequired") || "Login required", "info");
       return;
     }
     const result = collectBuilderPayload();
@@ -2100,6 +2109,12 @@
       return;
     }
     if (!state.supabase) return;
+    const { data: userData, error: userError } = await state.supabase.auth.getUser();
+    if (userError || !userData?.user) {
+      showNotice(t("loginRequired") || "Login required", "info");
+      return;
+    }
+    state.user = userData.user;
     const payload = result.payload;
     const isEditing = Boolean(state.isOwner && state.masjid?.id);
 
@@ -2123,7 +2138,7 @@
       return;
     }
 
-    payload.owner_id = state.user.id;
+    payload.owner_id = userData.user.id;
     const { data, error } = await state.supabase
       .from("masjids")
       .insert(payload)
@@ -2133,11 +2148,14 @@
       handleInsertError(error, payload.slug, payload.name, payload.city);
       return;
     }
+    showNotice(t("saved") || "Saved.", "success");
     const firstSetId = data?.iqama_sets?.[0]?.id || "";
     const url = new URL(location.href);
     url.searchParams.set("m", data.slug);
     if (firstSetId) url.searchParams.set("set", firstSetId);
-    location.href = url.toString();
+    setTimeout(() => {
+      location.href = url.toString();
+    }, 300);
   }
 
   function handleInsertError(error, slug, name, city) {
@@ -2474,9 +2492,6 @@
     if (el.saveLocationLabelInput) {
       el.saveLocationLabelInput.placeholder = lang === "en" ? "e.g. Home" : "ör: Ev";
     }
-    if (el.builderLangSelect) {
-      el.builderLangSelect.value = lang;
-    }
   }
 
   function t(key) {
@@ -2487,7 +2502,7 @@
     if (!error) return "";
     if (String(error.code || "").startsWith("PGRST")) {
       if (String(error.message || "").includes("schema must be one of the following")) {
-        return t("schemaExpose") || "Expose the prayer_hub schema in Supabase API settings.";
+        return t("schemaExposeBanner") || "Expose prayer_hub in Supabase Settings → API → Exposed schemas";
       }
       return t("pgrstError") || "Supabase API is not available for this request.";
     }
@@ -2497,7 +2512,7 @@
   function handleSupabaseError(error, context, options = {}) {
     if (!error) return;
     if (String(error.message || "").includes("schema must be one of the following")) {
-      showSetupCheck();
+      showSetupBanner();
     }
     if (options.notify && String(error.code || "").startsWith("PGRST")) {
       showNotice(friendlySupabaseError(error), "error");
@@ -2507,10 +2522,17 @@
     }
   }
 
-  function showSetupCheck() {
-    if (!el.setupCheck) return;
-    if (localStorage.getItem("prayerhub_setup_dismissed") === "1") return;
-    el.setupCheck.hidden = false;
+  function showSetupBanner() {
+    if (!el.setupBanner) return;
+    if (sessionStorage.getItem("prayerhub_setup_dismissed") === "1") return;
+    el.setupBanner.hidden = false;
+  }
+
+  function buildSetupStepsText() {
+    return [
+      "Expose prayer_hub in Supabase Settings → API → Exposed schemas.",
+      "Ensure anon/authenticated roles have schema usage and table permissions.",
+    ].join("\n");
   }
 
   i18n.tr = Object.assign(
@@ -2557,7 +2579,10 @@
       selectSaved: "Seç",
       noSaved: "Kayıtlı konum yok",
       safetyNoteNone: "Görüntülenen adhan vakitlerinde ihtiyat payı yok.",
-      loginRequired: "Lütfen giriş yapın.",
+      loginRequired: "Login required",
+      loginSentSuccess: "Link gönderildi. E-postanı kontrol et.",
+      emailInvalid: "Geçerli bir e-posta girin.",
+      sending: "Gönderiliyor...",
       enterEmail: "E-posta girin.",
       loginSent: "Giriş linki gönderildi.",
       signedOut: "Çıkış yapıldı.",
@@ -2601,12 +2626,9 @@
       iqamaMissing: "İkame setleri henüz tanımlı değil.",
       iqamaMissingPublic: "İkame setleri mescid linkiyle görünür.",
       createDefaultSet: "Varsayılan set oluştur",
-      setupCheckIntro: "Supabase API yalnızca public şemayı görüyor. prayer_hub şemasını açmanız gerekiyor.",
-      setupCheckStep1: "Supabase Dashboard → Settings → API → Exposed schemas içine prayer_hub ekleyin.",
-      setupCheckStep2: "Anon/authenticated rollerine schema ve tablo izinleri verin.",
-      copySql: "SQL kopyala",
+      schemaExposeBanner: "Supabase Settings → API → Exposed schemas içinde prayer_hub açın.",
+      copyFixSteps: "Düzeltme adımlarını kopyala",
       copyFailed: "Kopyalama başarısız.",
-      schemaExpose: "Supabase API ayarlarında prayer_hub şemasını açın.",
       pgrstError: "Supabase API isteği başarısız oldu. Ayarları kontrol edin.",
       unexpectedError: "Beklenmeyen hata oluştu.",
     },
@@ -2657,7 +2679,10 @@
       selectSaved: "Select",
       noSaved: "No saved locations",
       safetyNoteNone: "Displayed adhan times have no safety offset.",
-      loginRequired: "Please sign in.",
+      loginRequired: "Login required",
+      loginSentSuccess: "Link sent. Check your email.",
+      emailInvalid: "Enter a valid email.",
+      sending: "Sending...",
       enterEmail: "Enter an email.",
       loginSent: "Login link sent.",
       signedOut: "Signed out.",
@@ -2701,12 +2726,9 @@
       iqamaMissing: "Iqama sets are not configured yet.",
       iqamaMissingPublic: "Iqama sets appear when a masjid link is used.",
       createDefaultSet: "Create default set",
-      setupCheckIntro: "Supabase API only sees the public schema. You need to expose prayer_hub.",
-      setupCheckStep1: "Supabase Dashboard → Settings → API → Exposed schemas: add prayer_hub.",
-      setupCheckStep2: "Grant usage + table permissions to anon/authenticated roles.",
-      copySql: "Copy SQL",
+      schemaExposeBanner: "Expose prayer_hub in Supabase Settings → API → Exposed schemas",
+      copyFixSteps: "Copy fix steps",
       copyFailed: "Copy failed.",
-      schemaExpose: "Expose the prayer_hub schema in Supabase API settings.",
       pgrstError: "Supabase API request failed. Check API settings.",
       unexpectedError: "Unexpected error.",
     },
@@ -2945,5 +2967,9 @@
     } catch {
       return false;
     }
+  }
+
+  function isValidEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   }
 })();
