@@ -64,7 +64,9 @@
         <button class="btn btn--ghost" id="settingsBtn" type="button" aria-label="Ayarları aç" data-i18n="settings">
           Ayarlar
         </button>
-        <span class="user-badge" id="userBadge" hidden></span>
+        <button class="btn btn--ghost" id="nearbyBtn" type="button" aria-label="Yakındaki mescidleri göster" data-i18n="nearby">
+          Yakındaki
+        </button>
         <button class="btn btn--ghost" id="loginBtn" type="button" aria-label="Giriş yap" data-i18n="login">
           Login
         </button>
@@ -74,9 +76,7 @@
         <button class="btn btn--ghost" id="langToggleBtn" type="button" aria-label="Dil değiştir">
           <span class="mono">TR / EN</span>
         </button>
-        <button class="btn btn--ghost" id="copyLinkBtn" type="button" aria-label="Paylaşım linkini kopyala" data-i18n="copyLink">
-          Linki Kopyala
-        </button>
+        <span class="user-badge" id="userBadge" hidden></span>
       </div>
     </div>
   </header>
@@ -317,11 +317,7 @@
     </footer>
 
     <div class="action-bar" id="actionBar" aria-label="Hızlı işlemler">
-      <button class="action-bar__btn" id="actionRefreshBtn" type="button" data-i18n="refresh">Yenile</button>
-      <button class="action-bar__btn" id="actionLocationBtn" type="button" data-i18n="getLocation">Konum Al</button>
       <button class="action-bar__btn" id="actionNearbyBtn" type="button" data-i18n="nearby">Yakındaki</button>
-      <button class="action-bar__btn" id="actionSettingsBtn" type="button" data-i18n="settings">Ayarlar</button>
-      <button class="action-bar__btn" id="actionAdminBtn" type="button" data-i18n="admin" hidden>Admin</button>
     </div>
 
     <div class="modal" id="nearbyModal" hidden>
@@ -711,9 +707,15 @@
         "nearbyTitle": "Yakındaki Mescidler",
         "radius": "Yarıçap",
         "km": "km",
-        "locationRequiredNearby": "Yakındaki mescidleri görmek için konum izni gerekli.",
+        "loadingNearby": "Yakındaki mescidler aranıyor…",
+        "locationRequiredNearby": "Yakındaki mescidleri görmek için konum izni verin veya manuel konum girin.",
         "noNearbyResults": "Yakında kayıtlı mescid bulunamadı.",
+        "noNearbyResultsRadius": "{radius} km içinde koordinatlı, herkese açık mescid bulunamadı.",
         "useMyLocation": "Konumumu kullan",
+        "locationSet": "Konum ayarlandı",
+        "geoDenied": "Konum izni reddedildi.",
+        "geoUnavailable": "Konum bilgisi alınamadı.",
+        "geoTimeout": "Konum isteği zaman aşımına uğradı.",
         "slugExample": "Örnek: ?m=sanjose-umut-mescid | İkame seti: &set=main",
         "nextTitle": "Şimdi / Sıradaki",
         "now": "Şimdi",
@@ -819,9 +821,15 @@
         "nearbyTitle": "Nearby Masjids",
         "radius": "Radius",
         "km": "km",
-        "locationRequiredNearby": "Location permission is required to find nearby masjids.",
+        "loadingNearby": "Searching nearby masjids…",
+        "locationRequiredNearby": "Allow location access or enter a manual location to find nearby masjids.",
         "noNearbyResults": "No nearby masjids found.",
+        "noNearbyResultsRadius": "No public masjids with coordinates found within {radius} km.",
         "useMyLocation": "Use my location",
+        "locationSet": "Location set",
+        "geoDenied": "Location permission denied.",
+        "geoUnavailable": "Location is unavailable.",
+        "geoTimeout": "Location request timed out.",
         "slugExample": "Example: ?m=sanjose-umut-mescid | Iqama set: &set=main",
         "nextTitle": "Now / Next",
         "now": "Now",

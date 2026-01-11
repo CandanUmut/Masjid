@@ -63,6 +63,7 @@
     copyLinkBtn2: $("#copyLinkBtn2"),
     shareLinkInput: $("#shareLinkInput"),
     settingsBtn: $("#settingsBtn"),
+    nearbyBtn: $("#nearbyBtn"),
     adminBtn: $("#adminBtn"),
     loginBtn: $("#loginBtn"),
     userBadge: $("#userBadge"),
@@ -1136,22 +1137,62 @@
     updateTimeUI(Date.now());
   }
 
+  function getCountdownState(nowMs, schedule) {
+    const now = new Date(nowMs);
+    const activeWindow = findActivePrayerWindow(now, schedule);
+    const nextPrayer = findNextPrayerStart(now, schedule);
+    const activeRemainingMs = activeWindow ? activeWindow.end.getTime() - nowMs : null;
+    const nextRemainingMs = nextPrayer ? nextPrayer.at.getTime() - nowMs : null;
+    if (activeWindow) {
+      return {
+        now,
+        activeWindow,
+        nextPrayer,
+        mode: "active",
+        remainingMs: activeRemainingMs,
+        activeRemainingMs,
+        nextRemainingMs,
+      };
+    }
+    if (nextPrayer) {
+      return {
+        now,
+        activeWindow: null,
+        nextPrayer,
+        mode: "next",
+        remainingMs: nextRemainingMs,
+        activeRemainingMs,
+        nextRemainingMs,
+      };
+    }
+    return {
+      now,
+      activeWindow: null,
+      nextPrayer: null,
+      mode: "none",
+      remainingMs: 0,
+      activeRemainingMs,
+      nextRemainingMs,
+    };
+  }
+
   function updateTimeUI(nowMs = Date.now()) {
     const c = state.computed;
     if (!c) return;
 
-    const now = new Date(nowMs);
+    const timeState = getCountdownState(nowMs, c);
+    const now = timeState.now;
     const nowLabel = t("now") || "Now";
     const nextLabel = t("next") || "Next";
     const inProgressLabel = t("inProgress") || "In progress";
     const endsInLabel = t("endsIn") || "Ends in";
     const startsInLabel = t("startsIn") || "Starts in";
-    const activeWindow = findActivePrayerWindow(now, c);
-    const nextPrayer = findNextPrayerStart(now, c);
+    const activeWindow = timeState.activeWindow;
+    const nextPrayer = timeState.nextPrayer;
 
     if (activeWindow) {
       const activeLabel = pickLang(PRAYER_LABELS[activeWindow.prayer], state.lang) || activeWindow.prayer;
-      const activeDiff = activeWindow.end.getTime() - nowMs;
+      const activeDiff = Math.max(0, timeState.activeRemainingMs ?? 0);
       const iqamaAt = computeIqamaForStart(activeWindow.prayer, activeWindow.start, c, false);
       if (el.nowPrayerName) el.nowPrayerName.textContent = activeLabel;
       if (el.nowPrayerStatus) {
@@ -1172,7 +1213,7 @@
 
     if (nextPrayer) {
       const prayerLabel = pickLang(PRAYER_LABELS[nextPrayer.prayer], state.lang) || nextPrayer.prayer;
-      const nextDiff = nextPrayer.at.getTime() - nowMs;
+      const nextDiff = Math.max(0, timeState.nextRemainingMs ?? 0);
       el.nextPrayerLabel.textContent = prayerLabel;
       el.nextTypePill.textContent = t("begins") || "Begins";
       el.nextPrayerTime.textContent = fmtTime(nextPrayer.at, c.tz);
@@ -1221,7 +1262,7 @@
     }
 
     if (activeWindow) {
-      const diff = activeWindow.end.getTime() - nowMs;
+      const diff = Math.max(0, timeState.activeRemainingMs ?? 0);
       if (diff <= 0) {
         if (el.countdown) el.countdown.textContent = "00:00:00";
         scheduleSoftRefresh();
@@ -1236,7 +1277,7 @@
     }
 
     if (!nextPrayer) return;
-    const diff = nextPrayer.at.getTime() - nowMs;
+    const diff = Math.max(0, timeState.nextRemainingMs ?? 0);
     if (diff <= 0) {
       if (el.countdown) el.countdown.textContent = "00:00:00";
       scheduleSoftRefresh();
@@ -1452,18 +1493,32 @@
     const open = async () => {
       if (!el.nearbyModal) return;
       el.nearbyModal.hidden = false;
-      await loadNearbyMasjids();
+      setNearbyActive(true);
+      setNearbyLoading(true);
+      try {
+        await loadNearbyMasjids();
+      } finally {
+        setNearbyLoading(false);
+      }
     };
     const close = () => {
       if (!el.nearbyModal) return;
       el.nearbyModal.hidden = true;
+      setNearbyActive(false);
+      setNearbyLoading(false);
     };
 
+    el.nearbyBtn?.addEventListener("click", open);
     el.actionNearbyBtn?.addEventListener("click", open);
     el.nearbyCloseBtn?.addEventListener("click", close);
     el.nearbyModal?.querySelector("[data-close='nearby']")?.addEventListener("click", close);
     el.nearbyRadiusSelect?.addEventListener("change", () => {
-      if (!el.nearbyModal?.hidden) loadNearbyMasjids().catch((err) => console.warn(err));
+      if (!el.nearbyModal?.hidden) {
+        setNearbyLoading(true);
+        loadNearbyMasjids()
+          .catch((err) => console.warn(err))
+          .finally(() => setNearbyLoading(false));
+      }
     });
   }
 
@@ -1594,11 +1649,16 @@
       if (el.builderUseMyLocationBtn) el.builderUseMyLocationBtn.disabled = true;
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          setBuilderCoords(pos.coords.latitude, pos.coords.longitude);
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setBuilderCoords(lat, lng);
+          const label = t("locationSet") || "Location set";
+          showNotice(`${label}: ${lat.toFixed(5)}, ${lng.toFixed(5)}`, "success");
           if (el.builderUseMyLocationBtn) el.builderUseMyLocationBtn.disabled = false;
         },
-        () => {
-          showNotice(t("locBlocked") || "Location not allowed", "info");
+        (error) => {
+          const errMsg = describeGeoError(error);
+          showNotice(errMsg, "info");
           if (el.builderUseMyLocationBtn) el.builderUseMyLocationBtn.disabled = false;
         },
         { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
@@ -1628,15 +1688,17 @@
   async function loadNearbyMasjids() {
     if (!el.nearbyList) return;
     const radius = numOr(el.nearbyRadiusSelect?.value, 25);
-    const loadingText = state.lang === "en" ? "Loading..." : "Yükleniyor...";
-    renderNearbyMessage(loadingText);
+    const loadingText = t("loadingNearby") || (state.lang === "en" ? "Loading..." : "Yükleniyor...");
+    renderNearbyMessage(loadingText, { loading: true });
 
     let coords = state.coords;
     if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) {
       const ok = await tryGeolocation();
       coords = state.coords;
       if (!ok || !coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) {
-        renderNearbyMessage(t("locationRequiredNearby") || "Location permission is required to find nearby masjids.");
+        renderNearbyMessage(
+          t("locationRequiredNearby") || "Location permission is required to find nearby masjids."
+        );
         return;
       }
     }
@@ -1654,7 +1716,7 @@
     });
     if (error) {
       handleSupabaseError(error, "nearby_masjids", { notify: true });
-      renderNearbyMessage(t("noNearbyResults") || "No nearby masjids found.");
+      renderNearbyMessage(getNearbyEmptyMessage(radius));
       return;
     }
 
@@ -1670,12 +1732,12 @@
     renderNearbyResults(normalized, radius);
   }
 
-  function renderNearbyResults(items) {
+  function renderNearbyResults(items, radius) {
     if (!el.nearbyList) return;
     el.nearbyList.innerHTML = "";
 
     if (!items.length) {
-      renderNearbyMessage(t("noNearbyResults") || "No nearby masjids found.");
+      renderNearbyMessage(getNearbyEmptyMessage(radius));
       return;
     }
 
@@ -1731,13 +1793,44 @@
     });
   }
 
-  function renderNearbyMessage(message) {
+  function renderNearbyMessage(message, options = {}) {
     if (!el.nearbyList) return;
     el.nearbyList.innerHTML = "";
     const empty = document.createElement("div");
     empty.className = "nearby-empty";
+    if (options.loading) empty.classList.add("is-loading");
     empty.textContent = message;
     el.nearbyList.appendChild(empty);
+  }
+
+  function getNearbyEmptyMessage(radius) {
+    const template = t("noNearbyResultsRadius") || t("noNearbyResults") || "No nearby masjids found.";
+    return template.replace("{radius}", radius);
+  }
+
+  function setNearbyActive(isActive) {
+    const value = Boolean(isActive);
+    [el.nearbyBtn, el.actionNearbyBtn].forEach((btn) => {
+      if (!btn) return;
+      btn.classList.toggle("is-active", value);
+      btn.setAttribute("aria-pressed", value ? "true" : "false");
+    });
+  }
+
+  function setNearbyLoading(isLoading) {
+    const value = Boolean(isLoading);
+    [el.nearbyBtn, el.actionNearbyBtn].forEach((btn) => {
+      if (!btn) return;
+      btn.classList.toggle("is-loading", value);
+      btn.disabled = value;
+    });
+    if (el.nearbyList) {
+      if (value) {
+        el.nearbyList.setAttribute("aria-busy", "true");
+      } else {
+        el.nearbyList.removeAttribute("aria-busy");
+      }
+    }
   }
 
   function wireConnectivity() {
@@ -2465,6 +2558,14 @@
     if (el.builderLng) el.builderLng.value = Number(lng).toFixed(6);
   }
 
+  function describeGeoError(error) {
+    if (!error) return t("locBlocked") || "Location not allowed";
+    if (error.code === 1) return t("geoDenied") || "Location permission denied.";
+    if (error.code === 2) return t("geoUnavailable") || "Location is unavailable.";
+    if (error.code === 3) return t("geoTimeout") || "Location request timed out.";
+    return error.message || t("locBlocked") || "Location not allowed";
+  }
+
   function validateBuilderIqamaSets() {
     if (!state.builder.iqamaSets.length) {
       return { error: t("iqamaMissingBuilder") || "Add at least one iqama set." };
@@ -2848,9 +2949,15 @@
       nearbyTitle: "Yakındaki Mescidler",
       radius: "Yarıçap",
       km: "km",
-      locationRequiredNearby: "Yakındaki mescidleri görmek için konum izni gerekli.",
+      loadingNearby: "Yakındaki mescidler aranıyor…",
+      locationRequiredNearby: "Yakındaki mescidleri görmek için konum izni verin veya manuel konum girin.",
       noNearbyResults: "Yakında kayıtlı mescid bulunamadı.",
+      noNearbyResultsRadius: "{radius} km içinde koordinatlı, herkese açık mescid bulunamadı.",
       useMyLocation: "Konumumu kullan",
+      locationSet: "Konum ayarlandı",
+      geoDenied: "Konum izni reddedildi.",
+      geoUnavailable: "Konum bilgisi alınamadı.",
+      geoTimeout: "Konum isteği zaman aşımına uğradı.",
       masjidBuilderTitle: "Masjid Builder",
       stepBasics: "Temel",
       stepIqama: "İkame",
@@ -2964,9 +3071,15 @@
       nearbyTitle: "Nearby Masjids",
       radius: "Radius",
       km: "km",
-      locationRequiredNearby: "Location permission is required to find nearby masjids.",
+      loadingNearby: "Searching nearby masjids…",
+      locationRequiredNearby: "Allow location access or enter a manual location to find nearby masjids.",
       noNearbyResults: "No nearby masjids found.",
+      noNearbyResultsRadius: "No public masjids with coordinates found within {radius} km.",
       useMyLocation: "Use my location",
+      locationSet: "Location set",
+      geoDenied: "Location permission denied.",
+      geoUnavailable: "Location is unavailable.",
+      geoTimeout: "Location request timed out.",
       masjidBuilderTitle: "Masjid Builder",
       stepBasics: "Basics",
       stepIqama: "Iqama",
