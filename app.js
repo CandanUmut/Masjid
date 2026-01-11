@@ -129,8 +129,14 @@
 
     actionRefreshBtn: $("#actionRefreshBtn"),
     actionLocationBtn: $("#actionLocationBtn"),
+    actionNearbyBtn: $("#actionNearbyBtn"),
     actionSettingsBtn: $("#actionSettingsBtn"),
     actionAdminBtn: $("#actionAdminBtn"),
+
+    nearbyModal: $("#nearbyModal"),
+    nearbyCloseBtn: $("#nearbyCloseBtn"),
+    nearbyRadiusSelect: $("#nearbyRadiusSelect"),
+    nearbyList: $("#nearbyList"),
 
     loginModal: $("#loginModal"),
     loginCloseBtn: $("#loginCloseBtn"),
@@ -154,6 +160,9 @@
     builderCityEnToggle: $("#builderCityEnToggle"),
     builderCityEnRow: $("#builderCityEnRow"),
     builderCityEn: $("#builderCityEn"),
+    builderLat: $("#builderLat"),
+    builderLng: $("#builderLng"),
+    builderUseMyLocationBtn: $("#builderUseMyLocationBtn"),
     builderSlugInput: $("#builderSlugInput"),
     builderCheckSlugBtn: $("#builderCheckSlugBtn"),
     slugStatus: $("#slugStatus"),
@@ -233,6 +242,7 @@
     wireManualLocation();
     wireSettings();
     wireSavedLocations();
+    wireNearby();
     wireAdmin();
     wireConnectivity();
     wireVisibility();
@@ -411,6 +421,8 @@
       iqama_sets: [],
       meta: {},
       is_public: true,
+      lat: null,
+      lng: null,
     };
   }
 
@@ -429,6 +441,8 @@
       iqama_sets: Array.isArray(row.iqama_sets) ? row.iqama_sets : safeJson(row.iqama_sets, []),
       meta: safeJson(row.meta, {}),
       is_public: !!row.is_public,
+      lat: Number.isFinite(Number(row.lat)) ? Number(row.lat) : null,
+      lng: Number.isFinite(Number(row.lng)) ? Number(row.lng) : null,
     };
   }
 
@@ -1434,6 +1448,25 @@
     });
   }
 
+  function wireNearby() {
+    const open = async () => {
+      if (!el.nearbyModal) return;
+      el.nearbyModal.hidden = false;
+      await loadNearbyMasjids();
+    };
+    const close = () => {
+      if (!el.nearbyModal) return;
+      el.nearbyModal.hidden = true;
+    };
+
+    el.actionNearbyBtn?.addEventListener("click", open);
+    el.nearbyCloseBtn?.addEventListener("click", close);
+    el.nearbyModal?.querySelector("[data-close='nearby']")?.addEventListener("click", close);
+    el.nearbyRadiusSelect?.addEventListener("change", () => {
+      if (!el.nearbyModal?.hidden) loadNearbyMasjids().catch((err) => console.warn(err));
+    });
+  }
+
   function wireAdmin() {
     const openAdmin = () => {
       if (!state.user || !el.adminModal) return;
@@ -1553,6 +1586,24 @@
     el.builderUseCurrentBtn?.addEventListener("click", () => {
       if (state.masjid) syncBuilderFromMasjid(state.masjid);
     });
+    el.builderUseMyLocationBtn?.addEventListener("click", async () => {
+      if (!navigator.geolocation) {
+        showNotice(t("geoUnsupported") || "Geolocation is not supported in this browser.", "error");
+        return;
+      }
+      if (el.builderUseMyLocationBtn) el.builderUseMyLocationBtn.disabled = true;
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setBuilderCoords(pos.coords.latitude, pos.coords.longitude);
+          if (el.builderUseMyLocationBtn) el.builderUseMyLocationBtn.disabled = false;
+        },
+        () => {
+          showNotice(t("locBlocked") || "Location not allowed", "info");
+          if (el.builderUseMyLocationBtn) el.builderUseMyLocationBtn.disabled = false;
+        },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+      );
+    });
 
     el.openMasjidBtn?.addEventListener("click", () => {
       const slug = el.myMasjidsSelect?.value;
@@ -1572,6 +1623,121 @@
       initBuilder();
       setBuilderStep(2);
     });
+  }
+
+  async function loadNearbyMasjids() {
+    if (!el.nearbyList) return;
+    const radius = numOr(el.nearbyRadiusSelect?.value, 25);
+    const loadingText = state.lang === "en" ? "Loading..." : "Yükleniyor...";
+    renderNearbyMessage(loadingText);
+
+    let coords = state.coords;
+    if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) {
+      const ok = await tryGeolocation();
+      coords = state.coords;
+      if (!ok || !coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) {
+        renderNearbyMessage(t("locationRequiredNearby") || "Location permission is required to find nearby masjids.");
+        return;
+      }
+    }
+
+    if (!state.supabase) {
+      renderNearbyMessage(t("supabaseMissing") || "Supabase config missing.");
+      return;
+    }
+
+    const { data, error } = await state.supabase.rpc("nearby_masjids", {
+      user_lat: coords.lat,
+      user_lng: coords.lon,
+      radius_km: radius,
+      lim: 25,
+    });
+    if (error) {
+      handleSupabaseError(error, "nearby_masjids", { notify: true });
+      renderNearbyMessage(t("noNearbyResults") || "No nearby masjids found.");
+      return;
+    }
+
+    const raw = Array.isArray(data) ? data : [];
+    const normalized = raw
+      .map((item) => {
+        const distance = numOr(item?.distance_km ?? item?.distance ?? item?.dist_km ?? item?.km, null);
+        return { ...item, _distance: distance };
+      })
+      .filter((item) => Number.isFinite(item._distance) && item._distance <= radius)
+      .sort((a, b) => numOr(a._distance, Number.MAX_SAFE_INTEGER) - numOr(b._distance, Number.MAX_SAFE_INTEGER));
+
+    renderNearbyResults(normalized, radius);
+  }
+
+  function renderNearbyResults(items) {
+    if (!el.nearbyList) return;
+    el.nearbyList.innerHTML = "";
+
+    if (!items.length) {
+      renderNearbyMessage(t("noNearbyResults") || "No nearby masjids found.");
+      return;
+    }
+
+    items.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "nearby-item";
+
+      const info = document.createElement("div");
+      info.className = "nearby-item__info";
+
+      const nameObj = safeJson(item?.name, {});
+      const rawName = typeof item?.name === "string" ? item.name : "";
+      const name = rawName || pickLang(nameObj, state.lang) || item?.slug || "—";
+      const title = document.createElement("div");
+      title.className = "nearby-item__title";
+      title.textContent = name;
+
+      const cityObj = item?.city ? safeJson(item.city, {}) : null;
+      const rawCity = typeof item?.city === "string" ? item.city : "";
+      const city = rawCity || (cityObj ? pickLang(cityObj, state.lang) : "");
+      const meta = document.createElement("div");
+      meta.className = "nearby-item__meta";
+      meta.textContent = city || "";
+
+      info.appendChild(title);
+      if (meta.textContent) info.appendChild(meta);
+
+      const distance = document.createElement("div");
+      distance.className = "nearby-item__distance";
+      const distValue = Number(item._distance);
+      distance.textContent = `${distValue.toFixed(1)} ${t("km") || "km"}`;
+
+      const actions = document.createElement("div");
+      actions.className = "nearby-item__actions";
+      const btn = document.createElement("button");
+      btn.className = "btn btn--ghost btn--small";
+      btn.type = "button";
+      btn.textContent = t("open") || "Open";
+      const slug = (item?.slug || "").trim();
+      if (!slug) {
+        btn.disabled = true;
+      } else {
+        btn.addEventListener("click", () => {
+          window.location.href = `${window.location.origin}${window.location.pathname}?m=${encodeURIComponent(slug)}`;
+        });
+      }
+      actions.appendChild(btn);
+
+      row.appendChild(info);
+      row.appendChild(distance);
+      row.appendChild(actions);
+      el.nearbyList.appendChild(row);
+    });
+  }
+
+  function renderNearbyMessage(message) {
+    if (!el.nearbyList) return;
+    el.nearbyList.innerHTML = "";
+    const empty = document.createElement("div");
+    empty.className = "nearby-empty";
+    empty.textContent = message;
+    el.nearbyList.appendChild(empty);
   }
 
   function wireConnectivity() {
@@ -1942,6 +2108,8 @@
     if (el.builderCityEnToggle) el.builderCityEnToggle.checked = false;
     if (el.builderCityEnRow) el.builderCityEnRow.hidden = true;
     if (el.builderSlugInput) el.builderSlugInput.value = "";
+    if (el.builderLat) el.builderLat.value = "";
+    if (el.builderLng) el.builderLng.value = "";
     if (el.slugSuggestions) el.slugSuggestions.textContent = "";
     setSlugStatus("");
     state.builder.slugTouched = false;
@@ -1989,6 +2157,8 @@
     if (el.builderCityEnRow) el.builderCityEnRow.hidden = !el.builderCityEnToggle?.checked;
 
     if (el.builderSlugInput) el.builderSlugInput.value = m?.slug || "";
+    if (el.builderLat) el.builderLat.value = Number.isFinite(m?.lat) ? String(m.lat) : "";
+    if (el.builderLng) el.builderLng.value = Number.isFinite(m?.lng) ? String(m.lng) : "";
     if (el.slugSuggestions) el.slugSuggestions.textContent = "";
     setSlugStatus("");
     state.builder.slugTouched = true;
@@ -2280,8 +2450,19 @@
       meta: {},
       is_public: el.builderIsPublic?.value !== "false",
     };
+    const latValue = numOr(el.builderLat?.value, null);
+    const lngValue = numOr(el.builderLng?.value, null);
+    if (Number.isFinite(latValue) && Number.isFinite(lngValue)) {
+      payload.lat = latValue;
+      payload.lng = lngValue;
+    }
 
     return { payload };
+  }
+
+  function setBuilderCoords(lat, lng) {
+    if (el.builderLat) el.builderLat.value = Number(lat).toFixed(6);
+    if (el.builderLng) el.builderLng.value = Number(lng).toFixed(6);
   }
 
   function validateBuilderIqamaSets() {
@@ -2663,6 +2844,13 @@
       signedOut: "Çıkış yapıldı.",
       signedInAs: "Giriş yapan",
       signedOutState: "Giriş yapılmadı",
+      nearby: "Yakındaki",
+      nearbyTitle: "Yakındaki Mescidler",
+      radius: "Yarıçap",
+      km: "km",
+      locationRequiredNearby: "Yakındaki mescidleri görmek için konum izni gerekli.",
+      noNearbyResults: "Yakında kayıtlı mescid bulunamadı.",
+      useMyLocation: "Konumumu kullan",
       masjidBuilderTitle: "Masjid Builder",
       stepBasics: "Temel",
       stepIqama: "İkame",
@@ -2772,6 +2960,13 @@
       signedOut: "Signed out.",
       signedInAs: "Signed in as",
       signedOutState: "Not signed in",
+      nearby: "Nearby",
+      nearbyTitle: "Nearby Masjids",
+      radius: "Radius",
+      km: "km",
+      locationRequiredNearby: "Location permission is required to find nearby masjids.",
+      noNearbyResults: "No nearby masjids found.",
+      useMyLocation: "Use my location",
       masjidBuilderTitle: "Masjid Builder",
       stepBasics: "Basics",
       stepIqama: "Iqama",

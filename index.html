@@ -319,8 +319,33 @@
     <div class="action-bar" id="actionBar" aria-label="Hızlı işlemler">
       <button class="action-bar__btn" id="actionRefreshBtn" type="button" data-i18n="refresh">Yenile</button>
       <button class="action-bar__btn" id="actionLocationBtn" type="button" data-i18n="getLocation">Konum Al</button>
+      <button class="action-bar__btn" id="actionNearbyBtn" type="button" data-i18n="nearby">Yakındaki</button>
       <button class="action-bar__btn" id="actionSettingsBtn" type="button" data-i18n="settings">Ayarlar</button>
       <button class="action-bar__btn" id="actionAdminBtn" type="button" data-i18n="admin" hidden>Admin</button>
+    </div>
+
+    <div class="modal" id="nearbyModal" hidden>
+      <div class="modal__backdrop" data-close="nearby"></div>
+      <div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="nearbyTitle">
+        <div class="modal__header">
+          <h2 class="h2" id="nearbyTitle" data-i18n="nearbyTitle">Yakındaki Mescidler</h2>
+          <button class="btn btn--ghost" id="nearbyCloseBtn" type="button" aria-label="Kapat">✕</button>
+        </div>
+        <div class="modal__body">
+          <div class="nearby-controls">
+            <label class="field">
+              <span class="field__label" data-i18n="radius">Yarıçap</span>
+              <select id="nearbyRadiusSelect" class="select">
+                <option value="5">5 km</option>
+                <option value="10">10 km</option>
+                <option value="25" selected>25 km</option>
+                <option value="50">50 km</option>
+              </select>
+            </label>
+          </div>
+          <div class="nearby-list" id="nearbyList"></div>
+        </div>
+      </div>
     </div>
 
     <div class="modal" id="settingsModal" hidden>
@@ -506,6 +531,20 @@
             </div>
 
             <div class="row row--wrap">
+              <label class="field">
+                <span class="field__label">Lat</span>
+                <input id="builderLat" class="input" type="number" inputmode="decimal" step="0.000001" />
+              </label>
+              <label class="field">
+                <span class="field__label">Lng</span>
+                <input id="builderLng" class="input" type="number" inputmode="decimal" step="0.000001" />
+              </label>
+              <button id="builderUseMyLocationBtn" class="btn btn--ghost" type="button" data-i18n="useMyLocation">
+                Konumumu kullan
+              </button>
+            </div>
+
+            <div class="row row--wrap">
               <label class="field grow">
                 <span class="field__label" data-i18n="slugLabel">Mescid Slug</span>
                 <input id="builderSlugInput" class="input" type="text" placeholder="ornek-mescid" autocomplete="off" />
@@ -668,6 +707,13 @@
         "slugHelp": "Bu sayfa genellikle paylaşılmış bir link ile açılır: /?m=mescid-slug. Slug yoksa aşağıdan gir.",
         "slugLabel": "Mescid Slug",
         "open": "Aç",
+        "nearby": "Yakındaki",
+        "nearbyTitle": "Yakındaki Mescidler",
+        "radius": "Yarıçap",
+        "km": "km",
+        "locationRequiredNearby": "Yakındaki mescidleri görmek için konum izni gerekli.",
+        "noNearbyResults": "Yakında kayıtlı mescid bulunamadı.",
+        "useMyLocation": "Konumumu kullan",
         "slugExample": "Örnek: ?m=sanjose-umut-mescid | İkame seti: &set=main",
         "nextTitle": "Şimdi / Sıradaki",
         "now": "Şimdi",
@@ -769,6 +815,13 @@
         "slugHelp": "This page is usually opened via a shared link: /?m=masjid-slug. If missing, enter it below.",
         "slugLabel": "Masjid Slug",
         "open": "Open",
+        "nearby": "Nearby",
+        "nearbyTitle": "Nearby Masjids",
+        "radius": "Radius",
+        "km": "km",
+        "locationRequiredNearby": "Location permission is required to find nearby masjids.",
+        "noNearbyResults": "No nearby masjids found.",
+        "useMyLocation": "Use my location",
         "slugExample": "Example: ?m=sanjose-umut-mescid | Iqama set: &set=main",
         "nextTitle": "Now / Next",
         "now": "Now",
