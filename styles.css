@@ -138,6 +138,31 @@ img{ max-width: 100%; }
   color: var(--text);
 }
 
+@media (max-width: 420px){
+  .topbar__inner{
+    padding: 12px 0 10px;
+    gap: 10px;
+  }
+  .topbar__actions{
+    gap: 6px;
+    justify-content: flex-start;
+  }
+  .topbar__actions .btn{
+    height: 34px;
+    padding: 0 10px;
+    font-size: 12px;
+    border-radius: 10px;
+  }
+  .user-badge{
+    font-size: 11px;
+    padding: 4px 8px;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .offline-badge{
   font-size: 12px;
   padding: 6px 10px;

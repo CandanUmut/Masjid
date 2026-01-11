@@ -235,6 +235,7 @@
     wireSavedLocations();
     wireAdmin();
     wireConnectivity();
+    wireVisibility();
     wirePwaInstall();
     initServiceWorker();
 
@@ -1118,13 +1119,14 @@
   }
 
   function renderNextCard() {
-    updateTimeUI();
+    updateTimeUI(Date.now());
   }
 
-  function updateTimeUI(now = new Date()) {
+  function updateTimeUI(nowMs = Date.now()) {
     const c = state.computed;
     if (!c) return;
 
+    const now = new Date(nowMs);
     const nowLabel = t("now") || "Now";
     const nextLabel = t("next") || "Next";
     const inProgressLabel = t("inProgress") || "In progress";
@@ -1135,14 +1137,18 @@
 
     if (activeWindow) {
       const activeLabel = pickLang(PRAYER_LABELS[activeWindow.prayer], state.lang) || activeWindow.prayer;
+      const activeDiff = activeWindow.end.getTime() - nowMs;
+      const iqamaAt = computeIqamaForStart(activeWindow.prayer, activeWindow.start, c, false);
       if (el.nowPrayerName) el.nowPrayerName.textContent = activeLabel;
       if (el.nowPrayerStatus) {
         el.nowPrayerStatus.textContent = `${nowLabel}: ${activeLabel} (${inProgressLabel}) • ${endsInLabel}: ${fmtDelta(
-          activeWindow.end.getTime() - now.getTime()
+          activeDiff
         )}`;
       }
       if (el.nowPrayerStart) {
-        el.nowPrayerStart.textContent = `${t("beganAt")}: ${fmtTime(activeWindow.start, c.tz)}`;
+        const startText = `${t("beganAt")}: ${fmtTime(activeWindow.start, c.tz)}`;
+        const iqamaText = `${t("iqama") || "Iqama"}: ${iqamaAt ? fmtTime(iqamaAt, c.tz) : "—"}`;
+        el.nowPrayerStart.textContent = `${startText} • ${iqamaText}`;
       }
     } else {
       if (el.nowPrayerName) el.nowPrayerName.textContent = "—";
@@ -1152,13 +1158,12 @@
 
     if (nextPrayer) {
       const prayerLabel = pickLang(PRAYER_LABELS[nextPrayer.prayer], state.lang) || nextPrayer.prayer;
+      const nextDiff = nextPrayer.at.getTime() - nowMs;
       el.nextPrayerLabel.textContent = prayerLabel;
       el.nextTypePill.textContent = t("begins") || "Begins";
       el.nextPrayerTime.textContent = fmtTime(nextPrayer.at, c.tz);
 
-      const startsInText = `${nextLabel}: ${prayerLabel} • ${startsInLabel}: ${fmtDelta(
-        nextPrayer.at.getTime() - now.getTime()
-      )}`;
+      const startsInText = `${nextLabel}: ${prayerLabel} • ${startsInLabel}: ${fmtDelta(nextDiff)}`;
       const nextMetaParts = [startsInText];
       if (nextPrayer._tomorrow) nextMetaParts.push(t("tomorrow") || "Tomorrow");
       el.nextMeta.textContent = nextMetaParts.join(" • ");
@@ -1167,14 +1172,14 @@
       if (iqamaAt) {
         el.nextIqamaLine.textContent = `${t("iqama") || "Iqama"}: ${fmtTime(iqamaAt, c.tz)}`;
       } else {
-        el.nextIqamaLine.textContent = "—";
+        el.nextIqamaLine.textContent = `${t("iqama") || "Iqama"}: —`;
       }
     } else {
       el.nextPrayerLabel.textContent = "—";
       el.nextTypePill.textContent = t("begins") || "Begins";
       el.nextPrayerTime.textContent = "--:--";
       el.nextMeta.textContent = "—";
-      el.nextIqamaLine.textContent = "—";
+      el.nextIqamaLine.textContent = `${t("iqama") || "Iqama"}: —`;
     }
 
     const rows = document.querySelectorAll("#timesTable tbody tr[data-prayer]");
@@ -1202,7 +1207,7 @@
     }
 
     if (activeWindow) {
-      const diff = activeWindow.end.getTime() - now.getTime();
+      const diff = activeWindow.end.getTime() - nowMs;
       if (diff <= 0) {
         if (el.countdown) el.countdown.textContent = "00:00:00";
         scheduleSoftRefresh();
@@ -1217,7 +1222,7 @@
     }
 
     if (!nextPrayer) return;
-    const diff = nextPrayer.at.getTime() - now.getTime();
+    const diff = nextPrayer.at.getTime() - nowMs;
     if (diff <= 0) {
       if (el.countdown) el.countdown.textContent = "00:00:00";
       scheduleSoftRefresh();
@@ -1244,9 +1249,22 @@
   function startCountdownLoop() {
     if (state.countdownTimer) clearInterval(state.countdownTimer);
     state.countdownTimer = setInterval(() => {
-      updateTimeUI();
+      updateTimeUI(Date.now());
       showFreshnessBadge();
     }, COUNTDOWN_TICK_MS);
+  }
+
+  function wireVisibility() {
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        if (state.countdownTimer) clearInterval(state.countdownTimer);
+        state.countdownTimer = null;
+        return;
+      }
+      updateTimeUI(Date.now());
+      showFreshnessBadge();
+      startCountdownLoop();
+    });
   }
 
   function findActivePrayerWindow(now, schedule) {
