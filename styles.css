@@ -138,25 +138,34 @@ img{ max-width: 100%; }
   color: var(--text);
 }
 
-@media (max-width: 420px){
+@media (max-width: 520px){
   .topbar__inner{
-    padding: 12px 0 10px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-auto-rows: min-content;
+    align-items: start;
+    padding: 10px 0 8px;
     gap: 10px;
   }
   .topbar__actions{
-    gap: 6px;
-    justify-content: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    align-self: start;
   }
   .topbar__actions .btn{
-    height: 34px;
+    height: 40px;
     padding: 0 10px;
     font-size: 12px;
     border-radius: 10px;
+    min-width: 0;
+    width: auto;
   }
   .user-badge{
     font-size: 11px;
     padding: 4px 8px;
-    max-width: 140px;
+    max-width: 160px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
