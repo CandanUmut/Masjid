@@ -2443,19 +2443,33 @@
     const isEditing = Boolean(state.isOwner && state.masjid?.id);
 
     if (isEditing) {
-      const { error } = await state.supabase
+      const previousSlug = state.masjid?.slug || "";
+      const { data: updatedMasjid, error } = await state.supabase
         .from("masjids")
         .update(payload)
         .eq("id", state.masjid.id)
-        .eq("owner_id", state.user.id);
+        .eq("owner_id", state.user.id)
+        .select("id,slug,iqama_sets")
+        .maybeSingle();
       if (error) {
         handleInsertError(error, payload.slug, payload.name, payload.city);
         return;
       }
+      if (!updatedMasjid?.id) {
+        showNotice(t("saveDenied") || "Could not save this masjid. Check ownership and try again.", "error");
+        return;
+      }
+
+      clearMasjidCache(previousSlug);
+      if (payload.slug !== previousSlug) {
+        clearMasjidCache(payload.slug);
+      }
+
       showNotice(t("saved") || "Saved.", "success");
       const url = new URL(location.href);
       url.searchParams.set("m", payload.slug);
-      if (state.iqamaSet?.id) url.searchParams.set("set", state.iqamaSet.id);
+      const activeSetId = state.builder.activeSetId || state.iqamaSet?.id || updatedMasjid?.iqama_sets?.[0]?.id;
+      if (activeSetId) url.searchParams.set("set", activeSetId);
       history.replaceState({}, "", url.toString());
       await loadMasjid(payload.slug);
       await refreshAll({ preferCache: false });
@@ -2473,6 +2487,7 @@
       return;
     }
     showNotice(t("saved") || "Saved.", "success");
+    clearMasjidCache(payload.slug);
     const firstSetId = data?.iqama_sets?.[0]?.id || "";
     const url = new URL(location.href);
     url.searchParams.set("m", data.slug);
@@ -2770,6 +2785,16 @@
     }
   }
 
+  function clearMasjidCache(slug) {
+    const safeSlug = (slug || "").trim();
+    if (!safeSlug) return;
+    try {
+      localStorage.removeItem(STORAGE_KEYS.masjidCache(safeSlug));
+    } catch {
+      // ignore
+    }
+  }
+
   function readTimingsCache(key) {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.timingsCache(key));
@@ -2932,6 +2957,7 @@
       methodScopeMasjid: "Mescid varsayılanı kullanılıyor.",
       methodScopeGlobal: "Genel varsayılanlar kullanılıyor.",
       saved: "Kaydedildi.",
+      saveDenied: "Bu mescid kaydedilemedi. Sahiplik durumunu kontrol edip tekrar deneyin.",
       usingCache: "Önbellek verisi kullanılıyor (canlı istek başarısız).",
       selectSaved: "Seç",
       noSaved: "Kayıtlı konum yok",
@@ -3054,6 +3080,7 @@
       methodScopeMasjid: "Using masjid defaults.",
       methodScopeGlobal: "Using global defaults.",
       saved: "Saved.",
+      saveDenied: "Could not save this masjid. Check ownership and try again.",
       usingCache: "Using cached data (live fetch failed).",
       selectSaved: "Select",
       noSaved: "No saved locations",
