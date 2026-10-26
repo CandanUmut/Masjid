@@ -858,7 +858,11 @@ a {
   color: var(--label-2);
 }
 .sheet-body {
-  flex: 1;
+  /* Sized by its content, shrinking (and scrolling) only when the sheet hits its max-height.
+     Not `flex: 1`: Safari resolves its 0% basis literally in a column with no fixed height, and the
+     body collapsed to a sliver under the sheet's title. */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 8px 16px 20px;
@@ -3537,12 +3541,14 @@ body.is-scrolled .topbar {
    never shrink a sheet to a sliver at the bottom of the screen. */
 .sheet {
   bottom: 0;
+  max-height: min(92vh, 860px); /* browsers without dvh */
   max-height: min(92dvh, 860px);
   transition: bottom 0.2s var(--ease), max-height 0.2s var(--ease), transform 0.25s var(--ease);
 }
 html.has-keyboard .sheet {
   bottom: var(--kb, 0px);
-  max-height: calc(var(--vvh, 100dvh) - 12px);
+  /* Never a sliver, whatever the measurements say */
+  max-height: max(300px, calc(var(--vvh, 100dvh) - 12px));
 }
 @media (min-width: 700px) {
   .sheet {
@@ -3553,7 +3559,7 @@ html.has-keyboard .sheet {
   height: min(92dvh, 860px);
 }
 html.has-keyboard .sheet.sheet--search {
-  height: calc(var(--vvh, 100dvh) - 12px);
+  height: max(300px, calc(var(--vvh, 100dvh) - 12px));
 }
 .search-results.is-loading {
   opacity: 0.45;
