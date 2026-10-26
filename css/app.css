@@ -3223,3 +3223,39 @@ body.is-scrolled .topbar {
 .share-actions {
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
 }
+.onb-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 22px;
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.onb-brand img {
+  border-radius: 8px;
+}
+.onb-brand span {
+  font-family: "Geeza Pro", "Noto Naskh Arabic", var(--font);
+  font-weight: 400;
+  color: var(--label-2);
+}
+.onb-brand + .onb-verse {
+  margin-top: 8px;
+}
+.about-icon {
+  flex: none;
+  border-radius: 11px;
+  box-shadow: 0 2px 8px rgba(14, 23, 72, 0.25);
+}
+.about-name {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+}
+.about-name span {
+  font-family: "Geeza Pro", "Noto Naskh Arabic", var(--font);
+  font-weight: 400;
+  color: var(--label-2);
+}

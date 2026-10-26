@@ -1,7 +1,8 @@
 // UI strings. English is the fallback for any missing key.
 const STRINGS = {
   en: {
-    appName: "Masjid",
+    appName: "Ufuq",
+    nameMeaning: "Ufuq (أُفُق) means “horizon”. Fajr, sunrise, Maghrib and Isha are all defined by where the sun stands against it.",
     iqamaStartsIn: "Iqama starts in", iftarIn: "Iftar in", suhoorEndsIn: "Suhoor ends in", iftar: "Iftar", suhoor: "Suhoor",
     timeLeftToPray: "Time left to pray", endsAt: "Ends at {t}, when {p} begins", untilNext: "until {t}", uH: "h", uM: "m", uS: "s", bestBeforeMidnight: "Best prayed before midnight", validUntil: "Still valid until {p} at {t}", sunRising: "Sun is rising · Duha from {t}", duhaNow: "Duha time · next", credits: "Calculations by adhan-js (MIT). Place search by Open-Meteo, place names by BigDataCloud.", bestBefore: "Best prayed before midnight, {t}",
     markPrayed: "Mark {p} as prayed", adjusted: "adjusted", localNow: "{t} there", inDur: "in {t}", hShort: "h", localTimeAt: "{p} time · {t}",
@@ -83,7 +84,8 @@ const STRINGS = {
     backupHint: "Copy this backup code and keep it somewhere safe.", restoreDone: "Restored",
   },
   tr: {
-    appName: "Mescid",
+    appName: "Ufuq",
+    nameMeaning: "Ufuq (أُفُق), “ufuk” demektir. İmsak, güneş, akşam ve yatsı vakitlerinin hepsi güneşin ufka göre konumuyla belirlenir.",
     iqamaStartsIn: "Kamete kalan", iftarIn: "İftara kalan", suhoorEndsIn: "Sahurun bitmesine", iftar: "İftar", suhoor: "Sahur",
     timeLeftToPray: "Kılmak için kalan süre", endsAt: "{t}'de biter, {p} vakti girer", untilNext: "{t}'e kadar", uH: "sa", uM: "dk", uS: "sn", bestBeforeMidnight: "Gece yarısından önce kılınması evladır", validUntil: "{p} vaktine ({t}) kadar geçerli", sunRising: "Güneş doğuyor · Kuşluk {t}", duhaNow: "Kuşluk vakti · sıradaki", credits: "Hesaplamalar adhan-js (MIT). Yer arama Open-Meteo, yer adları BigDataCloud.", bestBefore: "Gece yarısından ({t}) önce kılınması evladır",
     markPrayed: "{p} kılındı olarak işaretle", adjusted: "düzeltilmiş", localNow: "orada {t}", inDur: "{t} sonra", hShort: "sa", localTimeAt: "{p} saati · {t}",
@@ -162,7 +164,8 @@ const STRINGS = {
     backupHint: "Bu yedek kodunu kopyalayıp güvenli bir yerde saklayın.", restoreDone: "Geri yüklendi",
   },
   ar: {
-    appName: "المسجد",
+    appName: "أُفُق",
+    nameMeaning: "الفجر والشروق والمغرب والعشاء كلها تُحدَّد بموقع الشمس من الأفق.",
     iqamaStartsIn: "تبدأ الإقامة بعد", iftarIn: "الإفطار بعد", suhoorEndsIn: "ينتهي السحور بعد", iftar: "الإفطار", suhoor: "السحور",
     timeLeftToPray: "الوقت المتبقي للصلاة", endsAt: "ينتهي {t} عند دخول {p}", untilNext: "حتى {t}", uH: "س", uM: "د", uS: "ث", bestBeforeMidnight: "الأفضل أداؤها قبل منتصف الليل", validUntil: "يبقى وقتها حتى {p} {t}", sunRising: "الشمس تشرق · الضحى من {t}", duhaNow: "وقت الضحى · التالية", credits: "الحسابات بواسطة adhan-js (MIT). البحث عن الأماكن Open-Meteo، وأسماء الأماكن BigDataCloud.", bestBefore: "الأفضل أداؤها قبل منتصف الليل {t}",
     markPrayed: "تحديد {p} كمؤداة", adjusted: "معدّل", localNow: "هناك {t}", inDur: "بعد {t}", hShort: "س", localTimeAt: "توقيت {p} · {t}",

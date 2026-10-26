@@ -1,4 +1,8 @@
-# Masjid — Prayer & Iqama Times
+# Ufuq — Prayer & Iqama Times
+
+<img src="assets/icons/icon.svg" width="96" alt="Ufuq icon: the sun on the horizon at dawn, with its path across the sky" align="right">
+
+**Ufuq** (أُفُق) means *horizon*. Fajr, sunrise, Maghrib and Isha are all defined by where the sun stands against the horizon, and the app is built around that idea. The icon shows the moment of sunrise, with the sun's daily path dotted across the sky.
 
 A simple, private prayer-times app that runs entirely in the browser. It has no account, no database and no build step: static files you can host on GitHub Pages.
 
@@ -83,6 +87,7 @@ js/i18n.js            EN / TR / AR strings
 js/views/*            Today, Month, Qibla, Settings, masjid editor/share, display mode
 js/vendor/            adhan-js (MIT), qrcode-generator (MIT)
 sw.js                 offline cache (bump VERSION on every release)
+tools/make-icons.cjs  regenerates the PNG icons from the SVG design (dev only, needs Playwright)
 tests/                node --test suites (engine accuracy, DST, iqama, seeds, offline cache)
 ```
 
