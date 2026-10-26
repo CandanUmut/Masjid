@@ -1125,14 +1125,21 @@ textarea.input {
 }
 
 /* ---------- Toasts ---------- */
+/* Browsers give popovers their own size and position rules (Safari on iPhone can stretch them to the
+   full screen height). Everything is set explicitly so the host is exactly as tall as its toasts. */
 .toast-host[popover] {
+  inset: auto;
+  top: calc(var(--safe-top) + 6px);
+  left: 50%;
+  width: min(92vw, 440px);
+  height: auto;
+  min-height: 0;
+  max-height: calc(100dvh - 20px);
   margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
   overflow: visible;
-  right: auto;
-  bottom: auto;
   color: inherit;
 }
 .toast-host {
@@ -1144,15 +1151,20 @@ textarea.input {
   bottom: auto;
   transform: translateX(-50%);
   display: grid;
+  align-content: start;
+  align-items: start;
   gap: 8px;
   width: min(92vw, 440px);
+  height: auto;
   pointer-events: none;
 }
 .toast {
   display: flex;
   align-items: center;
+  align-self: start;
   gap: 12px;
   min-height: 48px;
+  cursor: pointer;
   padding: 8px 12px 8px 18px;
   border-radius: 18px;
   background: var(--surface);

@@ -273,7 +273,8 @@ export function toast(message, { action, onAction, duration = 3800, tone = "" } 
   }
   const node = h(
     "div",
-    { class: `toast ${tone ? `toast--${tone}` : ""}` },
+    // A tap anywhere on the banner (except its action) dismisses it, like an iOS notification.
+    { class: `toast ${tone ? `toast--${tone}` : ""}`, onclick: (e) => { if (!e.target.closest(".toast-action")) dismiss(); } },
     h("span", { class: "toast-msg" }, message),
     action
       ? h("button", { class: "toast-action", type: "button", onclick: () => { onAction?.(); dismiss(); } }, action)
