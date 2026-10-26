@@ -12,14 +12,36 @@ const MADHAB = { auto: "a", shafi: "s", hanafi: "h" };
 const MADHAB_R = Object.fromEntries(Object.entries(MADHAB).map(([k, v]) => [v, k]));
 
 // --- iqama rules <-> "+10|+10r5|@13:30|" ---------------------------------------------
+// One rule: "+10", "+10r5" (offset, rounded up to 5) or "@20:15", "@20:15>10" (fixed, ≥10 min after adhan).
+// Seasonal changes follow as "~MMDD<rule>", e.g. "@19:30~0329@21:00~1025@19:30".
+function ruleStr(r) {
+  if (!r) return "";
+  if (r.mode === "fixed") return parseHHMM(r.time) ? `@${r.time}${r.min ? `>${Math.min(120, Math.max(0, Math.round(r.min)))}` : ""}` : "";
+  const off = Math.max(0, Math.min(180, Math.round(Number(r.offset) || 0)));
+  return `+${off}${r.round ? `r${r.round}` : ""}`;
+}
+
+function parseRule(v) {
+  let m;
+  if ((m = /^@(\d{1,2}:\d{2})(?:>(\d{1,3}))?$/.exec(v)) && parseHHMM(m[1])) return { mode: "fixed", time: m[1], min: m[2] ? Math.min(120, Number(m[2])) : 0 };
+  if ((m = /^\+(\d{1,3})(?:r(5|10|15))?$/.exec(v))) return { mode: "offset", offset: Math.min(180, Number(m[1])), round: m[2] ? Number(m[2]) : 0 };
+  return null;
+}
+
+const validMd = (md) => /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(md);
+
 export function packIqama(iqama) {
   if (!iqama) return "";
   const parts = PRAYERS.map((p) => {
     const r = iqama[p];
-    if (!r) return "";
-    if (r.mode === "fixed") return parseHHMM(r.time) ? `@${r.time}${r.min ? `>${Math.min(120, Math.max(0, Math.round(r.min)))}` : ""}` : "";
-    const off = Math.max(0, Math.min(180, Math.round(Number(r.offset) || 0)));
-    return `+${off}${r.round ? `r${r.round}` : ""}`;
+    const base = ruleStr(r);
+    if (!base) return "";
+    const changes = (r.changes || [])
+      .filter((c) => validMd(c.from) && ruleStr(c))
+      .sort((a, b) => a.from.localeCompare(b.from))
+      .slice(0, 12)
+      .map((c) => `~${c.from.replace("-", "")}${ruleStr(c)}`);
+    return base + changes.join("");
   });
   return parts.some(Boolean) ? parts.join("|") : "";
 }
@@ -30,11 +52,17 @@ export function unpackIqama(s) {
   const out = {};
   let any = false;
   PRAYERS.forEach((p, i) => {
-    const v = parts[i] || "";
-    let rule = null;
-    let m;
-    if ((m = /^@(\d{1,2}:\d{2})(?:>(\d{1,3}))?$/.exec(v)) && parseHHMM(m[1])) rule = { mode: "fixed", time: m[1], min: m[2] ? Math.min(120, Number(m[2])) : 0 };
-    else if ((m = /^\+(\d{1,3})(?:r(5|10|15))?$/.exec(v))) rule = { mode: "offset", offset: Math.min(180, Number(m[1])), round: m[2] ? Number(m[2]) : 0 };
+    const [baseStr, ...rest] = (parts[i] || "").split("~");
+    const rule = parseRule(baseStr);
+    if (rule && rest.length) {
+      const changes = [];
+      for (const c of rest.slice(0, 12)) {
+        const md = `${c.slice(0, 2)}-${c.slice(2, 4)}`;
+        const r = parseRule(c.slice(4));
+        if (validMd(md) && r) changes.push({ from: md, ...r });
+      }
+      if (changes.length) rule.changes = changes;
+    }
     out[p] = rule;
     if (rule) any = true;
   });
