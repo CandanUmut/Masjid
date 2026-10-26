@@ -37,7 +37,7 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
     }
     results.hidden = false;
     savedWrap.hidden = true;
-    results.replaceChildren(h("div", { class: "row row-muted" }, h("span", { class: "spinner" }), t("searchCity") + "…"));
+    results.replaceChildren(h("div", { class: "row row-muted" }, h("span", { class: "spinner" }), t("searching")));
     try {
       const found = await searchPlaces(q, lang());
       if (mine !== seq) return;
@@ -67,6 +67,14 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
     }
   }, 280);
   input.addEventListener("input", run);
+  // Enter picks the first match, like a native search field.
+  input.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const first = results.querySelector(".row-btn");
+    if (first) first.click();
+    else run();
+  });
 
   function renderSaved() {
     const st = ctx.state;
