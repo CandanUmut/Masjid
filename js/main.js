@@ -6,6 +6,7 @@ import { geoPermission, getPosition, reverseGeocode, distanceKm, geoSupported } 
 import { TodayView } from "./views/today.js";
 import { SettingsView } from "./views/settings.js";
 import { openPlacesSheet } from "./views/places.js";
+import { openTour, tourIsOpen } from "./views/tour.js";
 
 const state = load();
 const app = {
@@ -81,6 +82,7 @@ export function makeCtx() {
     setPhase,
     gpsOrCityPlace: () => place || { lat: 0, lng: 0, tz: deviceTimeZone() },
     openPlaces: (opts) => openPlacesSheet(makeCtx(), opts),
+    showTour,
     ...Object.assign({}, ...plugins.map((p) => p.ctx?.() || {})),
   };
 }
@@ -423,6 +425,23 @@ function render() {
   const bar = $("#topbar");
   if (bar && !bar.hidden) document.documentElement.style.setProperty("--topbar-h", `${bar.offsetHeight}px`);
   if (!def.needsPlace) setPhase("none");
+  maybeShowTour();
+}
+
+// The feature tour, once: when Today first shows real times (after onboarding, or on the next visit
+// for people who never saw it). Never on top of another sheet, and never on a display screen.
+let tourTimer = null;
+function maybeShowTour() {
+  if (state.tourSeen || tourIsOpen() || tourTimer || app.route !== "today") return;
+  tourTimer = setTimeout(() => {
+    tourTimer = null;
+    if (state.tourSeen || tourIsOpen() || app.route !== "today" || !activePlace()) return;
+    if (document.querySelector("dialog[open]")) return maybeShowTour(); // try again once it's closed
+    showTour();
+  }, 1200);
+}
+function showTour() {
+  openTour({ onDone: () => update((s) => (s.tourSeen = true), { render: false }) });
 }
 
 // --- Boot --------------------------------------------------------------------------

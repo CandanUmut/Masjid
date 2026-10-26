@@ -2,7 +2,7 @@ import { t, LANGS } from "../i18n.js";
 import { h, icon, select, segmented, toggle, stepper } from "../ui.js";
 import { calcEditor, row } from "./calc-editor.js";
 
-export const APP_VERSION = "2.4.2";
+export const APP_VERSION = "2.5.0";
 
 export function SettingsView(ctx) {
   const s = ctx.state.settings;
@@ -93,6 +93,7 @@ export function SettingsView(ctx) {
         h("div", { class: "row-main" }, h("span", { class: "row-title about-name" }, "Ufuq ", h("span", { lang: "ar", dir: "rtl" }, "أُفُق")), h("span", { class: "row-sub wrap" }, t("nameMeaning")))
       ),
       h("div", { class: "row about-row" }, icon("lock", "row-icon tone-green"), h("div", { class: "row-main" }, h("span", { class: "row-title" }, t("privacy")), h("span", { class: "row-sub wrap" }, t("privacyBody")))),
+      ctx.showTour ? h("button", { class: "row row-btn", type: "button", onclick: () => ctx.showTour() }, icon("info", "row-icon tone-accent"), h("span", { class: "row-title" }, t("takeTour"))) : null,
       h("div", { class: "row" }, h("span", { class: "row-label" }, t("version")), h("span", { class: "row-value" }, APP_VERSION))
     ),
     h("p", { class: "list-foot" }, t("credits"))

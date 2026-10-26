@@ -18,6 +18,7 @@ A simple, private prayer-times app that runs entirely in the browser. It has no 
 - **Calendar export (.ics)** with an alarm at each prayer, so reminders work even when the app is closed.
 - Qibla compass, Hijri date (Umm al-Qura, with a ±2 day adjustment), and optional extra times: Imsak, Duha, midnight and the last third of the night.
 - Regional defaults are chosen automatically: Diyanet for Türkiye (with Turkish names, where İmsak *is* Fajr), ISNA for North America, Umm al-Qura for Saudi Arabia (plus 30 minutes on Isha in Ramadan), Hanafi Asr where it is the norm, and high-latitude rules above 48°. All of it can be overridden: 21 methods, custom angles, and per-prayer minute adjustments.
+- A short **feature tour** (five swipeable cards) shown once after setup, and any time from *Settings → Take the tour*.
 - Apple's New York serif (with a bundled open-source fallback), SF system fonts and iOS colours. Light and dark mode, English, Türkçe and العربية (RTL), 12/24-hour clock. Installable (PWA) and works fully offline.
 
 ## Privacy
@@ -86,7 +87,7 @@ js/time.js            time-zone-aware formatting via Intl (no libraries)
 js/geo.js             geolocation, city/address search, reverse geocoding, time zones
 js/tzdata.js          IANA zone table for offline time-zone lookup (generated)
 js/i18n.js            EN / TR / AR strings
-js/views/*            Today, Month, Qibla, Settings, masjid editor/share, display mode
+js/views/*            Today, Month, Qibla, Settings, masjid editor/share, display mode, tour
 js/vendor/            adhan-js (MIT), qrcode-generator (MIT)
 sw.js                 offline cache (bump VERSION on every release)
 tools/make-icons.cjs  regenerates the PNG icons from the SVG design (dev only, needs Playwright)

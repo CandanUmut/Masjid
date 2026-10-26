@@ -20,6 +20,7 @@ function fresh() {
     activeId: "gps",
     gps: null, // { lat, lng, tz, cc, name, sub, at }
     onboarded: false,
+    tourSeen: false, // the feature tour, shown once
   };
 }
 
@@ -43,6 +44,7 @@ export function load() {
   s.activeId = typeof raw.activeId === "string" ? raw.activeId : "gps";
   s.gps = raw.gps && Number.isFinite(raw.gps.lat) ? raw.gps : null;
   s.onboarded = Boolean(raw.onboarded);
+  s.tourSeen = Boolean(raw.tourSeen);
   if (s.activeId !== "gps" && !s.places.some((p) => p.id === s.activeId)) s.activeId = "gps";
   return s;
 }

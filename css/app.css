@@ -1125,14 +1125,21 @@ textarea.input {
 }
 
 /* ---------- Toasts ---------- */
+/* Browsers give popovers their own size and position rules (Safari on iPhone can stretch them to the
+   full screen height). Everything is set explicitly so the host is exactly as tall as its toasts. */
 .toast-host[popover] {
+  inset: auto;
+  top: calc(var(--safe-top) + 6px);
+  left: 50%;
+  width: min(92vw, 440px);
+  height: auto;
+  min-height: 0;
+  max-height: calc(100dvh - 20px);
   margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
   overflow: visible;
-  right: auto;
-  bottom: auto;
   color: inherit;
 }
 .toast-host {
@@ -1144,15 +1151,20 @@ textarea.input {
   bottom: auto;
   transform: translateX(-50%);
   display: grid;
+  align-content: start;
+  align-items: start;
   gap: 8px;
   width: min(92vw, 440px);
+  height: auto;
   pointer-events: none;
 }
 .toast {
   display: flex;
   align-items: center;
+  align-self: start;
   gap: 12px;
   min-height: 48px;
+  cursor: pointer;
   padding: 8px 12px 8px 18px;
   border-radius: 18px;
   background: var(--surface);
@@ -3520,11 +3532,17 @@ body.is-scrolled .topbar {
    Phone home screen: everything visible at once, nothing hidden under the navigation.
    ================================================================================= */
 
-/* Sheets ride above the on-screen keyboard and never extend under it. */
+/* Sheets ride above the on-screen keyboard and never extend under it. The keyboard measurements are
+   used only while the keyboard is up (html.has-keyboard): a stale value left behind as it closes must
+   never shrink a sheet to a sliver at the bottom of the screen. */
 .sheet {
-  bottom: var(--kb, 0px);
-  max-height: min(92dvh, calc(var(--vvh, 100dvh) - 12px));
+  bottom: 0;
+  max-height: min(92dvh, 860px);
   transition: bottom 0.2s var(--ease), max-height 0.2s var(--ease), transform 0.25s var(--ease);
+}
+html.has-keyboard .sheet {
+  bottom: var(--kb, 0px);
+  max-height: calc(var(--vvh, 100dvh) - 12px);
 }
 @media (min-width: 700px) {
   .sheet {
@@ -3532,7 +3550,10 @@ body.is-scrolled .topbar {
   }
 }
 .sheet.sheet--search {
-  height: min(92dvh, calc(var(--vvh, 100dvh) - 12px));
+  height: min(92dvh, 860px);
+}
+html.has-keyboard .sheet.sheet--search {
+  height: calc(var(--vvh, 100dvh) - 12px);
 }
 .search-results.is-loading {
   opacity: 0.45;
@@ -4173,4 +4194,428 @@ body.no-tabbar::after {
 .q-head .large-title {
   white-space: nowrap;
   font-size: clamp(26px, 7.4vw, 34px);
+}
+
+/* =================================================================================
+   Feature tour: five swipeable cards
+   ================================================================================= */
+.tour {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: calc(var(--safe-top) + 8px) 0 calc(var(--safe-bottom) + 16px);
+  border: 0;
+  background: var(--bg);
+  color: var(--label);
+  display: flex;
+  flex-direction: column;
+  animation: fade-in 0.25s;
+}
+.tour:not([open]) {
+  display: none;
+}
+.tour::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.tour.is-closing {
+  animation: fade-out 0.22s forwards;
+}
+@media (min-width: 700px) {
+  .tour {
+    inset: 0;
+    margin: auto;
+    width: min(440px, 92vw);
+    height: min(680px, 92dvh);
+    padding: 16px 0 20px;
+    border-radius: 28px;
+    box-shadow: var(--shadow-2);
+  }
+}
+.tour-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 0 24px;
+  min-height: 44px;
+}
+.tour-kicker {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--label-2);
+}
+.tour-track {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.tour-track::-webkit-scrollbar {
+  display: none;
+}
+.tour-slide {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 28px;
+  text-align: center;
+  min-height: 0;
+}
+.tour-title {
+  margin: 22px 0 6px;
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+.tour-body {
+  margin: 0;
+  max-width: 340px;
+  font-size: 16.5px;
+  line-height: 1.45;
+  color: var(--label-2);
+  text-wrap: pretty;
+}
+.tour-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 24px 0;
+}
+.tour-dots {
+  display: flex;
+  gap: 7px;
+}
+.tour-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--fill-2);
+  transition: width 0.25s var(--ease), background 0.25s;
+}
+.tour-dot.is-on {
+  width: 22px;
+  background: var(--accent);
+}
+.tour-next {
+  min-width: 132px;
+}
+
+/* Illustrations */
+.tour-art {
+  position: relative;
+  width: min(100%, 320px);
+  aspect-ratio: 2 / 1;
+  flex: none;
+  border-radius: 26px;
+  overflow: hidden;
+  box-shadow: 0 18px 40px -22px rgba(30, 40, 90, 0.55);
+}
+.tour-art--sky {
+  color: #fff;
+  background: linear-gradient(170deg, #24407f, #5b7fca 55%, #f0b49a);
+}
+/* Only the picture's own drawing fills the card; icons inside keep their size */
+.tour-art > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.tour:focus {
+  outline: none;
+}
+.ta-horizon {
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 1;
+}
+.ta-arc {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.85);
+  stroke-width: 2;
+}
+.ta-mark {
+  fill: #fff;
+}
+.ta-sun {
+  fill: #ffd27a;
+}
+.ta-sun-glow {
+  fill: rgba(255, 214, 140, 0.35);
+}
+.ta-sky-text {
+  position: absolute;
+  top: 14px;
+  inset-inline-start: 18px;
+  display: grid;
+  text-align: start;
+  line-height: 1.1;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.25);
+}
+.ta-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.ta-sky-text strong {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 600;
+}
+.ta-count {
+  font-size: 22px;
+  font-weight: 700;
+}
+.ta-count small {
+  font-size: 0.5em;
+  font-weight: 600;
+  opacity: 0.8;
+}
+.tour-art--card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 14px 18px;
+  background: var(--surface);
+  text-align: start;
+}
+.ta-datebar {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  padding-bottom: 4px;
+  border-bottom: 0.5px solid var(--sep);
+  margin-bottom: 2px;
+}
+.ta-chev {
+  color: var(--accent);
+  font-size: 18px;
+  line-height: 0.8;
+}
+.ta-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 14.5px;
+}
+.ta-node {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #6c8fd6;
+}
+.ta-name {
+  font-family: var(--font-serif);
+  font-weight: 600;
+}
+.ta-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.ta-row.is-passed {
+  color: var(--label-2);
+}
+.ta-row.is-current {
+  background: var(--accent-tint);
+}
+.ta-row.is-current .ta-time {
+  color: var(--accent);
+}
+.ta-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+.ta-chip span {
+  display: grid;
+  flex: 1;
+  line-height: 1.15;
+}
+.ta-chip small {
+  color: var(--label-2);
+  font-size: 11.5px;
+}
+.ta-chip-icon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  border-radius: 50%;
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.ta-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  padding: 7px 12px;
+  border-radius: 12px;
+  background: var(--fill);
+  color: var(--label-2);
+  font-size: 13.5px;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.ta-search .icon {
+  width: 16px;
+  height: 16px;
+}
+.ta-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+.ta-result-icon {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+}
+.ta-result-icon.is-muted {
+  background: var(--fill-2);
+  color: var(--label-2);
+}
+.tour-art--masjid {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  background: linear-gradient(160deg, #1d2556, #4a3b8f 60%, #7a5aa8);
+  color: #fff;
+  text-align: start;
+}
+.ta-qr {
+  flex: none;
+  width: 38%;
+  aspect-ratio: 1;
+  padding: 8px;
+  border-radius: 16px;
+  background: #fff;
+}
+.ta-qr svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: #111;
+}
+.ta-qr .qf {
+  fill: none;
+  stroke: #111;
+  stroke-width: 6;
+}
+.ta-masjid {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  min-width: 0;
+}
+.ta-masjid-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+}
+.ta-masjid-name .icon {
+  width: 18px;
+  height: 18px;
+}
+.ta-pill {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #2a2466;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.ta-pill.is-soft {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.ta-share {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+.ta-share .icon {
+  width: 14px;
+  height: 14px;
+}
+.tour-art--qibla {
+  background: linear-gradient(170deg, #16205a, #3a4fa0 60%, #8a74c4);
+}
+.ta-dial {
+  fill: rgba(255, 255, 255, 0.1);
+  stroke: rgba(255, 255, 255, 0.4);
+}
+.ta-n {
+  fill: #ffd27a;
+  font: 600 12px var(--font);
+}
+.ta-needle {
+  stroke: #fff;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.ta-kaaba {
+  fill: #111;
+  stroke: #ffd27a;
+  stroke-width: 1.5;
+}
+.ta-bell {
+  position: absolute;
+  top: 14px;
+  inset-inline-end: 14px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.ta-bell .icon {
+  width: 20px;
+  height: 20px;
+}
+/* Short phones: a smaller picture, so the words always fit */
+@media (max-height: 600px) {
+  .tour-art {
+    width: min(100%, 260px);
+  }
+  .tour-title {
+    margin-top: 14px;
+    font-size: 25px;
+  }
+  .tour-body {
+    font-size: 15px;
+  }
 }
