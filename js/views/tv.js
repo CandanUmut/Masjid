@@ -92,7 +92,7 @@ export function TvView(ctx) {
     clock.replaceChildren(tp.main, secs, tp.period ? h("small", {}, tp.period) : null);
     const s = statusAt(place, calc, ymd, now);
     chart.update(now, { ...s, ymd });
-    const key = `${ymd.d}|${s.current?.key}|${s.next?.key}|${Boolean(s.pendingIqama)}`;
+    const key = `${ymd.d}|${s.current?.key}|${s.next?.key}|${s.pendingIqama?.getTime()}`;
     root.dataset.phase = phaseOf(s.current?.key);
     const minuteKey = `${p.hh}:${p.mm}`;
     if (minuteKey !== lastSkyMinute) {
@@ -109,15 +109,17 @@ export function TvView(ctx) {
         ...sched.rows.map((r) => {
           const isCur = s.current && s.current.day === 0 && s.current.key === r.key && r.isPrayer;
           const isNext = s.next && s.next.day === 0 && s.next.key === r.key;
-          const extraJ = r.jumuah?.length > 1 ? r.jumuah.slice(1) : [];
+          // Two Jumu'ahs: once the first has started, the next khutbah is the big number.
+          const mainAt = (r.jumuah || []).find((d) => d > now) || r.iqama?.at;
+          const extraJ = (r.jumuah || []).filter((d) => d !== mainAt);
           return h(
             "div",
             { class: `tv-cell ${r.isPrayer ? "" : "is-sun"} ${isCur ? "is-current" : ""} ${isNext ? "is-next" : ""}` },
             h("div", { class: "tv-p" }, t(r.key)),
             h("div", { class: "tv-label" }, r.isPrayer ? t("adhan") : " "),
             h("div", { class: "tv-a" }, tvTime(r.adhan)),
-            r.isPrayer && r.iqama ? [h("div", { class: "tv-label" }, r.key === "jumuah" ? t("khutbah") : t("iqama")), h("div", { class: "tv-i" }, tvTime(r.iqama.at))] : null,
-            extraJ.length ? h("div", { class: "tv-j" }, `${t("secondJumuah")} `, extraJ.map((d) => tvTime(d))) : null
+            r.isPrayer && r.iqama ? [h("div", { class: "tv-label" }, r.key === "jumuah" ? t("khutbah") : t("iqama")), h("div", { class: "tv-i" }, tvTime(mainAt))] : null,
+            extraJ.length ? h("div", { class: "tv-j" }, `${t("alsoLabel")} `, extraJ.map((d) => tvTime(d))) : null
           );
         })
       );

@@ -4151,7 +4151,8 @@ body.no-tabbar::after {
 .tv-title h1,
 .tv-title p,
 .tv-note span,
-.note-card {
+.note-card p,
+.note-card span {
   unicode-bidi: plaintext;
 }
 /* The masjid tile stays a square */
@@ -4166,4 +4167,10 @@ body.no-tabbar::after {
 }
 .tv-note--long span {
   -webkit-line-clamp: 4;
+}
+
+/* Qibla: the title stays on one line next to the Compass button */
+.q-head .large-title {
+  white-space: nowrap;
+  font-size: clamp(26px, 7.4vw, 34px);
 }

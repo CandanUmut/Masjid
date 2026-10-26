@@ -294,7 +294,9 @@ export function TodayView(ctx) {
       const style = c ? { "--node": c, "--node-next": nextC } : {};
       let subText = null;
       // Times never break across lines ("2:15 / PM").
-      if (r.key === "jumuah") subText = [t("khutbah"), ...r.jumuah.slice(1).map((d) => t("alsoAt", { t: ctx.fmt(d).replace(/\s/g, "\u00a0") }))].join(" · ");
+      // Two Jumu'ahs: once the first has started, the next khutbah is the one shown large.
+      const mainAt = r.key === "jumuah" ? (isToday && r.jumuah.find((d) => d.getTime() > now)) || r.iqama?.at : r.iqama?.at;
+      if (r.key === "jumuah") subText = [t("khutbah"), ...r.jumuah.filter((d) => d !== mainAt).map((d) => t("alsoAt", { t: ctx.fmt(d).replace(/\s/g, "\u00a0") }))].join(" · ");
       else if (r.key === "dhuhr" && sched.isFriday) subText = t("jumuah");
       list.append(
         h(
@@ -317,7 +319,7 @@ export function TodayView(ctx) {
             ? h(
                 "span",
                 { class: `tl-time tl-iqama ${r.iqama?.clamped ? "is-clamped" : ""}`, title: r.iqama?.clamped ? t("clampedNote") : null },
-                r.iqama ? ctx.fmt(r.iqama.at) : ""
+                mainAt ? ctx.fmt(mainAt) : ""
               )
             : null
         )
@@ -384,7 +386,7 @@ export function TodayView(ctx) {
   window.addEventListener("resize", onResize);
 
   function key(s) {
-    return s ? `${s.current?.key}|${s.current?.day}|${s.next?.adhan?.getTime()}|${Boolean(s.pendingIqama)}` : "";
+    return s ? `${s.current?.key}|${s.current?.day}|${s.next?.adhan?.getTime()}|${s.pendingIqama?.getTime()}` : "";
   }
 
   renderHero();

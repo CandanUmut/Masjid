@@ -135,7 +135,8 @@ export function MonthView(ctx) {
       h("p", { class: "list-foot no-print" }, t("exportCalHint"))
     );
     // Scroll to today once the view is on screen.
-    if (first && ym.y === today.y && ym.m === today.m) {
+    // (On phones only: on a desktop the whole month fits and the title should stay in view.)
+    if (first && ym.y === today.y && ym.m === today.m && innerWidth < 900) {
       first = false;
       requestAnimationFrame(() => requestAnimationFrame(() => root.querySelector(".is-today")?.scrollIntoView({ block: "center" })));
     }

@@ -163,9 +163,10 @@ export async function searchPlaces(q, lang = "en", near = null) {
   const fromAddresses = addresses.status === "fulfilled" ? addresses.value : [];
   let a = [...fromWorship, ...fromAddresses];
   if (near && mosqueName) {
-    // Looking for a mosque: every mosque result, from either request, nearest first.
+    // Looking for a mosque: the ones whose name matches come first, then the nearest.
     const d = (x) => distanceKm(near, x);
-    const rank = (x) => (d(x) < 30 ? d(x) : 1e6);
+    const nq = norm(mosqueName);
+    const rank = (x) => (norm(x.name).includes(nq) ? 0 : 1e7) + (d(x) < 30 ? d(x) : 1e6);
     const ms = a.filter((x) => x.type === "mosque").sort((x, y) => rank(x) - rank(y));
     a = [...ms, ...a.filter((x) => x.type !== "mosque")];
   }
@@ -207,6 +208,12 @@ const tzCache = new Map();
 export async function timezoneFor(lat, lng, cc = null) {
   const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
   if (tzCache.has(key)) return tzCache.get(key);
+  // The whole lookup (retry included) never takes more than 3 s; then the zone table answers.
+  const deadline = new Promise((r) => setTimeout(() => r(null), 3000));
+  return (await Promise.race([lookupTimeZone(lat, lng, key), deadline])) || guessTimeZone(lat, lng, cc);
+}
+
+async function lookupTimeZone(lat, lng, key) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const j = await fetchJson(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}&timezone=auto&forecast_days=1`, 3000);
@@ -221,7 +228,7 @@ export async function timezoneFor(lat, lng, cc = null) {
       else break;
     }
   }
-  return guessTimeZone(lat, lng, cc);
+  return null; // the caller falls back to the zone table
 }
 
 export async function guessTimeZone(lat, lng, cc = null) {
