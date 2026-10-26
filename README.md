@@ -1,4 +1,8 @@
-# Masjid — Prayer & Iqama Times
+# Ufuq — Prayer & Iqama Times
+
+<img src="assets/icons/icon.svg" width="96" alt="Ufuq icon: the sun on the horizon at dawn, with its path across the sky" align="right">
+
+**Ufuq** (أُفُق) means *horizon*. Fajr, sunrise, Maghrib and Isha are all defined by where the sun stands against the horizon, and the app is built around that idea. The icon shows the moment of sunrise, with the sun's daily path dotted across the sky.
 
 A simple, private prayer-times app that runs entirely in the browser. It has no account, no database and no build step: static files you can host on GitHub Pages.
 
@@ -6,7 +10,7 @@ A simple, private prayer-times app that runs entirely in the browser. It has no 
 - **A timeline, not a table.** Each prayer is a node coloured by the sky at that moment. Tap a node to mark the prayer as prayed (private, on-device, no streaks). Until you do, Today shows **how long you have left to pray it**, and turns gently urgent near the end. Isha shows "best before midnight". During Ramadan the card switches to **Suhoor ends in** and **Iftar in** automatically.
 - **Times for wherever you are.** It uses your location (if you allow it) and updates when you travel. You can also search any city or enter coordinates (the time zone is taken from the coordinates, never assumed).
 - **Calculated on your device.** It uses [adhan-js](https://github.com/batoulapps/adhan-js), so times keep working offline.
-- **Masjid pages, shared with a link.** You enter a masjid's iqama rules: minutes after adhan (with optional rounding), or a fixed time that never falls less than *N* minutes after adhan. Add **changes during the year** (for example Isha 19:45 from 25 October and 21:15 from 29 March); these repeat every year. Jumu'ah times and an announcement go in too. The whole timetable is packed into a *seed*, a short code in the link and QR code. Anyone who opens it sees the same adhan and iqama times **for every day of the year**, with no server involved. The share sheet previews the next 7 days, and on your own location Today shows **your masjids' next iqama** at a glance.
+- **Masjid pages, shared with a link.** You write each iqama rule as a sentence: "**40** min *before Asr adhan*", "**45** min *before sunrise*", "**120** min *after Isha adhan*" (type the minutes or nudge them with − / +, with optional rounding), or a fixed time that is never earlier than *N* minutes after adhan. Add **changes during the year** (for example Isha 19:45 from 25 October and 21:15 from 29 March); these repeat every year. Jumu'ah times and an announcement go in too. The whole timetable is packed into a *seed*, a short code in the link and QR code. Anyone who opens it sees the same adhan and iqama times **for every day of the year**, with no server involved. The share sheet previews the next 7 days, and on your own location Today shows **your masjids' next iqama** at a glance.
 - **Built for real masjids:**
   - A **display mode** for TVs (`#/tv/<seed>`): it scales to any screen, keeps the screen awake, counts down to iqama, shows a "prayer in progress, silence your phones" screen, and puts a QR code on the screen so the congregation can subscribe.
   - A **printable QR poster** for the entrance.
@@ -83,6 +87,7 @@ js/i18n.js            EN / TR / AR strings
 js/views/*            Today, Month, Qibla, Settings, masjid editor/share, display mode
 js/vendor/            adhan-js (MIT), qrcode-generator (MIT)
 sw.js                 offline cache (bump VERSION on every release)
+tools/make-icons.cjs  regenerates the PNG icons from the SVG design (dev only, needs Playwright)
 tests/                node --test suites (engine accuracy, DST, iqama, seeds, offline cache)
 ```
 

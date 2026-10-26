@@ -1,13 +1,13 @@
 {
-  "name": "Masjid — Prayer & Iqama Times",
-  "short_name": "Masjid",
+  "name": "Ufuq — Prayer & Iqama Times",
+  "short_name": "Ufuq",
   "description": "Accurate prayer and iqama times for wherever you are. Private, offline, free.",
   "id": "./",
   "start_url": "./#/",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f2f2f7",
+  "background_color": "#0e1748",
   "theme_color": "#f2f2f7",
   "categories": ["lifestyle", "utilities"],
   "icons": [

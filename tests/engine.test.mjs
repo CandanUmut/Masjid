@@ -131,3 +131,18 @@ test("seasonal iqama: the latest change on or before the date applies, every yea
   const adhan = zonedToInstant(ymdSummer, 20, 30, tz);
   assert.equal(formatHHMM(iqamaFor("isha", adhan, rule, ymdSummer, tz).at, tz), "21:00");
 });
+
+test("iqama 'before the next prayer': Dhuhr 40 min before Asr, Fajr 45 min before sunrise", () => {
+  const p = { ...REFERENCE[0], iqama: { fajr: { mode: "before", offset: 45 }, dhuhr: { mode: "before", offset: 40, round: 5 }, asr: { mode: "offset", offset: 120 } } };
+  const s = scheduleFor(p, {}, ymd);
+  const row = (k) => s.rows.find((r) => r.key === k);
+  assert.equal(row("fajr").iqama.at.getTime(), s.times.sunrise.getTime() - 45 * 60000);
+  // Asr 15:46 − 40 = 15:06 → rounded down to 15:05
+  assert.equal(formatHHMM(row("dhuhr").iqama.at, p.tz), "15:05");
+  // two hours after Asr adhan is allowed (no 90-minute cap)
+  assert.equal(row("asr").iqama.at.getTime(), row("asr").adhan.getTime() + 120 * 60000);
+  // asking for more than the whole window clamps to the adhan, flagged
+  const tight = scheduleFor({ ...p, iqama: { maghrib: { mode: "before", offset: 200 } } }, {}, ymd).rows.find((r) => r.key === "maghrib");
+  assert.equal(tight.iqama.clamped, true);
+  assert.equal(tight.iqama.at.getTime(), tight.adhan.getTime());
+});

@@ -3,7 +3,7 @@ import { PRAYERS, DEFAULT_CALC, resolveCalc, scheduleFor, normalizeCalc } from "
 import { placeToSeed, parseSeed, seedUrl } from "../seed.js";
 import { getPosition, reverseGeocode, searchPlaces, timezoneFor } from "../geo.js";
 import { t, lang } from "../i18n.js";
-import { h, icon, openSheet, segmented, stepper, select, toast, copyText, debounce } from "../ui.js";
+import { h, icon, openSheet, select, toast, copyText, debounce, minutesInput } from "../ui.js";
 import { allTimeZones, deviceTimeZone, todayYmd, formatTime, formatDate, timeParts, tzOffsetMinutes, addDays } from "../time.js";
 import { newId } from "../store.js";
 import { calcEditor } from "./calc-editor.js";
@@ -263,63 +263,84 @@ export function openMasjidEditor(ctx, existing = null) {
       el.title = row?.iqama?.clamped ? t("clampedNote") : "";
     }
   }
-  // Controls for one rule (the base rule or a seasonal change): minutes after adhan, or a fixed time.
-  function ruleControls(rule, label) {
-    const box = h("div", { class: "iqama-detail" });
-    if (rule.mode === "offset") {
-      box.append(
-        stepper(rule.offset, {
-          min: 0,
-          max: 90,
-          format: (v) => `+${v} ${t("min")}`,
-          label: `${label} ${t("offset")}`,
-          onChange: (v) => { rule.offset = v; renderPreview(); },
-        }),
+  // ---- Iqama rules read as sentences: "[40] min [before Asr adhan ▾]", "[20:15] [at a fixed time ▾]" ----
+  const NEXT_OF = { fajr: "sunrise", dhuhr: "asr", asr: "maghrib", maghrib: "isha", isha: "midnight" };
+  const hoursFmt = (hh, mm) => t("hoursFmt", { h: hh, m: mm ? ` ${mm} ${t("min")}` : "" });
+  const kindOptions = (p, withOff) =>
+    [
+      { value: "offset", label: t("ruleAfter", { p: t(p) }) },
+      {
+        value: "before",
+        label: NEXT_OF[p] === "sunrise" ? t("ruleBeforeSunrise") : NEXT_OF[p] === "midnight" ? t("ruleBeforeMidnight") : t("ruleBefore", { p: t(NEXT_OF[p]) }),
+      },
+      { value: "fixed", label: t("ruleFixed") },
+    ].concat(withOff ? [{ value: "off", label: t("ruleOff") }] : []);
+
+  // Today's numbers for a prayer, used to convert between rule kinds without moving the time.
+  function today(p) {
+    if (!hasLoc()) return null;
+    const sched = scheduleFor(draft, draft.calc, todayYmd(draft.tz));
+    const row = sched.rows.find((r) => r.key === p || (p === "dhuhr" && r.key === "jumuah"));
+    const end = sched.times[NEXT_OF[p]];
+    return row?.adhan ? { adhan: row.adhan, iqama: row.iqama?.at || null, end } : null;
+  }
+  const hhmm = (d) => formatTime(d, draft.tz, { hour12: false, locale: "en-GB" });
+
+  // Switch a rule to another kind, keeping today's iqama time where possible.
+  function convert(p, rule, kind) {
+    const td = today(p);
+    const at = td?.iqama || (td ? new Date(td.adhan.getTime() + (DEFAULT_IQAMA[p].offset || 10) * 60000) : null);
+    const keep = { from: rule.from, changes: rule.changes };
+    Object.keys(rule).forEach((k) => delete rule[k]);
+    if (kind === "offset") Object.assign(rule, { mode: "offset", offset: at ? Math.max(0, Math.round((at - td.adhan) / 300000) * 5) : DEFAULT_IQAMA[p].offset, round: 0 });
+    else if (kind === "before") Object.assign(rule, { mode: "before", offset: at && td.end ? Math.max(0, Math.round((td.end - at) / 300000) * 5) : 30, round: 0 });
+    else Object.assign(rule, { mode: "fixed", time: at ? hhmm(at) : "13:30", min: 5 });
+    if (keep.from) rule.from = keep.from;
+    if (keep.changes) rule.changes = keep.changes;
+  }
+
+  function ruleSentence(p, rule, { withOff = false, onKind } = {}) {
+    const kind = rule ? rule.mode : "off";
+    const kindSel = select(kind, kindOptions(p, withOff), (v) => onKind(v), { class: "select select-rule", "aria-label": t(p) });
+    const line = h("div", { class: "iqama-sentence" });
+    if (kind === "offset" || kind === "before") {
+      line.append(
+        minutesInput(rule.offset, { min: 0, max: 300, step: 5, label: `${t(p)} ${t("min")}`, unit: t("min"), hours: hoursFmt, onChange: (v) => { rule.offset = v; renderPreview(); } }),
+        kindSel
+      );
+    } else if (kind === "fixed") {
+      line.append(
+        h("input", { class: "input input-time", type: "time", value: rule.time, "aria-label": `${t(p)} ${t("fixed")}`, oninput: (e) => { rule.time = e.target.value; renderPreview(); } }),
+        kindSel
+      );
+    } else line.append(kindSel);
+
+    const extra = h("div", { class: "iqama-extra" });
+    if (kind === "offset" || kind === "before") {
+      extra.append(
         select(
           rule.round || 0,
           [
             { value: 0, label: t("noRound") },
-            { value: 5, label: `${t("roundTo")} 5` },
-            { value: 10, label: `${t("roundTo")} 10` },
-            { value: 15, label: `${t("roundTo")} 15` },
+            { value: 5, label: t(kind === "before" ? "roundDown" : "roundUp", { n: 5 }) },
+            { value: 10, label: t(kind === "before" ? "roundDown" : "roundUp", { n: 10 }) },
+            { value: 15, label: t(kind === "before" ? "roundDown" : "roundUp", { n: 15 }) },
           ],
           (v) => { rule.round = Number(v); renderPreview(); },
           { class: "select select-compact", "aria-label": t("roundTo") }
         )
       );
-    } else {
-      box.append(
-        h("input", {
-          class: "input input-time",
-          type: "time",
-          value: rule.time,
-          "aria-label": `${label} ${t("fixed")}`,
-          oninput: (e) => { rule.time = e.target.value; renderPreview(); },
-        }),
+    } else if (kind === "fixed") {
+      extra.append(
         h("span", { class: "iqama-min-label" }, t("atLeast")),
-        stepper(rule.min || 0, {
-          min: 0,
-          max: 60,
-          step: 5,
-          format: (v) => `+${v} ${t("min")}`,
-          label: t("atLeast"),
-          onChange: (v) => { rule.min = v; renderPreview(); },
-        })
+        minutesInput(rule.min || 0, { min: 0, max: 120, step: 5, label: t("atLeast"), unit: t("min"), hours: hoursFmt, onChange: (v) => { rule.min = v; renderPreview(); } }),
+        h("span", { class: "iqama-min-label" }, t("afterAdhanShort"))
       );
     }
-    return box;
-  }
-
-  // Today's computed iqama for a prayer, as "HH:MM" — a sensible starting point for a fixed time.
-  function todaysIqama(p) {
-    if (!hasLoc()) return "13:30";
-    const row = scheduleFor(draft, draft.calc, todayYmd(draft.tz)).rows.find((r) => r.key === p || (p === "dhuhr" && r.key === "jumuah"));
-    const at = row?.iqama?.at || row?.adhan;
-    return at ? formatTime(at, draft.tz, { hour12: false, locale: "en-GB" }) : "13:30";
+    return { line, extra: extra.childElementCount ? extra : null };
   }
 
   const monthNames = Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat(ctx.locale, { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2001, i, 1))));
-  const mdLabel = (md) => `${Number(md.slice(3))} ${monthNames[Number(md.slice(0, 2)) - 1]}`;
 
   // A seasonal change: "From [day] [month], every year → rule".
   function changeRow(p, rule, c, i) {
@@ -339,24 +360,9 @@ export function openMasjidEditor(ctx, existing = null) {
         h("span", { class: "iqama-change-from" }, t("fromLabel")),
         select(cd, Array.from({ length: 31 }, (_, k) => ({ value: k + 1, label: String(k + 1) })), (v) => setFrom(cm, Number(v)), { class: "select select-compact", "aria-label": t("day") }),
         select(cm, monthNames.map((n, k) => ({ value: k + 1, label: n })), (v) => setFrom(Number(v), cd), { class: "select select-compact", "aria-label": t("month") }),
-        segmented(
-          c.mode,
-          [
-            { value: "offset", label: t("offset") },
-            { value: "fixed", label: t("fixed") },
-          ],
-          (v) => {
-            const from = c.from;
-            Object.keys(c).forEach((k) => delete c[k]);
-            Object.assign(c, v === "offset" ? { ...DEFAULT_IQAMA[p] } : { mode: "fixed", time: todaysIqama(p), min: 5 }, { from });
-            renderIqama();
-            renderPreview();
-          },
-          t(p)
-        ),
         h("button", { class: "icon-btn icon-btn-sm", type: "button", "aria-label": t("remove"), onclick: () => { rule.changes.splice(i, 1); if (!rule.changes.length) delete rule.changes; renderIqama(); renderPreview(); } }, icon("close"))
       ),
-      ruleControls(c, `${t(p)} ${mdLabel(c.from)}`)
+      ...Object.values(ruleSentence(p, c, { onKind: (v) => { convert(p, c, v); renderIqama(); renderPreview(); } })).filter(Boolean)
     );
   }
 
@@ -364,18 +370,30 @@ export function openMasjidEditor(ctx, existing = null) {
     iqamaList.replaceChildren(
       ...PRAYERS.map((p) => {
         const rule = draft.iqama[p];
-        const mode = rule ? rule.mode : "off";
         ruleResult[p] = h("span", { class: "iqama-result", "aria-live": "polite" });
-        const body = [];
+        const { line, extra } = ruleSentence(p, rule, {
+          withOff: true,
+          onKind: (v) => {
+            if (v === "off") draft.iqama[p] = null;
+            else {
+              if (!draft.iqama[p]) draft.iqama[p] = { ...DEFAULT_IQAMA[p] };
+              convert(p, draft.iqama[p], v);
+            }
+            renderIqama();
+            renderPreview();
+          },
+        });
+        const body = [line];
+        let addBtn = null;
         if (rule) {
           if (rule.changes?.length) {
             rule.changes.sort((a, b) => a.from.localeCompare(b.from));
-            body.push(h("div", { class: "iqama-change-from iqama-base-from" }, t("fromJan1")));
+            body.unshift(h("div", { class: "iqama-change-from iqama-base-from" }, t("fromJan1")));
           }
-          body.push(ruleControls(rule, t(p)));
+          if (rule.mode === "fixed" && extra) body.push(extra);
           (rule.changes || []).forEach((c, i) => body.push(changeRow(p, rule, c, i)));
           if ((rule.changes?.length || 0) < 12) {
-            body.push(
+            addBtn = (
               h(
                 "button",
                 {
@@ -385,10 +403,9 @@ export function openMasjidEditor(ctx, existing = null) {
                     // Default: a change on the first of next month, same kind of rule.
                     const now = todayYmd(draft.tz);
                     const m = (now.m % 12) + 1;
-                    const from = `${String(m).padStart(2, "0")}-01`;
                     const base = { ...rule };
                     delete base.changes;
-                    rule.changes = [...(rule.changes || []), { ...base, from }];
+                    rule.changes = [...(rule.changes || []), { ...base, from: `${String(m).padStart(2, "0")}-01` }];
                     renderIqama();
                     renderPreview();
                   },
@@ -398,35 +415,10 @@ export function openMasjidEditor(ctx, existing = null) {
               )
             );
           }
+          // Rounding (for minute rules) and "add a change" share one quiet footer line.
+          body.push(h("div", { class: "iqama-foot" }, rule.mode !== "fixed" ? extra : null, addBtn));
         }
-        return h(
-          "div",
-          { class: "row iqama-row" },
-          h(
-            "div",
-            { class: "iqama-top" },
-            h("span", { class: "row-label" }, t(p), ruleResult[p]),
-            segmented(
-              mode,
-              [
-                { value: "off", label: t("off") },
-                { value: "offset", label: t("offset") },
-                { value: "fixed", label: t("fixed") },
-              ],
-              (v) => {
-                const changes = draft.iqama[p]?.changes;
-                if (v === "off") draft.iqama[p] = null;
-                else if (v === "offset") draft.iqama[p] = { ...DEFAULT_IQAMA[p] };
-                else draft.iqama[p] = { mode: "fixed", time: todaysIqama(p), min: 5 };
-                if (draft.iqama[p] && changes) draft.iqama[p].changes = changes;
-                renderIqama();
-                renderPreview();
-              },
-              t(p)
-            )
-          ),
-          ...body
-        );
+        return h("div", { class: "row iqama-row" }, h("div", { class: "iqama-top" }, h("span", { class: "iqama-prayer" }, t(p)), ruleResult[p]), ...body.filter(Boolean));
       })
     );
   }

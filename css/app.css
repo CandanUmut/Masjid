@@ -3223,3 +3223,170 @@ body.is-scrolled .topbar {
 .share-actions {
   grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
 }
+.onb-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 22px;
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.onb-brand img {
+  border-radius: 8px;
+}
+.onb-brand span {
+  font-family: "Geeza Pro", "Noto Naskh Arabic", var(--font);
+  font-weight: 400;
+  color: var(--label-2);
+}
+.onb-brand + .onb-verse {
+  margin-top: 8px;
+}
+.about-icon {
+  flex: none;
+  border-radius: 11px;
+  box-shadow: 0 2px 8px rgba(14, 23, 72, 0.25);
+}
+.about-name {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+}
+.about-name span {
+  font-family: "Geeza Pro", "Noto Naskh Arabic", var(--font);
+  font-weight: 400;
+  color: var(--label-2);
+}
+
+/* ---------- Iqama rules as sentences ---------- */
+.iqama-top {
+  justify-content: space-between;
+}
+.iqama-prayer {
+  font-family: var(--font-serif);
+  font-size: 19px;
+  font-weight: 600;
+}
+.iqama-sentence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.iqama-extra {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.select-rule {
+  width: auto;
+  min-height: 40px;
+  padding: 6px 30px 6px 12px;
+  border-radius: 12px;
+  background-color: var(--accent-tint);
+  box-shadow: none;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 15px;
+}
+.minutes-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 12px;
+  background: var(--fill);
+}
+.minutes-box {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 0 4px;
+  cursor: text;
+}
+.minutes-field {
+  width: 3.2ch;
+  min-width: 2.2ch;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  text-align: center;
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.minutes-field:focus {
+  border-radius: 6px;
+  box-shadow: 0 2px 0 var(--accent);
+}
+.minutes-unit {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--label-2);
+}
+.minutes-hint {
+  padding: 0 8px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--label-2);
+  white-space: nowrap;
+}
+.minutes-hint:empty {
+  display: none;
+}
+.minutes-input .stepper-btn {
+  width: 34px;
+  height: 34px;
+}
+.iqama-row .iqama-result {
+  font-size: 17px;
+}
+.iqama-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.iqama-foot .iqama-extra .select-compact,
+.iqama-change .iqama-extra .select-compact {
+  min-height: 30px;
+  padding: 4px 26px 4px 2px;
+  background-color: transparent;
+  background-position: right 4px center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--label-2);
+}
+.iqama-foot .iqama-add-change {
+  min-height: 30px;
+  font-size: 13px;
+}
+.iqama-foot .iqama-add-change .icon {
+  width: 16px;
+  height: 16px;
+}
+.minutes-input .stepper-btn {
+  width: 30px;
+  height: 34px;
+}
+.minutes-field {
+  font-size: 18px;
+}
+.select-rule {
+  min-height: 38px;
+  padding: 6px 28px 6px 10px;
+  font-size: 14px;
+}
+.iqama-row {
+  gap: 8px;
+}
+.iqama-sentence .select-rule {
+  flex: 1 1 150px;
+  min-width: 0;
+  max-width: 100%;
+}

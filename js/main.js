@@ -340,6 +340,7 @@ function renderOnboarding() {
         <circle r="11" class="onb-sun"><animateMotion dur="12s" repeatCount="indefinite" path="${arc}"/></circle>
       </svg>`,
     }),
+    h("div", { class: "onb-brand" }, h("img", { src: "./assets/icons/icon.svg", alt: "", width: 28, height: 28 }), "Ufuq", h("span", { lang: "ar", dir: "rtl" }, "أُفُق")),
     h("p", { class: "onb-verse", lang: "ar", dir: "rtl" }, VERSE),
     h("p", { class: "onb-verse-tr" }, lang() === "ar" ? t("verseRef") : `“${t("verse")}” — ${t("verseRef")}`),
     h("h1", { class: "onb-title" }, t("welcomeTitle")),

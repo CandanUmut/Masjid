@@ -1,6 +1,6 @@
 // Offline support: every app file is precached, so the app (and prayer times) work with no network.
 // Bump VERSION whenever any file changes; the app then offers a one-tap reload.
-const VERSION = "2.0.0-6";
+const VERSION = "2.1.0-2";
 const CACHE = `masjid-${VERSION}`;
 const FILES = [
   "./",
@@ -37,6 +37,7 @@ const FILES = [
   "./assets/icons/apple-touch-icon.png",
   "./assets/icons/favicon-32.png",
   "./assets/icons/favicon-16.png",
+  "./assets/icons/icon.svg",
   "./assets/fonts/newsreader-latin-600-normal.woff2",
   "./assets/fonts/newsreader-latin-ext-600-normal.woff2",
 ];

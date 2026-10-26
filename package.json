@@ -1,6 +1,6 @@
 {
   "name": "masjid",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "Self-contained prayer & iqama times web app. No build step, no backend.",
   "type": "module",
