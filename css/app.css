@@ -3561,41 +3561,6 @@ body.is-scrolled .topbar {
     font-size: 14px;
   }
 }
-/* Short phones (iPhone SE, small Androids): tighten further so Isha still clears the tab bar. */
-@media (max-width: 899px) and (max-height: 720px) {
-  .sky {
-    padding-top: 12px;
-  }
-  .sky-title {
-    font-size: 24px;
-  }
-  .sky-count {
-    font-size: 36px;
-  }
-  .sky-sub {
-    font-size: 13px;
-  }
-  .sky-chart {
-    height: 46px;
-    min-height: 46px;
-  }
-  .sky-peak {
-    display: none;
-  }
-  .tl-row {
-    min-height: 44px;
-  }
-  .tl-row.is-extra {
-    min-height: 30px;
-  }
-  .date-bar .icon-btn {
-    width: 40px;
-    height: 40px;
-  }
-  .timeline-card {
-    margin-top: 10px;
-  }
-}
 
 /* ---------- Self-fitting phone home screen (levels applied by TodayView.fit) ---------- */
 @media (max-width: 899px) {
@@ -3858,3 +3823,47 @@ body.is-scrolled .topbar {
     background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 0%, transparent), var(--bg) 70%);
   }
 }
+.masjid-card {
+  margin-top: 12px;
+  padding: 14px 16px;
+}
+.masjid-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.masjid-card-text {
+  display: grid;
+  min-width: 0;
+}
+.masjid-card-text strong {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.masjid-card-text span {
+  font-size: 13px;
+  color: var(--label-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.masjid-card-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+.masjid-card-actions .btn {
+  min-height: 40px;
+  font-size: 14px;
+  padding: 6px 8px;
+}
+html.has-sheet,
+html.has-sheet body {
+  overflow: hidden;
+}
+html { scrollbar-gutter: stable; }

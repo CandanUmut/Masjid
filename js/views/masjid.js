@@ -1,7 +1,7 @@
 // Masjid pages: create/edit, share as link / QR / seed code, and open shared seeds.
 import { PRAYERS, DEFAULT_CALC, resolveCalc, scheduleFor, normalizeCalc } from "../engine.js";
 import { placeToSeed, parseSeed, seedUrl } from "../seed.js";
-import { getPosition, reverseGeocode, searchPlaces, timezoneFor } from "../geo.js";
+import { getPosition, reverseGeocode, searchPlaces, timezoneFor, completePlace } from "../geo.js";
 import { t, lang } from "../i18n.js";
 import { h, icon, openSheet, select, toast, copyText, debounce, minutesInput } from "../ui.js";
 import { allTimeZones, deviceTimeZone, todayYmd, formatTime, formatDate, timeParts, tzOffsetMinutes, addDays } from "../time.js";
@@ -215,10 +215,23 @@ export function openMasjidEditor(ctx, existing = null) {
                   {
                     class: "row row-btn",
                     type: "button",
-                    onclick: () => {
-                      Object.assign(draft, { lat: f.lat, lng: f.lng, tz: f.tz, cc: f.cc });
+                    onclick: async (e) => {
+                      const btn = e.currentTarget;
+                      btn.disabled = true;
+                      let place = f;
+                      try {
+                        place = await completePlace(f);
+                      } catch {
+                        place = { ...f, tz: f.tz || draft.tz };
+                      }
+                      Object.assign(draft, { lat: place.lat, lng: place.lng, tz: place.tz, cc: place.cc });
+                      // Picking the masjid itself from the map fills in its name and address too.
+                      if (f.type === "mosque" && !draft.name.trim()) {
+                        draft.name = f.name;
+                        nameInput.value = f.name;
+                      }
                       if (!draft.sub) {
-                        draft.sub = [f.name, f.sub].filter(Boolean).join(", ");
+                        draft.sub = f.type === "city" ? [f.name, f.sub].filter(Boolean).join(", ") : f.sub || f.name;
                         subInput.value = draft.sub;
                       }
                       searchResults.hidden = true;
@@ -228,7 +241,7 @@ export function openMasjidEditor(ctx, existing = null) {
                       calcBox.refresh();
                     },
                   },
-                  icon("pin", "row-icon"),
+                  icon(f.type === "mosque" ? "mosque" : f.type === "address" ? "pin" : "globe", "row-icon"),
                   h("span", { class: "row-main" }, h("span", { class: "row-title" }, f.name), h("span", { class: "row-sub" }, f.sub))
                 )
               )
@@ -726,12 +739,52 @@ export async function importSeed(ctx, text, { allowBackup = false, silent = fals
   return true;
 }
 
+// --- Managing a saved place: always one tap away ---------------------------------------------------
+export function placeOptions(ctx, place) {
+  const item = (ic, label, fn, cls = "") =>
+    h("button", { class: `row row-btn ${cls}`, type: "button", onclick: () => { sheet.close(); setTimeout(fn, 240); } }, icon(ic, "row-icon"), h("span", { class: "row-title" }, label));
+  const isMasjid = place.kind === "masjid";
+  const sheet = openSheet({
+    title: place.name,
+    content: h(
+      "div",
+      { class: "list" },
+      isMasjid ? item("edit", t("editMasjid"), () => openMasjidEditor(currentCtx(), place)) : null,
+      item("share", t("share"), () => openShareSheet(currentCtx(), place)),
+      isMasjid ? item("tv", t("tvMode"), () => currentCtx().go("tv")) : null,
+      item("trash", isMasjid ? t("removeMasjid") : t("remove"), () => currentCtx().removePlace(place.id), "tone-danger")
+    ),
+  });
+}
+
+// Under the times on a masjid page: who this is, and the actions people look for.
+function masjidCard(ctx, place) {
+  return h(
+    "div",
+    { class: "card masjid-card" },
+    h(
+      "div",
+      { class: "masjid-card-head" },
+      h("div", { class: "masjid-cta-icon", "aria-hidden": "true" }, icon("mosque")),
+      h("div", { class: "masjid-card-text" }, h("strong", {}, place.name), place.sub ? h("span", {}, place.sub) : null)
+    ),
+    h(
+      "div",
+      { class: "masjid-card-actions" },
+      h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openMasjidEditor(ctx, place) }, icon("edit"), t("edit")),
+      h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openShareSheet(ctx, place) }, icon("share"), t("share")),
+      h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.go("tv") }, icon("tv"), t("tvShort"))
+    )
+  );
+}
+
 // --- Plugin wiring ----------------------------------------------------------------------------
 export const masjidPlugin = {
   ctx: () => ({
     shareMasjid: (p) => openShareSheet(currentCtx(), p),
     editMasjid: (p) => openMasjidEditor(currentCtx(), p),
     createMasjid: () => openMasjidEditor(currentCtx()),
+    masjidCard: (p) => masjidCard(currentCtx(), p),
     openSeed: () => openSeedInput(currentCtx()),
     extraPlaceActions: (sheet) => [
       h("button", { class: "btn btn-plain", type: "button", onclick: () => { sheet.close(); openMasjidEditor(currentCtx()); } }, icon("mosque"), t("addMasjid")),
@@ -741,16 +794,8 @@ export const masjidPlugin = {
   topbarActions: (ctx) =>
     ctx.place && ctx.place.id !== "gps"
       ? [
-          h(
-            "button",
-            {
-              class: "icon-btn",
-              type: "button",
-              "aria-label": t("share"),
-              onclick: () => openShareSheet(ctx, ctx.place),
-            },
-            icon("share")
-          ),
+          h("button", { class: "icon-btn", type: "button", "aria-label": t("share"), onclick: () => openShareSheet(ctx, ctx.place) }, icon("share")),
+          h("button", { class: "icon-btn", type: "button", "aria-label": t("placeOptions"), onclick: () => placeOptions(ctx, ctx.place) }, icon("more")),
         ]
       : [],
   onboardingActions: (ctx) => [h("button", { class: "btn btn-plain", type: "button", onclick: () => openSeedInput(ctx) }, icon("link"), t("openSeed"))],

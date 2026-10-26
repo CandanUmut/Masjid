@@ -280,10 +280,6 @@ export const extrasPlugin = {
       window.open(url, "_blank", "noopener");
     },
   }),
-  topbarActions: (ctx) =>
-    ctx.place?.kind === "masjid"
-      ? [h("a", { class: "icon-btn", href: "#/tv", "aria-label": t("tvMode"), title: t("tvMode") }, icon("tv"))]
-      : [],
   handleHash(name, arg, ctx) {
     if (name !== "tv" || !arg) return false;
     // #/tv/<seed>: import (or refresh) the masjid silently, then show the board.

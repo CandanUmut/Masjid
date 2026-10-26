@@ -87,16 +87,24 @@ export function icon(name, cls = "") {
 // --- Keyboard awareness ----------------------------------------------------
 // On phones the on-screen keyboard covers the bottom of the layout viewport, where sheets live.
 // Track the visible area so sheets (and their search results) always sit above the keyboard.
+// Only while a text field inside a sheet is focused — otherwise Safari's toolbar collapsing during a
+// scroll would also look like a "keyboard" and nudge sheets around.
 if (typeof window !== "undefined" && window.visualViewport) {
   const vv = window.visualViewport;
+  const root = document.documentElement;
+  const typing = () => {
+    const a = document.activeElement;
+    return Boolean(a && a.closest?.("dialog[open]") && (a.tagName === "TEXTAREA" || (a.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(a.type))));
+  };
   const sync = () => {
-    const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-    document.documentElement.style.setProperty("--kb", `${kb}px`);
-    document.documentElement.style.setProperty("--vvh", `${vv.height}px`);
-    document.documentElement.classList.toggle("has-keyboard", kb > 80);
+    const kb = typing() ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+    root.style.setProperty("--kb", `${kb > 80 ? kb : 0}px`);
+    root.style.setProperty("--vvh", `${kb > 80 ? vv.height : window.innerHeight}px`);
+    root.classList.toggle("has-keyboard", kb > 80);
   };
   vv.addEventListener("resize", sync);
-  vv.addEventListener("scroll", sync);
+  document.addEventListener("focusin", () => setTimeout(sync, 60));
+  document.addEventListener("focusout", () => setTimeout(sync, 60));
   sync();
 }
 
@@ -126,6 +134,7 @@ export function openSheet({ title, content, actions, className = "", onClose, be
     const done = () => {
       dlg.close();
       dlg.remove();
+      if (!document.querySelector("dialog.sheet[open]")) document.documentElement.classList.remove("has-sheet");
       onClose?.();
     };
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) done();
@@ -141,6 +150,8 @@ export function openSheet({ title, content, actions, className = "", onClose, be
   attachSwipeToClose(dlg, close);
   document.body.append(dlg);
   dlg.showModal();
+  // The page behind a sheet stays put.
+  document.documentElement.classList.add("has-sheet");
   return { el: dlg, body, close };
 }
 

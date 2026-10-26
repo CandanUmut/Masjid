@@ -56,11 +56,16 @@ export async function reverseGeocode(lat, lng, lang = "en") {
   return out;
 }
 
-// City search. People type names in their own language ("Londra", "Kahire", "Nueva York"), so we ask in
-// the UI language, the device language and English, merge, and rank: exact name first, then by size.
-export async function searchPlaces(q, lang = "en") {
-  const query = String(q || "").trim();
-  if (query.length < 2) return [];
+const norm = (x) =>
+  String(x || "")
+    .toLocaleLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i");
+
+// Cities (Open-Meteo). People type names in their own language ("Londra", "Kahire"), so we ask in the
+// UI language, the device language and English, merge, and rank: exact name first, then by size.
+async function searchCities(query, lang) {
   const device = String(navigator.language || "en").slice(0, 2).toLowerCase();
   const langs = [...new Set([lang, device, "en"])].slice(0, 3);
   const responses = await Promise.allSettled(
@@ -69,29 +74,77 @@ export async function searchPlaces(q, lang = "en") {
     )
   );
   if (responses.every((r) => r.status === "rejected")) throw responses[0].reason;
-  const norm = (x) => String(x || "").toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i");
   const nq = norm(query);
   const byId = new Map();
-  responses.forEach((r, i) => {
-    if (r.status !== "fulfilled") return;
+  for (const r of responses) {
+    if (r.status !== "fulfilled") continue;
     for (const p of r.value.results || []) {
       const prev = byId.get(p.id);
-      // Keep the name in the UI language when we have it (the first response).
-      if (!prev) byId.set(p.id, { p, exact: norm(p.name) === nq, prefix: norm(p.name).startsWith(nq), first: i });
+      if (!prev) byId.set(p.id, { p, exact: norm(p.name) === nq, prefix: norm(p.name).startsWith(nq) });
       else if (norm(p.name) === nq) prev.exact = true;
     }
-  });
+  }
   return [...byId.values()]
     .sort((a, b) => b.exact - a.exact || b.prefix - a.prefix || (b.p.population || 0) - (a.p.population || 0))
-    .slice(0, 8)
-    .map(({ p: r }) => ({
+    .map(({ p: r, exact }) => ({
       name: r.name,
       sub: [r.admin1, r.country].filter(Boolean).join(", "),
       lat: round(r.latitude, 5),
       lng: round(r.longitude, 5),
       tz: r.timezone || "UTC",
       cc: r.country_code || null,
+      type: "city",
+      exact,
     }));
+}
+
+// Streets, buildings and masjids (Photon, OpenStreetMap). No time zone in the answer: resolved on pick.
+async function searchAddresses(query, lang) {
+  const l = ["en", "de", "fr"].includes(lang) ? `&lang=${lang}` : "";
+  const j = await fetchJson(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=8${l}`, 8000);
+  return (j.features || [])
+    .filter((f) => f.geometry?.coordinates && !["bus_stop", "platform", "station"].includes(f.properties?.osm_value))
+    .map((f) => {
+      const p = f.properties || {};
+      const numberFirst = ["US", "CA", "GB", "AU", "NZ", "IE", "FR", "IN", "ZA", "SG", "MY"].includes(String(p.countrycode).toUpperCase());
+      const street = (numberFirst ? [p.housenumber, p.street] : [p.street, p.housenumber]).filter(Boolean).join(" ");
+      const name = p.name || street || p.city || p.county || "";
+      const area = [p.name && street ? street : "", p.district || p.locality, p.city && p.city !== name ? p.city : "", p.country]
+        .filter(Boolean)
+        .join(", ");
+      const [lng, lat] = f.geometry.coordinates;
+      const worship = p.osm_value === "place_of_worship" || p.osm_value === "mosque";
+      return { name, sub: area, lat: round(lat, 5), lng: round(lng, 5), tz: null, cc: p.countrycode || null, type: worship ? "mosque" : "address" };
+    })
+    .filter((x) => x.name);
+}
+
+// One search box for everything: cities first when the query is a city name, addresses and masjids
+// otherwise ("350 5th Ave", "East London Mosque"). Near-duplicates are dropped.
+export async function searchPlaces(q, lang = "en") {
+  const query = String(q || "").trim();
+  if (query.length < 2) return [];
+  const [cities, addresses] = await Promise.allSettled([searchCities(query, lang), query.length >= 3 ? searchAddresses(query, lang) : Promise.resolve([])]);
+  if (cities.status === "rejected" && addresses.status === "rejected") throw cities.reason;
+  const c = cities.status === "fulfilled" ? cities.value : [];
+  const a = addresses.status === "fulfilled" ? addresses.value : [];
+  const looksLikeAddress = /\d/.test(query) || query.includes(",") || /\b(mosque|masjid|cami|camii|mescid|jami|street|st|ave|road|rd|cad|sok)\b/i.test(query);
+  const ordered = looksLikeAddress ? [...a, ...c] : [...c.filter((x) => x.exact), ...a.slice(0, 3), ...c.filter((x) => !x.exact), ...a.slice(3)];
+  const out = [];
+  for (const x of ordered) {
+    // Same place twice, or many things registered at one address (shops, radio stations…): keep one.
+    if (out.some((y) => (distanceKm(x, y) < 0.3 && norm(x.name) === norm(y.name)) || (x.type !== "city" && y.type !== "city" && x.sub && x.sub === y.sub && distanceKm(x, y) < 0.05))) continue;
+    out.push(x);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
+// Fill in what an address result lacks (time zone) before it is saved.
+export async function completePlace(f) {
+  if (f.tz) return f;
+  const { tz } = await timezoneFor(f.lat, f.lng);
+  return { ...f, tz };
 }
 
 // IANA time zone for coordinates. Online: Open-Meteo (rounded position). Offline: a UTC offset from

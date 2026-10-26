@@ -1,7 +1,7 @@
-import { searchPlaces, timezoneFor, reverseGeocode, distanceKm } from "../geo.js";
+import { searchPlaces, timezoneFor, reverseGeocode, distanceKm, completePlace } from "../geo.js";
 import { t, lang } from "../i18n.js";
 import { h, icon, openSheet, debounce, select } from "../ui.js";
-import { allTimeZones, todayYmd, formatTime } from "../time.js";
+import { allTimeZones, todayYmd, formatTime, deviceTimeZone } from "../time.js";
 import { statusAt } from "../engine.js";
 import { newId } from "../store.js";
 
@@ -45,23 +45,32 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
       results.replaceChildren();
       if (!found.length) results.append(h("div", { class: "row row-muted" }, t("noResults")));
       for (const f of found) {
-        results.append(
-          h(
-            "button",
-            {
-              class: "row row-btn",
-              type: "button",
-              onclick: () => {
-                const gps = ctx.state.gps;
-                if (gps && distanceKm(gps, f) < 10) ctx.activate("gps");
-                else ctx.addPlace({ id: newId(), kind: "city", ...f }, { activate: true });
-                sheet.close();
-              },
+        const row = h(
+          "button",
+          {
+            class: "row row-btn",
+            type: "button",
+            onclick: async () => {
+              // Addresses come without a time zone: look it up before saving (with a visible spinner).
+              row.disabled = true;
+              const icn = row.querySelector(".row-icon");
+              icn?.replaceWith(h("span", { class: "row-icon row-icon-spin" }, h("span", { class: "spinner" })));
+              let place;
+              try {
+                place = await completePlace(f);
+              } catch {
+                place = { ...f, tz: f.tz || deviceTimeZone() };
+              }
+              const gps = ctx.state.gps;
+              if (gps && f.type === "city" && distanceKm(gps, place) < 10) ctx.activate("gps");
+              else ctx.addPlace({ id: newId(), kind: "city", name: place.name, sub: place.sub, lat: place.lat, lng: place.lng, tz: place.tz, cc: place.cc }, { activate: true });
+              sheet.close();
             },
-            icon("pin", "row-icon"),
-            h("span", { class: "row-main" }, h("span", { class: "row-title" }, f.name), h("span", { class: "row-sub" }, f.sub))
-          )
+          },
+          icon(f.type === "mosque" ? "mosque" : f.type === "address" ? "pin" : "globe", "row-icon"),
+          h("span", { class: "row-main" }, h("span", { class: "row-title" }, f.name), h("span", { class: "row-sub" }, f.sub))
         );
+        results.append(row);
       }
     } catch {
       if (mine !== seq) return;
