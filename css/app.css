@@ -2390,20 +2390,10 @@ body.is-chromeless .app {
 .tl-node-dot .icon svg {
   stroke-width: 3;
 }
-button.tl-node:hover .tl-node-dot {
-  transform: scale(1.12);
-}
-button.tl-node:active .tl-node-dot {
-  transform: scale(0.9);
-}
-.tl-node.is-done .tl-node-dot {
-  background: var(--node);
-  box-shadow: inset 0 0 0 2.5px var(--node), 0 4px 12px -4px var(--node);
-}
-.tl-node.is-done .tl-node-dot .icon {
-  opacity: 1;
-  transform: none;
-}
+
+
+
+
 .tl-name {
   display: flex;
   flex-direction: column;
@@ -2837,10 +2827,7 @@ button.tl-node:active .tl-node-dot {
 .tl-node.is-minor .tl-node-dot {
   box-shadow: inset 0 0 0 2px var(--node-vis);
 }
-.tl-node.is-done .tl-node-dot {
-  background: var(--node-vis);
-  box-shadow: inset 0 0 0 2.5px var(--node-vis), 0 4px 12px -4px var(--node-vis);
-}
+
 .tl-row.is-current .tl-node-dot {
   box-shadow: inset 0 0 0 2.5px var(--node-vis), 0 0 0 6px color-mix(in srgb, var(--node-vis) 22%, transparent);
 }
@@ -2857,13 +2844,8 @@ button.tl-node:active .tl-node-dot {
 .tl-row.is-passed > .tl-time {
   color: var(--label-passed);
 }
-.tl-row.is-missed .tl-title,
-.tl-row.is-missed > .tl-time {
-  color: var(--label);
-}
-.tl-row.is-missed .tl-node-dot {
-  box-shadow: inset 0 0 0 2.5px var(--node-vis), 0 0 0 3px color-mix(in srgb, var(--node-vis) 18%, transparent);
-}
+
+
 .tl-ar {
   color: var(--label-2);
   font-size: 13px;
@@ -2881,7 +2863,7 @@ button.tl-node:active .tl-node-dot {
   color: var(--label);
   font-weight: 700;
 }
-.timeline-card.has-iqama .tl-row.is-passed:not(.is-missed) .tl-iqama {
+.timeline-card.has-iqama .tl-row.is-passed .tl-iqama {
   color: var(--label-passed);
 }
 .timeline-card.has-iqama .tl-row.is-current .tl-iqama {
@@ -3669,31 +3651,9 @@ body.is-scrolled .topbar {
   }
 }
 
-/* One-time tip that the circles are tappable */
-.tl-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 12px 4px;
-  padding: 6px 6px 6px 12px;
-  border-radius: 12px;
-  background: var(--accent-tint);
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 500;
-}
-.tl-hint > .icon {
-  width: 16px;
-  height: 16px;
-  flex: none;
-}
-.tl-hint span {
-  flex: 1;
-}
-.tl-hint .icon-btn-sm {
-  background: transparent;
-  color: var(--accent);
-}
+
+
+
 
 /* Bigger hit areas without bigger visuals (44px minimum) */
 .tl-node,
