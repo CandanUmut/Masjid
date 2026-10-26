@@ -1,6 +1,6 @@
 // Offline support: every app file is precached, so the app (and prayer times) work with no network.
 // Bump VERSION whenever any file changes; the app then offers a one-tap reload.
-const VERSION = "2.4.4";
+const VERSION = "2.5.0";
 const CACHE = `masjid-${VERSION}`;
 const FILES = [
   "./",
@@ -19,6 +19,7 @@ const FILES = [
   "./js/i18n.js",
   "./js/ui.js",
   "./js/views/today.js",
+  "./js/views/tour.js",
   "./js/views/skychart.js",
   "./js/views/places.js",
   "./js/views/settings.js",
