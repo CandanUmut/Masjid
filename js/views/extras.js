@@ -109,9 +109,11 @@ function setupPwa() {
       setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
     })
     .catch(() => {});
+  // Reload only when an *existing* worker is replaced (an update), never on the very first install.
+  const hadController = Boolean(navigator.serviceWorker.controller);
   let reloading = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (reloading) return;
+    if (reloading || !hadController) return;
     reloading = true;
     location.reload();
   });
@@ -136,10 +138,10 @@ function settingsSections(ctx) {
             return;
           }
         }
-        ctx.update((s) => (s.settings.notify.enabled = v), { render: false });
+        ctx.update((s) => (s.settings.notify.enabled = v));
       }, t("notifyEnable"))
     ),
-    row(
+    h("div", { class: n.enabled ? "" : "is-disabled", inert: !n.enabled }, row(
       t("notifyBefore"),
       select(
         n.before,
@@ -148,7 +150,7 @@ function settingsSections(ctx) {
         { "aria-label": t("notifyBefore") }
       )
     ),
-    row(t("notifyIqama"), toggle(n.iqama, (v) => ctx.update((s) => (s.settings.notify.iqama = v), { render: false }), t("notifyIqama")))
+    row(t("notifyIqama"), toggle(n.iqama, (v) => ctx.update((s) => (s.settings.notify.iqama = v), { render: false }), t("notifyIqama"))))
   );
   const sections = [
     h("h3", { class: "list-title" }, t("notifications")),
@@ -188,7 +190,7 @@ function settingsSections(ctx) {
       "div",
       { class: "list" },
       h("button", { class: "row row-btn", type: "button", onclick: () => openBackup(ctx) }, icon("copy", "row-icon"), h("span", { class: "row-title" }, t("exportData"))),
-      h("button", { class: "row row-btn", type: "button", onclick: () => openSeedInput(ctx) }, icon("download", "row-icon"), h("span", { class: "row-title" }, t("importData"))),
+      h("button", { class: "row row-btn", type: "button", onclick: () => openSeedInput(ctx, { restore: true }) }, icon("download", "row-icon"), h("span", { class: "row-title" }, t("importData"))),
       h(
         "button",
         {
@@ -227,11 +229,12 @@ async function openBackup(ctx) {
         class: "btn btn-primary btn-block",
         type: "button",
         onclick: async (e) => {
-          if (await copyText(seed)) e.currentTarget.textContent = t("copied");
+          const b = e.currentTarget;
+          if (await copyText(seed)) b.lastChild.textContent = t("copied");
         },
       },
       icon("copy"),
-      t("copy")
+      h("span", {}, t("copy"))
     ),
   });
 }
@@ -284,8 +287,8 @@ export const extrasPlugin = {
   handleHash(name, arg, ctx) {
     if (name !== "tv" || !arg) return false;
     // #/tv/<seed>: import (or refresh) the masjid silently, then show the board.
-    importSeed({ ...ctx, addPlace: (p, o) => ctx.addPlace(p, { ...o, silent: true }) }, arg).then((ok) => {
-      if (!ok) toast(t("invalidSeed"), { tone: "warn" });
+    importSeed(ctx, arg, { silent: true }).then((ok) => {
+      if (ok === false) toast(t("invalidSeed"), { tone: "warn" });
       ctx.showRoute("tv");
     });
     return true;

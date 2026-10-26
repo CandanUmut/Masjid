@@ -175,15 +175,18 @@ export function computeDay(place, calcIn, ymd) {
 }
 
 // --- Iqama ---------------------------------------------------------------
-// Rule per prayer: { mode: "offset", offset: 10, round: 0|5|10|15 } or { mode: "fixed", time: "13:30" }.
+// Rule per prayer: { mode: "offset", offset: 10, round: 0|5|10|15 }
+//              or { mode: "fixed", time: "20:15", min: 10 } — a fixed time, but never earlier than
+//                 `min` minutes after the adhan (fixed times drift against the seasons otherwise).
 export function iqamaFor(prayer, adhan, rule, ymd, tz) {
   if (!rule || !adhan) return null;
   if (rule.mode === "fixed") {
     const hm = parseHHMM(rule.time);
     if (!hm) return null;
     const at = zonedToInstant(ymd, hm.hh, hm.mm, tz);
-    // A fixed iqama can never precede the adhan; fall back to the adhan time and flag it.
-    if (at < adhan) return { at: new Date(adhan.getTime()), clamped: true };
+    const earliest = adhan.getTime() + clampInt(rule.min, 0, 120) * 60000;
+    // The fixed time has fallen before the adhan (+ minimum gap): use that instead and flag it.
+    if (at.getTime() < earliest) return { at: new Date(earliest), clamped: true };
     return { at, clamped: false };
   }
   const off = clampInt(rule.offset, 0, 180);

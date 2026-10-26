@@ -418,7 +418,7 @@ export function start() {
   if (!navigator.onLine) document.body.classList.add("is-offline");
 
   // Auto-locate: on first open ask right away (that's what the app is for); later refresh silently.
-  const openingSeed = /^#\/?m\//.test(location.hash);
+  const openingSeed = /^#\/?(m|tv)\/./.test(location.hash);
   if (state.activeId === "gps" && !openingSeed) {
     geoPermission().then((perm) => {
       if (perm === "granted" || (!state.gps && perm !== "denied" && !state.onboarded)) useGps();

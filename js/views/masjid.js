@@ -4,7 +4,7 @@ import { placeToSeed, parseSeed, seedUrl } from "../seed.js";
 import { getPosition, reverseGeocode, searchPlaces, timezoneFor } from "../geo.js";
 import { t, lang } from "../i18n.js";
 import { h, icon, openSheet, segmented, stepper, select, toast, copyText, debounce } from "../ui.js";
-import { allTimeZones, deviceTimeZone, todayYmd, formatTime, timeParts } from "../time.js";
+import { allTimeZones, deviceTimeZone, todayYmd, formatTime, timeParts, tzOffsetMinutes } from "../time.js";
 import { newId } from "../store.js";
 import { calcEditor } from "./calc-editor.js";
 import qrcode from "../vendor/qrcode.js";
@@ -39,6 +39,8 @@ export function openMasjidEditor(ctx, existing = null) {
   draft.calc = normalizeCalc(draft.calc);
   draft.iqama = draft.iqama || {};
   draft.jumuah = draft.jumuah || [];
+  const initial = JSON.stringify(draft);
+  let saved = false;
 
   const hasLoc = () => Number.isFinite(draft.lat) && Number.isFinite(draft.lng);
   const err = h("p", { class: "form-error", hidden: true });
@@ -50,6 +52,7 @@ export function openMasjidEditor(ctx, existing = null) {
       preview.replaceChildren(h("p", { class: "preview-empty" }, t("locationRequired")));
       return;
     }
+    renderRuleResults();
     const sched = scheduleFor(draft, draft.calc, todayYmd(draft.tz));
     // Keep cells compact: AM/PM goes on a small second line.
     const fmt = (d) => {
@@ -121,6 +124,7 @@ export function openMasjidEditor(ctx, existing = null) {
     if (latIn.value && lngIn.value && Number.isFinite(la) && Number.isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180) {
       draft.lat = la;
       draft.lng = lo;
+      draft.cc = null; // the old country no longer applies; the lookup below refills it
       renderLoc(false);
       renderPreview();
       calcBox.refresh();
@@ -131,13 +135,17 @@ export function openMasjidEditor(ctx, existing = null) {
   lngIn.addEventListener("input", onCoords);
 
   function renderLoc(syncInputs = true) {
+    // A time zone far from what the longitude implies almost always means a mistake (3h-wrong times).
+    const offH = tzOffsetMinutes(Date.now(), draft.tz) / 60;
+    const mismatch = hasLoc() && Math.abs(offH - draft.lng / 15) > 2.5;
     locLine.replaceChildren(
       icon(hasLoc() ? "pin" : "info", "row-icon"),
       h(
         "span",
         { class: "row-main" },
         h("span", { class: "row-title" }, hasLoc() ? `${draft.lat.toFixed(5)}, ${draft.lng.toFixed(5)}` : t("setLocation")),
-        h("span", { class: "row-sub" }, draft.tz.replace(/_/g, " "))
+        h("span", { class: "row-sub" }, draft.tz.replace(/_/g, " ")),
+        mismatch ? h("span", { class: "form-warn" }, t("tzMismatch")) : null
       )
     );
     if (syncInputs && hasLoc()) {
@@ -236,8 +244,21 @@ export function openMasjidEditor(ctx, existing = null) {
     renderPreview();
   });
 
-  // Iqama rules
+  // Iqama rules — each row shows what its rule gives today, so admins see the effect immediately.
   const iqamaList = h("div", { class: "list" });
+  const ruleResult = {};
+  function renderRuleResults() {
+    if (!hasLoc()) return;
+    const sched = scheduleFor(draft, draft.calc, todayYmd(draft.tz));
+    for (const p of PRAYERS) {
+      const el = ruleResult[p];
+      if (!el) continue;
+      const row = sched.rows.find((r) => r.key === p || (p === "dhuhr" && r.key === "jumuah"));
+      el.textContent = row?.iqama ? `→ ${formatTime(row.iqama.at, draft.tz, { hour12: ctx.hour12, locale: ctx.locale })}` : "";
+      el.classList.toggle("is-clamped", Boolean(row?.iqama?.clamped));
+      el.title = row?.iqama?.clamped ? t("clampedNote") : "";
+    }
+  }
   function renderIqama() {
     iqamaList.replaceChildren(
       ...PRAYERS.map((p) => {
@@ -273,16 +294,26 @@ export function openMasjidEditor(ctx, existing = null) {
               value: rule.time,
               "aria-label": `${t(p)} ${t("fixed")}`,
               oninput: (e) => { rule.time = e.target.value; renderPreview(); },
+            }),
+            h("span", { class: "iqama-min-label" }, t("atLeast")),
+            stepper(rule.min || 0, {
+              min: 0,
+              max: 60,
+              step: 5,
+              format: (v) => `+${v} ${t("min")}`,
+              label: t("atLeast"),
+              onChange: (v) => { rule.min = v; renderPreview(); },
             })
           );
         }
+        ruleResult[p] = h("span", { class: "iqama-result", "aria-live": "polite" });
         return h(
           "div",
           { class: "row iqama-row" },
           h(
             "div",
             { class: "iqama-top" },
-            h("span", { class: "row-label" }, t(p)),
+            h("span", { class: "row-label" }, t(p), ruleResult[p]),
             segmented(
               mode,
               [
@@ -301,7 +332,7 @@ export function openMasjidEditor(ctx, existing = null) {
                     const at = row?.iqama?.at || row?.adhan;
                     if (at) time = formatTime(at, draft.tz, { hour12: false, locale: "en-GB" });
                   }
-                  draft.iqama[p] = { mode: "fixed", time };
+                  draft.iqama[p] = { mode: "fixed", time, min: 5 };
                 }
                 renderIqama();
                 renderPreview();
@@ -339,6 +370,8 @@ export function openMasjidEditor(ctx, existing = null) {
     title: existing ? t("editMasjid") : t("newMasjid"),
     wide: true,
     className: "sheet--tall",
+    // Swiping down or tapping outside must never silently throw away an admin's work.
+    beforeClose: () => saved || JSON.stringify(draft) === initial || confirm(t("discardChanges")),
     content: [
       preview,
       h("h3", { class: "list-title" }, t("masjid")),
@@ -386,6 +419,7 @@ export function openMasjidEditor(ctx, existing = null) {
               u: Math.floor(Date.now() / 1000),
             };
             ctx.addPlace(place, { activate: true });
+            saved = true;
             sheet.close();
             setTimeout(() => openShareSheet(ctx, place), 260);
           },
@@ -417,7 +451,7 @@ export async function openShareSheet(ctx, place) {
   const qr = qrcode(0, "M");
   qr.addData(url);
   qr.make();
-  const qrBox = h("div", { class: "qr-box", html: qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true, alt: t("qr") }) });
+  const qrBox = h("div", { class: "qr-box", html: qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true, alt: t("qr") }) });
   const copyBtn = (text, label) =>
     h(
       "button",
@@ -425,8 +459,8 @@ export async function openShareSheet(ctx, place) {
         class: "btn btn-tinted btn-sm",
         type: "button",
         onclick: async (e) => {
+          const b = e.currentTarget; // read before awaiting: currentTarget is null afterwards
           const ok = await copyText(text);
-          const b = e.currentTarget;
           if (ok) {
             const old = b.lastChild.textContent;
             b.lastChild.textContent = t("copied");
@@ -486,7 +520,7 @@ function printPoster(place, qr) {
     h("div", { class: "poster-mark", "aria-hidden": "true" }, icon("mosque")),
     h("h1", {}, place.name),
     place.sub ? h("p", { class: "poster-sub" }, place.sub) : null,
-    h("div", { class: "poster-qr", html: qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true }) }),
+    h("div", { class: "poster-qr", html: qr.createSvgTag({ cellSize: 8, margin: 4, scalable: true }) }),
     h("p", { class: "poster-cta" }, t("posterCta")),
     h("p", { class: "poster-fine" }, t("posterFine"))
   );
@@ -502,11 +536,11 @@ function printPoster(place, qr) {
 }
 
 // --- Open a seed --------------------------------------------------------------------------
-export function openSeedInput(ctx) {
-  const input = h("textarea", { class: "input", rows: 3, placeholder: t("openSeedPh"), "aria-label": t("openSeed"), autocapitalize: "off", autocorrect: "off", spellcheck: false });
+export function openSeedInput(ctx, { restore = false } = {}) {
+  const input = h("textarea", { class: "input", rows: 3, placeholder: t(restore ? "restorePh" : "openSeedPh"), "aria-label": t(restore ? "importData" : "openSeed"), autocapitalize: "off", autocorrect: "off", spellcheck: false });
   const err = h("p", { class: "form-error", hidden: true });
   const sheet = openSheet({
-    title: t("openSeed"),
+    title: t(restore ? "importData" : "openSeed"),
     content: [input, err],
     actions: h(
       "button",
@@ -514,9 +548,10 @@ export function openSeedInput(ctx) {
         class: "btn btn-primary btn-block",
         type: "button",
         onclick: async () => {
-          const ok = await importSeed(ctx, input.value);
+          // Pasting is a deliberate act, so backups are allowed here (after a confirmation).
+          const ok = await importSeed(ctx, input.value, { allowBackup: true });
           if (ok) sheet.close();
-          else {
+          else if (ok === false) {
             err.textContent = t("invalidSeed");
             err.hidden = false;
           }
@@ -528,23 +563,46 @@ export function openSeedInput(ctx) {
   setTimeout(() => input.focus(), 250);
 }
 
-export async function importSeed(ctx, text) {
+// Links can be crafted by anyone, so importing is defensive:
+//  - backups (which replace settings) are never accepted from a URL, only when pasted and confirmed
+//  - timestamps from the future are capped, so a bad clock or a prank can't freeze a masjid
+//  - an older link never silently overwrites a newer copy, and every update can be undone
+export async function importSeed(ctx, text, { allowBackup = false, silent = false } = {}) {
   let parsed;
   try {
     parsed = await parseSeed(text);
   } catch {
     return false;
   }
-  if (parsed.kind === "backup") return ctx.restoreBackup ? ctx.restoreBackup(parsed) : false;
-  const incoming = parsed.place;
+  if (parsed.kind === "backup") {
+    if (!allowBackup || !ctx.restoreBackup) {
+      toast(t("backupNotFromLink"), { tone: "warn", duration: 6000 });
+      return null; // refused (not invalid)
+    }
+    if (!confirm(t("restoreConfirm", { n: parsed.places.length }))) return false;
+    return ctx.restoreBackup(parsed);
+  }
+  const nowS = Math.floor(Date.now() / 1000);
+  const incoming = { ...parsed.place, u: Math.min(parsed.place.u || 0, nowS + 86400) };
   const existing = incoming.id ? ctx.state.places.find((p) => p.id === incoming.id) : null;
-  if (existing && (existing.u || 0) > (incoming.u || 0)) {
-    // This link is older than what we already have — keep ours, just open it.
+  if (existing && (existing.u || 0) > incoming.u) {
     ctx.activate(existing.id);
+    if (!silent)
+      toast(t("olderLink", { d: new Date(existing.u * 1000).toLocaleDateString(ctx.locale) }), {
+        action: t("useAnyway"),
+        duration: 8000,
+        onAction: () => ctx.addPlace({ ...incoming, u: nowS }, { activate: true }),
+      });
     return true;
   }
   const place = { ...incoming, id: incoming.id || newId() };
-  ctx.addPlace(place, { activate: true });
+  if (existing && !silent) {
+    const previous = structuredClone(existing);
+    ctx.addPlace(place, { activate: true, silent: true });
+    toast(t("updated", { p: place.name }), { action: t("undo"), duration: 8000, onAction: () => ctx.addPlace(previous, { activate: true, silent: true }) });
+    return true;
+  }
+  ctx.addPlace(place, { activate: true, silent });
   return true;
 }
 
@@ -577,7 +635,7 @@ export const masjidPlugin = {
   handleHash(name, arg, ctx) {
     if (name !== "m" || !arg) return false;
     importSeed(ctx, arg).then((ok) => {
-      if (!ok) toast(t("invalidSeed"), { tone: "warn" });
+      if (ok === false) toast(t("invalidSeed"), { tone: "warn" });
       history.replaceState(null, "", location.pathname + location.search + "#/");
       ctx.go("today");
     });

@@ -14,7 +14,7 @@ const masjid = {
   calc: { method: "Turkey", madhab: "shafi", highLat: "auto", adj: { fajr: 0, sunrise: 0, dhuhr: 2, asr: 0, maghrib: 1, isha: 0 } },
   iqama: {
     fajr: { mode: "offset", offset: 30, round: 0 },
-    dhuhr: { mode: "fixed", time: "13:15" },
+    dhuhr: { mode: "fixed", time: "13:15", min: 10 },
     asr: { mode: "offset", offset: 10, round: 5 },
     maghrib: null,
     isha: { mode: "offset", offset: 10, round: 0 },
@@ -35,7 +35,7 @@ test("masjid survives a seed round trip", async () => {
   assert.equal(place.calc.method, "Turkey");
   assert.equal(place.calc.adj.dhuhr, 2);
   assert.deepEqual(place.jumuah, masjid.jumuah);
-  assert.deepEqual(place.iqama.dhuhr, { mode: "fixed", time: "13:15" });
+  assert.deepEqual(place.iqama.dhuhr, { mode: "fixed", time: "13:15", min: 10 });
   assert.deepEqual(place.iqama.asr, { mode: "offset", offset: 10, round: 5 });
   assert.equal(place.iqama.maghrib, null);
   assert.equal(place.u, masjid.u);
@@ -63,5 +63,5 @@ test("iqama packing ignores invalid rules", () => {
   assert.deepEqual(u.fajr, { mode: "offset", offset: 10, round: 0 });
   assert.equal(u.dhuhr, null);
   assert.equal(u.asr, null);
-  assert.deepEqual(u.isha, { mode: "fixed", time: "19:30" });
+  assert.deepEqual(u.isha, { mode: "fixed", time: "19:30", min: 0 });
 });

@@ -1494,23 +1494,23 @@ body.is-offline .app::before {
   width: 100%;
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 .month-table thead th {
   position: sticky;
   top: 0;
-  padding: 10px 4px 8px;
+  padding: 10px 2px 8px;
   background: var(--surface);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   color: var(--label-2);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   border-bottom: 0.5px solid var(--sep);
 }
 .month-table td,
 .month-table tbody th {
-  padding: 7px 4px;
+  padding: 6px 2px;
   text-align: center;
   border-bottom: 0.5px solid var(--sep);
   white-space: nowrap;
@@ -1521,21 +1521,20 @@ body.is-offline .app::before {
 .m-day {
   text-align: start !important;
   padding-inline-start: 12px !important;
-  font-weight: 600;
 }
 .m-d {
-  display: inline-block;
-  min-width: 1.6em;
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.1;
 }
 .m-w {
-  font-size: 11px;
+  display: block;
+  font-size: 10.5px;
   font-weight: 500;
   color: var(--label-2);
 }
 .m-h {
-  display: block;
-  font-size: 10px;
-  font-weight: 500;
   color: var(--label-3);
 }
 .m-sun {
@@ -1548,7 +1547,7 @@ body.is-offline .app::before {
   font-weight: 600;
 }
 .month-table tr.is-friday {
-  background: color-mix(in srgb, var(--green) 7%, transparent);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
 }
 .month-table tr.is-today {
   background: var(--accent-tint);
@@ -1558,6 +1557,11 @@ body.is-offline .app::before {
 }
 .month-table tr.is-today .m-d {
   color: var(--accent);
+}
+.lg-friday { background: color-mix(in srgb, var(--green) 45%, transparent); }
+@media (min-width: 640px) {
+  .month-table { font-size: 15px; }
+  .month-table td, .month-table tbody th { padding: 8px 4px; }
 }
 
 /* ---------- Qibla ---------- */
@@ -1649,138 +1653,193 @@ body.is-offline .app::before {
   text-align: center;
 }
 
-/* ---------- Display (TV) mode ---------- */
+/* ---------- Display (TV) mode ----------
+   Sized in vmin so the same board works on a 720p kiosk and a 4K TV; nothing ever scrolls. */
 body.is-chromeless .app {
   max-width: none;
   padding: 0;
 }
 .tv {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 2.4vh;
-  min-height: 100dvh;
-  padding: 4vh 4vw;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 2.6vmin;
+  height: 100dvh;
+  overflow: hidden;
+  padding: 3.6vmin 4vmin;
   color: #fff;
   --sky-top: #0d1330;
   --sky-horizon: #37307a;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--sky-top) 85%, #000), color-mix(in srgb, var(--sky-horizon) 80%, #000));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--sky-top) 82%, #000), color-mix(in srgb, var(--sky-horizon) 72%, #000));
+  transition: background 2s;
 }
 .tv-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 4vw;
+  gap: 4vmin;
+  min-width: 0;
+}
+.tv-title {
+  min-width: 0;
 }
 .tv-title h1 {
   margin: 0;
-  font-size: clamp(28px, 4.6vw, 80px);
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-family: var(--font-serif);
+  font-size: 7vmin;
+  font-weight: 600;
   line-height: 1.05;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .tv-title p {
-  margin: 0.4vh 0 0;
-  font-size: clamp(16px, 1.8vw, 32px);
+  margin: 0.6vmin 0 0;
+  font-size: 2.8vmin;
   opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tv-time {
   text-align: end;
+  flex: none;
 }
 .tv-clock-row {
   display: flex;
-  align-items: baseline;
   justify-content: flex-end;
   direction: ltr;
 }
 .tv-clock {
   font-family: var(--font-rounded);
-  font-size: clamp(48px, 9vw, 180px);
+  font-size: 13vmin;
   font-weight: 600;
-  line-height: 1;
+  line-height: 0.95;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .tv-clock small {
-  font-size: 0.32em;
+  font-size: 0.3em;
   margin-inline-start: 0.2em;
   opacity: 0.8;
 }
 .tv-secs {
-  font-family: var(--font-rounded);
-  font-size: clamp(20px, 3vw, 60px);
-  opacity: 0.6;
-  font-variant-numeric: tabular-nums;
+  font-size: 0.32em;
+  opacity: 0.55;
 }
 .tv-date {
-  font-size: clamp(14px, 1.7vw, 30px);
+  margin-top: 0.8vmin;
+  font-size: 2.6vmin;
   opacity: 0.85;
 }
 .tv-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 1.2vw;
-  flex: 1;
-  align-items: stretch;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1.6vmin;
+  min-height: 0;
 }
 .tv-cell {
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 0.6vh;
-  padding: 2.4vh 1vw;
-  border-radius: clamp(14px, 1.8vw, 36px);
+  gap: 0.3vmin;
+  min-height: 0;
+  padding: 1.6vmin 0.8vmin;
+  border-radius: 3vmin;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.12);
   text-align: center;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
 }
 .tv-cell.is-sun {
-  opacity: 0.7;
+  opacity: 0.65;
 }
 .tv-cell.is-current {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.94);
   color: #111;
 }
 .tv-cell.is-next {
-  border-color: rgba(255, 255, 255, 0.7);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35) inset;
+  border-color: rgba(255, 255, 255, 0.75);
+  box-shadow: 0 0 0 0.4vmin rgba(255, 255, 255, 0.3) inset;
 }
 .tv-p {
-  font-size: clamp(16px, 2.4vw, 46px);
+  font-family: var(--font-serif);
+  font-size: 4.4vmin;
   font-weight: 600;
+  line-height: 1.1;
+}
+[lang="ar"] .tv-p,
+[lang="ar"] .tv-title h1 {
+  font-family: var(--font);
+}
+.tv-label {
+  margin-top: 1vmin;
+  font-size: 2.2vmin;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
 }
 .tv-a {
-  font-size: clamp(18px, 3vw, 60px);
+  font-size: 4.6vmin;
   font-weight: 500;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 .tv-i {
-  font-size: clamp(22px, 4vw, 84px);
+  font-size: 6.6vmin;
   font-weight: 700;
-  min-height: 1em;
+}
+.tv-a,
+.tv-i,
+.tv-j {
+  white-space: nowrap;
+  line-height: 1.05;
+}
+.tv-period {
+  font-size: 0.42em;
+  margin-inline-start: 0.15em;
+  opacity: 0.8;
 }
 .tv-cell.is-current .tv-i {
   color: #0a66d6;
 }
 .tv-j {
-  font-size: clamp(12px, 1.4vw, 26px);
-  opacity: 0.8;
+  margin-top: 0.8vmin;
+  font-size: 2.6vmin;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.tv-foot {
+  display: flex;
+  align-items: center;
+  gap: 3vmin;
+  min-width: 0;
+}
+.tv-foot-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.4vmin;
+  flex: 1;
+  min-width: 0;
 }
 .tv-next {
   display: flex;
   justify-content: center;
   align-items: baseline;
-  gap: 2vw;
-  font-size: clamp(18px, 2.6vw, 52px);
+  gap: 2.4vmin;
+  font-size: 4vmin;
 }
 .tv-next-label {
-  opacity: 0.8;
+  opacity: 0.85;
 }
 .tv-next-count {
   font-family: var(--font-rounded);
-  font-size: 1.6em;
+  font-size: 1.7em;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   direction: ltr;
@@ -1791,38 +1850,96 @@ body.is-chromeless .app {
 .tv-note {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 1vw;
-  padding: 1.4vh 2vw;
+  gap: 1.4vmin;
+  max-width: 100%;
+  padding: 1.2vmin 3vmin;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
-  font-size: clamp(14px, 1.8vw, 34px);
-  text-align: center;
+  font-size: 2.8vmin;
+}
+.tv-note span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .tv-note .icon {
   width: 1.2em;
   height: 1.2em;
+  flex: none;
+}
+.tv-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6vmin;
+  flex: none;
+  font-size: 1.8vmin;
+  opacity: 0.9;
+}
+.tv-qr-code {
+  width: 14vmin;
+  height: 14vmin;
+  padding: 0.6vmin;
+  border-radius: 1.6vmin;
+  background: #fff;
+}
+.tv-qr-code svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.tv-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2vmin;
+  text-align: center;
+  background: radial-gradient(circle at 50% 40%, #1c2350, #05081a 75%);
+  animation: fade-in 1s;
+}
+.tv-overlay-p {
+  font-family: var(--font-serif);
+  font-size: 9vmin;
+  font-weight: 600;
+}
+.tv-overlay-msg {
+  font-size: 5vmin;
+  font-weight: 600;
+}
+.tv-overlay-sub {
+  font-size: 3vmin;
+  opacity: 0.75;
+  max-width: 70vw;
 }
 .tv-controls {
   position: fixed;
-  top: 12px;
-  inset-inline-start: 12px;
+  z-index: 6;
+  bottom: 2vmin;
+  inset-inline-start: 2vmin;
   display: flex;
   gap: 8px;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.3s;
 }
-.tv:hover .tv-controls,
+.tv.show-controls .tv-controls,
 .tv-controls:focus-within {
   opacity: 1;
+  pointer-events: auto;
 }
 .tv-controls .icon-btn {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.2);
   color: #fff;
 }
-@media (max-width: 760px) {
+@media (max-aspect-ratio: 1/1) {
+  /* portrait screens and phones */
   .tv-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .tv-head {
     flex-direction: column;
@@ -1833,10 +1950,13 @@ body.is-chromeless .app {
   .tv-clock-row {
     justify-content: flex-start;
   }
+  .tv-p { font-size: 5.4vmin; }
+  .tv-i { font-size: 7.4vmin; }
+  .tv-a { font-size: 5.2vmin; }
+  .tv-label { font-size: 2.6vmin; }
   .tv-controls {
     opacity: 1;
-    inset-inline-start: auto;
-    inset-inline-end: 12px;
+    pointer-events: auto;
   }
 }
 
@@ -2450,4 +2570,111 @@ button.tl-node:active .tl-node-dot {
     color: #555;
     max-width: 14cm;
   }
+}
+.month-legend {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 12px 0 8px;
+  font-size: 12px;
+  color: var(--label-2);
+}
+.month-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.lg {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.lg-adhan { background: var(--label); }
+.lg-iqama { background: var(--accent); }
+.lg-hijri { background: var(--label-3); }
+.m-iq.is-clamped { color: var(--orange); }
+.print-foot {
+  display: none;
+}
+@media print {
+  @page { size: A4; margin: 10mm; }
+  .month-legend { margin: 4px 0; }
+  .month-table { font-size: 9.5px; }
+  .month-table td,
+  .month-table tbody th { padding: 1.5px 3px; }
+  .month-table thead th { padding: 4px 3px; position: static; }
+  .m-h, .m-iq { font-size: 8px; }
+  .month-title h1 { font-size: 20px; }
+  .month-head { margin: 0 0 2px; }
+  .print-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 9px;
+    color: #333;
+  }
+  .print-foot p { margin: 2px 0 0; }
+  .print-qr { width: 2.4cm; height: 2.4cm; flex: none; }
+  .print-qr svg { width: 100%; height: 100%; }
+}
+.form-warn {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--orange);
+  white-space: normal;
+}
+.iqama-result {
+  margin-inline-start: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.iqama-result.is-clamped {
+  color: var(--orange);
+}
+.iqama-min-label {
+  font-size: 14px;
+  color: var(--label-2);
+}
+.stepper-btn {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.is-disabled {
+  opacity: 0.45;
+}
+.is-disabled .row::before {
+  opacity: 0.6;
+}
+.list > div > .row:first-child::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  inset-inline: 16px 0;
+  border-top: 0.5px solid var(--sep);
+}
+@media print {
+  .view { animation: none; }
+  .month-table { font-size: 9px; }
+  .month-table td,
+  .month-table tbody th { padding: 0.5px 3px; line-height: 1.15; }
+  .m-d { display: inline; font-size: 9.5px; }
+  .m-w { display: inline; margin-inline-start: 4px; font-size: 8px; }
+  .m-iq { display: inline; margin-inline-start: 4px; font-size: 8.5px; }
+  .month-card { border-radius: 8px; }
+  .month-title p { font-size: 11px; }
+}
+@media print {
+  .month-table { font-size: 11px; }
+  .month-table td,
+  .month-table tbody th { padding: 2.5px 4px; }
+  .m-d { font-size: 11.5px; }
+  .m-w, .m-iq { font-size: 10px; }
 }

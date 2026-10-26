@@ -17,7 +17,7 @@ export function packIqama(iqama) {
   const parts = PRAYERS.map((p) => {
     const r = iqama[p];
     if (!r) return "";
-    if (r.mode === "fixed") return parseHHMM(r.time) ? `@${r.time}` : "";
+    if (r.mode === "fixed") return parseHHMM(r.time) ? `@${r.time}${r.min ? `>${Math.min(120, Math.max(0, Math.round(r.min)))}` : ""}` : "";
     const off = Math.max(0, Math.min(180, Math.round(Number(r.offset) || 0)));
     return `+${off}${r.round ? `r${r.round}` : ""}`;
   });
@@ -33,7 +33,7 @@ export function unpackIqama(s) {
     const v = parts[i] || "";
     let rule = null;
     let m;
-    if ((m = /^@(\d{1,2}:\d{2})$/.exec(v)) && parseHHMM(m[1])) rule = { mode: "fixed", time: m[1] };
+    if ((m = /^@(\d{1,2}:\d{2})(?:>(\d{1,3}))?$/.exec(v)) && parseHHMM(m[1])) rule = { mode: "fixed", time: m[1], min: m[2] ? Math.min(120, Number(m[2])) : 0 };
     else if ((m = /^\+(\d{1,3})(?:r(5|10|15))?$/.exec(v))) rule = { mode: "offset", offset: Math.min(180, Number(m[1])), round: m[2] ? Number(m[2]) : 0 };
     out[p] = rule;
     if (rule) any = true;

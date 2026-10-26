@@ -2,15 +2,19 @@
 
 A simple, private prayer-times app that runs entirely in the browser. It has no account, no database and no build step: static files you can host on GitHub Pages.
 
-- **Times for wherever you are.** It uses your location (if you allow it) and updates when you travel. You can also search any city or enter coordinates.
-- **Calculated on your device.** It uses the [adhan-js](https://github.com/batoulapps/adhan-js) astronomical library, so times keep working offline.
-- **Masjid pages, shared with a link.** You enter a masjid's iqama rules (minutes after adhan, rounding, or fixed times), Jumu'ah times and an announcement. The whole timetable is packed into a *seed*: a short code inside the link and the QR code. Anyone who opens it sees the same times. No server is involved.
-- **Display mode** for masjid TVs and screens (`#/tv/<seed>`). It is full screen, keeps the screen awake, and counts down to iqama.
-- Monthly timetable with print and **calendar export (.ics)**. The exported events carry alarms, so reminders work even when the app is closed.
+- **The sky is the interface.** Prayer times come from the sun, so the Today screen draws it. The card is coloured by the sun's *real* altitude at your location: navy at night, blue hour, rose dawn, gold sunset. It plots today's actual sun path with each prayer on it and a dot for the sun right now, plus stars and the real moon phase at night. In Oslo in June you can see why Isha is hard.
+- **A timeline, not a table.** Each prayer is a node coloured by the sky at that moment. Tap a node to mark the prayer as prayed (private, on-device, no streaks). Until you do, Today shows **how long you have left to pray it**, and turns gently urgent near the end. Isha shows "best before midnight". During Ramadan the card switches to **Suhoor ends in** and **Iftar in** automatically.
+- **Times for wherever you are.** It uses your location (if you allow it) and updates when you travel. You can also search any city or enter coordinates (the time zone is taken from the coordinates, never assumed).
+- **Calculated on your device.** It uses [adhan-js](https://github.com/batoulapps/adhan-js), so times keep working offline.
+- **Masjid pages, shared with a link.** You enter a masjid's iqama rules (minutes after adhan with optional rounding, or a fixed time that never falls less than *N* minutes after adhan), Jumu'ah times and an announcement. The whole timetable is packed into a *seed*, a short code in the link and QR code. Anyone who opens it sees the same times, with no server involved.
+- **Built for real masjids:**
+  - A **display mode** for TVs (`#/tv/<seed>`): it scales to any screen, keeps the screen awake, counts down to iqama, shows a "prayer in progress, silence your phones" screen, and puts a QR code on the screen so the congregation can subscribe.
+  - A **printable QR poster** for the entrance.
+  - A **one-page A4 monthly timetable**.
+- **Calendar export (.ics)** with an alarm at each prayer, so reminders work even when the app is closed.
 - Qibla compass, Hijri date (Umm al-Qura, with a ±2 day adjustment), and optional extra times: Imsak, Duha, midnight and the last third of the night.
-- Regional defaults are chosen automatically. For example, Diyanet for Türkiye, ISNA for North America and Umm al-Qura for Saudi Arabia. Hanafi Asr is used where it is the norm, and high-latitude rules apply above 48°. Every default can be overridden: 21 methods, custom angles, and ± minute adjustments per prayer.
-- Light and dark mode, English, Türkçe and العربية (RTL), and a 12- or 24-hour clock.
-- Installable as an app (PWA) and works fully offline.
+- Regional defaults are chosen automatically: Diyanet for Türkiye (with Turkish names, where İmsak *is* Fajr), ISNA for North America, Umm al-Qura for Saudi Arabia (plus 30 minutes on Isha in Ramadan), Hanafi Asr where it is the norm, and high-latitude rules above 48°. All of it can be overridden: 21 methods, custom angles, and per-prayer minute adjustments.
+- Apple's New York serif (with a bundled open-source fallback), SF system fonts and iOS colours. Light and dark mode, English, Türkçe and العربية (RTL), 12/24-hour clock. Installable (PWA) and works fully offline.
 
 ## Privacy
 
@@ -19,7 +23,8 @@ Everything is stored in your browser (`localStorage`). There are only two option
 | What | Service | When |
 | --- | --- | --- |
 | City search | [Open-Meteo geocoding](https://open-meteo.com/en/docs/geocoding-api) | When you type in the search box |
-| Place name for your GPS position | [BigDataCloud reverse geocoding](https://www.bigdatacloud.com/free-api/free-reverse-geocode-to-city-api) | When your location changes by more than about 3 km (results are cached) |
+| Place name for your GPS position | [BigDataCloud reverse geocoding](https://www.bigdatacloud.com/free-api/free-reverse-geocode-to-city-api) | When your location changes by more than about 3 km. Only a position rounded to about 1 km is sent, and results are cached |
+| Time zone for typed coordinates | [Open-Meteo](https://open-meteo.com/) | Only when you enter coordinates by hand (rounded to about 1 km). Offline, the app guesses from longitude and asks you to confirm |
 
 Prayer times never need the network.
 
@@ -50,7 +55,8 @@ https://<user>.github.io/Masjid/#/m/mHc2xDoIwFIXhVzFn5Yj3tigtkw4ODjo…
 
 - The data sits after the `#`, so it is never sent to any server, not even GitHub's.
 - It contains the location, time zone, calculation method (pinned, so everyone gets identical times), iqama rules, Jumu'ah times and a note.
-- **To update times**, edit the masjid and share the new link. Each seed carries an id and a timestamp, so opening a newer link updates the saved copy and an older link never overwrites a newer one.
+- **To update times**, edit the masjid and share the new link. Each seed carries an id and a timestamp. Opening a newer link updates the saved copy, with an Undo. Opening an older one keeps yours and tells you so.
+- **Links are treated as untrusted.** Timestamps from the future are capped, so a wrong clock or a prank can't freeze a masjid. Backup codes are never accepted from a link; they can only be pasted into *Settings → Restore*, and only after a confirmation.
 - Iqama rules like "+10 min after adhan, rounded up to 5" follow the adhan through the seasons. Most masjids therefore rarely need to re-share.
 - For a masjid screen, open `#/tv/<seed>` (the **Display mode** button in the share sheet) and bookmark it as the browser's start page.
 
@@ -90,4 +96,4 @@ When you change any file, bump `VERSION` in `sw.js` so installed copies offer a 
 
 ## Licenses
 
-MIT for this app. It bundles [adhan-js](https://github.com/batoulapps/adhan-js) (MIT, © Batoul Apps) and [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT, © Kazuhiko Arase). "QR Code" is a registered trademark of DENSO WAVE INCORPORATED.
+MIT for this app. It bundles [Newsreader](https://github.com/productiontype/Newsreader) (SIL OFL 1.1) as a serif fallback, [adhan-js](https://github.com/batoulapps/adhan-js) (MIT, © Batoul Apps) and [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT, © Kazuhiko Arase). "QR Code" is a registered trademark of DENSO WAVE INCORPORATED.

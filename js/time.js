@@ -196,3 +196,13 @@ export function timeParts(date, tz, { hour12 = false, locale = "en" } = {}) {
     .trim();
   return { main, period };
 }
+
+// "Jumada I 1448" — Hijri month and year only.
+export function formatHijriMonth(ymd, locale, offsetDays = 0) {
+  const base = new Date(Date.UTC(ymd.y, ymd.m - 1, ymd.d + offsetDays, 12));
+  try {
+    return dtf(`${locale}-u-ca-islamic-umalqura`, { timeZone: "UTC", month: "long", year: "numeric" }).format(base);
+  } catch {
+    return "";
+  }
+}

@@ -1,5 +1,5 @@
-import { scheduleFor } from "../engine.js";
-import { todayYmd, daysInMonth, formatDate, hijriParts, sameYmd, partsInTz, timeParts } from "../time.js";
+import { scheduleFor, METHODS } from "../engine.js";
+import { todayYmd, daysInMonth, formatDate, formatHijriMonth, hijriParts, sameYmd, partsInTz, timeParts, ymdKey } from "../time.js";
 import { t } from "../i18n.js";
 import { h, icon } from "../ui.js";
 
@@ -9,6 +9,7 @@ export function MonthView(ctx) {
   const { place, calc } = ctx;
   const today = todayYmd(place.tz);
   let ym = { y: today.y, m: today.m };
+  let first = true;
   const root = h("div", { class: "view view-month" });
 
   // Times without AM/PM keep the table compact; context makes them unambiguous.
@@ -17,13 +18,17 @@ export function MonthView(ctx) {
   function render() {
     const n = daysInMonth(ym.y, ym.m);
     const title = formatDate({ y: ym.y, m: ym.m, d: 1 }, ctx.locale, { month: "long", year: "numeric" });
-    const hasIqama = Boolean(place.iqama);
+    const off = ctx.settings.hijriOffset;
+    const h1 = formatHijriMonth({ ...ym, d: 1 }, ctx.locale, off);
+    const h2 = formatHijriMonth({ ...ym, d: n }, ctx.locale, off);
+    const hijriRange = h1 === h2 ? h1 : `${h1} – ${h2}`;
+    const hasIqama = Boolean(place.iqama || place.jumuah?.length);
     const rows = [];
     for (let d = 1; d <= n; d++) {
       const ymd = { y: ym.y, m: ym.m, d };
       const s = scheduleFor(place, calc, ymd);
       const isToday = sameYmd(ymd, today);
-      const hj = hijriParts(ymd, ctx.settings.hijriOffset);
+      const hj = hijriParts(ymd, off);
       rows.push(
         h(
           "tr",
@@ -32,35 +37,63 @@ export function MonthView(ctx) {
             "th",
             { scope: "row", class: "m-day" },
             h("span", { class: "m-d" }, String(d)),
-            h("span", { class: "m-w" }, formatDate(ymd, ctx.locale, { weekday: "short" })),
-            hj ? h("span", { class: "m-h" }, String(hj.d)) : null
+            h(
+              "span",
+              { class: "m-w" },
+              formatDate(ymd, ctx.locale, { weekday: "short" }),
+              hj ? h("span", { class: "m-h" }, ` · ${hj.d === 1 ? formatHijriMonth(ymd, ctx.locale, off).replace(/\s*\d+.*$/u, "") || hj.d : hj.d}`) : null
+            )
           ),
           COLS.map((k) => {
             const r = s.rows.find((x) => x.key === k || (k === "dhuhr" && x.key === "jumuah"));
+            const iq = r?.jumuah?.length
+              ? r.jumuah.map((j) => short(j)).join(" · ")
+              : r?.iqama
+                ? short(r.iqama.at)
+                : "";
             return h(
               "td",
               { class: k === "sunrise" ? "m-sun" : "" },
               short(r?.adhan),
-              hasIqama && r?.iqama ? h("span", { class: "m-iq" }, short(r.iqama.at)) : null
+              hasIqama && iq ? h("span", { class: `m-iq ${r.iqama?.clamped ? "is-clamped" : ""}`, title: r.iqama?.clamped ? t("clampedNote") : null }, iq) : null
             );
           })
         )
       );
     }
 
+    const printFoot = h("div", { class: "print-foot" }, h("div", {}, h("strong", {}, place.name), place.sub ? ` · ${place.sub}` : "", h("br"), t("methodNote", { m: METHODS[s0().resolved.method]?.name || s0().resolved.method, a: t(`${s0().resolved.madhab}Short`) }), place.note ? h("p", {}, place.note) : null));
+    if (place.kind === "masjid") {
+      import("../seed.js").then(async ({ placeToSeed, seedUrl }) => {
+        const { default: qrcode } = await import("../vendor/qrcode.js");
+        const qr = qrcode(0, "M");
+        qr.addData(seedUrl(await placeToSeed(place)));
+        qr.make();
+        printFoot.append(h("div", { class: "print-qr", html: qr.createSvgTag({ cellSize: 2, margin: 4, scalable: true }) }));
+      });
+    }
+
     root.replaceChildren(
       h(
         "div",
         { class: "month-head" },
-        h("button", { class: "icon-btn", type: "button", "aria-label": "‹", onclick: () => shift(-1) }, icon("chevronLeft", "flip-rtl")),
-        h("div", { class: "month-title" }, h("h1", {}, title), h("p", {}, place.name)),
-        h("button", { class: "icon-btn", type: "button", "aria-label": "›", onclick: () => shift(1) }, icon("chevronRight", "flip-rtl"))
+        h("button", { class: "icon-btn", type: "button", "aria-label": t("prevMonth"), onclick: () => shift(-1) }, icon("chevronLeft", "flip-rtl")),
+        h("div", { class: "month-title" }, h("h1", {}, title), h("p", {}, `${place.name} · ${hijriRange}`)),
+        h("button", { class: "icon-btn", type: "button", "aria-label": t("nextMonth"), onclick: () => shift(1) }, icon("chevronRight", "flip-rtl"))
       ),
       h(
         "div",
         { class: "month-actions no-print" },
         h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => window.print() }, icon("print"), t("print")),
         h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => downloadIcs(ctx, ym) }, icon("calendar"), t("exportCal"))
+      ),
+      h(
+        "p",
+        { class: "month-legend" },
+        h("span", {}, h("i", { class: "lg lg-adhan" }), t("adhan")),
+        hasIqama ? h("span", {}, h("i", { class: "lg lg-iqama" }), t("iqama")) : null,
+        h("span", {}, h("i", { class: "lg lg-hijri" }), t("hijriDay")),
+        h("span", {}, h("i", { class: "lg lg-friday" }), t("jumuah"))
       ),
       h(
         "div",
@@ -73,10 +106,17 @@ export function MonthView(ctx) {
           h("tbody", {}, rows)
         )
       ),
+      printFoot,
       h("p", { class: "list-foot no-print" }, t("exportCalHint"))
     );
-    root.querySelector(".is-today")?.scrollIntoView({ block: "center" });
+    // Scroll to today once the view is on screen.
+    if (first && ym.y === today.y && ym.m === today.m) {
+      first = false;
+      requestAnimationFrame(() => requestAnimationFrame(() => root.querySelector(".is-today")?.scrollIntoView({ block: "center" })));
+    }
   }
+
+  const s0 = () => scheduleFor(place, calc, { ...ym, d: 1 });
 
   function shift(n) {
     const m0 = ym.m - 1 + n;
@@ -116,7 +156,7 @@ export function buildIcs(place, calc, ym, label = (k) => k) {
       const iq = r.iqama ? `${label("iqama")}: ${partsHHMM(r.iqama.at, place.tz)}` : "";
       lines.push(
         "BEGIN:VEVENT",
-        `UID:${place.id || "here"}-${ymd.y}${ymd.m}${ymd.d}-${r.key}@masjid`,
+        `UID:${place.id || "here"}-${ymdKey(ymd)}-${r.key}@masjid`,
         `DTSTAMP:${stamp}`,
         `DTSTART:${icsDate(r.adhan)}`,
         `DTEND:${icsDate(end)}`,

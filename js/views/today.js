@@ -342,6 +342,7 @@ export function TodayView(ctx) {
     meta.replaceChildren(
       ...[
         h("a", { href: "#/settings", class: "meta-link" }, t("methodNote", { m: mName, a: t(`${r.madhab}Short`) }) + (adjusted ? ` · ${t("adjusted")}` : "")),
+        place.kind === "masjid" && place.u ? h("span", {}, t("updatedOn", { d: new Date(place.u * 1000).toLocaleDateString(ctx.locale, { day: "numeric", month: "short", year: "numeric" }) })) : null,
         place.tz !== ctx.deviceTz ? h("span", { class: "tz-chip" }, icon("globe"), t("localTimeAt", { p: place.tz.split("/").pop().replace(/_/g, " "), t: ctx.fmt(new Date()) })) : null,
       ].filter(Boolean)
     );

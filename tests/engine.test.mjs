@@ -70,6 +70,10 @@ test("iqama: offset, rounding and fixed rules", () => {
   assert.equal(early.clamped, true);
   assert.equal(formatHHMM(early.at, tz), "12:53");
   assert.equal(iqamaFor("dhuhr", adhan, null, ymd, tz), null);
+  // Fixed, but at least 15 min after adhan: 13:00 is too early → 13:08 (flagged).
+  const guarded = iqamaFor("dhuhr", adhan, { mode: "fixed", time: "13:00", min: 15 }, ymd, tz);
+  assert.equal(formatHHMM(guarded.at, tz), "13:08");
+  assert.equal(guarded.clamped, true);
 });
 
 test("Jumu'ah replaces Dhuhr on Fridays", () => {

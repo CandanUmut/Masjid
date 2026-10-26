@@ -86,7 +86,7 @@ export function icon(name, cls = "") {
 
 // --- Sheets -------------------------------------------------------------
 // A sheet is a native <dialog> styled as an iOS bottom sheet. Returns { el, close, body }.
-export function openSheet({ title, content, actions, className = "", onClose, wide = false } = {}) {
+export function openSheet({ title, content, actions, className = "", onClose, beforeClose, wide = false } = {}) {
   const body = h("div", { class: "sheet-body" }, content);
   const dlg = h(
     "dialog",
@@ -104,6 +104,7 @@ export function openSheet({ title, content, actions, className = "", onClose, wi
   let closed = false;
   function close() {
     if (closed) return;
+    if (beforeClose && !beforeClose()) return;
     closed = true;
     dlg.classList.add("is-closing");
     const done = () => {
@@ -248,10 +249,41 @@ export function stepper(value, { min = -60, max = 60, step = 1, format = (v) => 
   return h(
     "div",
     { class: "stepper", role: "group", "aria-label": label },
-    h("button", { type: "button", class: "stepper-btn", "aria-label": `${label} −`, onclick: () => set(v - step) }, icon("minus")),
+    h("button", { type: "button", class: "stepper-btn", "aria-label": `${label} −`, ...repeatable(() => set(v - step)) }, icon("minus")),
     out,
-    h("button", { type: "button", class: "stepper-btn", "aria-label": `${label} +`, onclick: () => set(v + step) }, icon("plus"))
+    h("button", { type: "button", class: "stepper-btn", "aria-label": `${label} +`, ...repeatable(() => set(v + step)) }, icon("plus"))
   );
+}
+
+// Click once to step; press and hold to keep stepping (speeding up), like iOS steppers.
+function repeatable(fn) {
+  let timer = null;
+  let fired = false;
+  const stop = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
+  return {
+    onpointerdown: (e) => {
+      if (e.button) return;
+      fired = false;
+      let delay = 380;
+      const loop = () => {
+        fired = true;
+        fn();
+        delay = Math.max(50, delay * 0.8);
+        timer = setTimeout(loop, delay);
+      };
+      timer = setTimeout(loop, delay);
+    },
+    onpointerup: stop,
+    onpointerleave: stop,
+    onpointercancel: stop,
+    onclick: () => {
+      if (!fired) fn(); // keyboard and single taps
+      fired = false;
+    },
+  };
 }
 
 export function debounce(fn, ms) {
