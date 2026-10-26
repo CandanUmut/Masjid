@@ -44,7 +44,7 @@ export function SkyChart(place) {
     </svg>`;
     // The day's highest sun, labelled with its real altitude.
     if (peak.alt > 0) {
-      el.append(h("span", { class: "sky-peak", style: { left: `${xOf(peak.ms)}%`, top: `${yOf(peak.alt)}%` } }, `${Math.round(peak.alt)}°`));
+      el.append(h("span", { class: "sky-peak", style: { left: `${xOf(peak.ms)}%`, top: `${yOf(peak.alt)}%` } }, t("peakAlt", { d: Math.round(peak.alt) })));
     }
     markers = [];
     for (const r of sched.rows) {
@@ -67,8 +67,9 @@ export function SkyChart(place) {
   function update(now, status) {
     draw(status.ymd, status.today);
     const alt = sunAltitude(now, place.lat, place.lng);
-    sun.style.left = `${xOf(now.getTime())}%`;
-    sun.style.top = `${yOf(alt)}%`;
+    // Kept inside the card: late at night the sun's position runs off the chart's edge.
+    sun.style.left = `clamp(12px, ${xOf(now.getTime())}%, calc(100% - 12px))`;
+    sun.style.top = `clamp(10px, ${yOf(alt)}%, calc(100% - 10px))`;
     sun.classList.toggle("is-below", alt < 0);
     const nowMs = now.getTime();
     for (const m of markers) {

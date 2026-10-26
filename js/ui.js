@@ -1,4 +1,5 @@
 // Tiny DOM toolkit: element builder, icons, sheets (native <dialog>) and toasts.
+import { t } from "./i18n.js";
 
 export function h(tag, attrs, ...children) {
   const node = document.createElement(tag);
@@ -73,6 +74,7 @@ const P = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5v.5"/>',
   arrowUp: '<path d="M12 20V4M5.5 10.5 12 4l6.5 6.5"/>',
   kaaba: '<path d="M4 8.5 12 5l8 3.5v9L12 21l-8-3.5v-9Z"/><path d="M4 8.5 12 12l8-3.5M12 12v9M4 11.5l8 3.5 8-3.5"/>',
+  directions: '<path d="M12 2.8 21.2 12 12 21.2 2.8 12Z"/><path d="M9.5 14v-2.2c0-.9.7-1.6 1.6-1.6h3.6M12.8 8.2l2 2-2 2"/>',
   lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
 };
 
@@ -87,22 +89,32 @@ export function icon(name, cls = "") {
 // --- Keyboard awareness ----------------------------------------------------
 // On phones the on-screen keyboard covers the bottom of the layout viewport, where sheets live.
 // Track the visible area so sheets (and their search results) always sit above the keyboard.
+// Only while a text field inside a sheet is focused — otherwise Safari's toolbar collapsing during a
+// scroll would also look like a "keyboard" and nudge sheets around.
 if (typeof window !== "undefined" && window.visualViewport) {
   const vv = window.visualViewport;
+  const root = document.documentElement;
+  const typing = () => {
+    const a = document.activeElement;
+    return Boolean(a && a.closest?.("dialog[open]") && (a.tagName === "TEXTAREA" || (a.tagName === "INPUT" && !["checkbox", "radio", "button"].includes(a.type))));
+  };
   const sync = () => {
-    const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-    document.documentElement.style.setProperty("--kb", `${kb}px`);
-    document.documentElement.style.setProperty("--vvh", `${vv.height}px`);
-    document.documentElement.classList.toggle("has-keyboard", kb > 80);
+    const kb = typing() ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+    root.style.setProperty("--kb", `${kb > 80 ? kb : 0}px`);
+    root.style.setProperty("--vvh", `${kb > 80 ? vv.height : window.innerHeight}px`);
+    root.classList.toggle("has-keyboard", kb > 80);
   };
   vv.addEventListener("resize", sync);
-  vv.addEventListener("scroll", sync);
+  document.addEventListener("focusin", () => setTimeout(sync, 60));
+  document.addEventListener("focusout", () => setTimeout(sync, 60));
   sync();
 }
 
 // --- Sheets -------------------------------------------------------------
 // A sheet is a native <dialog> styled as an iOS bottom sheet. Returns { el, close, body }.
-export function openSheet({ title, content, actions, className = "", onClose, beforeClose, wide = false } = {}) {
+// `confirmClose`: { when: () => boolean } — ask "Discard changes?" (as a sheet, not a browser dialog)
+// before closing by swipe, backdrop, Escape or the close button.
+export function openSheet({ title, subtitle, content, actions, className = "", onClose, confirmClose, wide = false } = {}) {
   const body = h("div", { class: "sheet-body" }, content);
   const dlg = h(
     "dialog",
@@ -111,21 +123,39 @@ export function openSheet({ title, content, actions, className = "", onClose, be
     h(
       "header",
       { class: "sheet-head" },
-      h("h2", { class: "sheet-title" }, title || ""),
-      h("button", { class: "icon-btn sheet-close", type: "button", "aria-label": "Close", onclick: () => close() }, icon("close"))
+      h("div", { class: "sheet-titles" }, h("h2", { class: "sheet-title" }, title || ""), subtitle ? h("p", { class: "sheet-subtitle" }, subtitle) : null),
+      h("button", { class: "icon-btn sheet-close", type: "button", "aria-label": t("close"), onclick: () => close() }, icon("close"))
     ),
     body,
     actions ? h("footer", { class: "sheet-foot" }, actions) : null
   );
   let closed = false;
-  function close() {
+  let ask = null;
+  function close(force = false) {
     if (closed) return;
-    if (beforeClose && !beforeClose()) return;
+    if (!force && confirmClose?.when()) {
+      if (ask) return; // already asking
+      const me = (ask = openSheet({
+        onClose: () => {
+          if (ask === me) ask = null;
+        },
+        title: t("discardChanges"),
+        className: "sheet--confirm",
+        content: h(
+          "div",
+          { class: "list" },
+          h("button", { class: "row row-btn tone-danger", type: "button", onclick: () => { me.close(); close(true); } }, icon("trash", "row-icon"), h("span", { class: "row-title" }, t("discard"))),
+          h("button", { class: "row row-btn", type: "button", onclick: () => me.close() }, icon("edit", "row-icon"), h("span", { class: "row-title" }, t("keepEditing")))
+        ),
+      }));
+      return;
+    }
     closed = true;
     dlg.classList.add("is-closing");
     const done = () => {
       dlg.close();
       dlg.remove();
+      if (!document.querySelector("dialog.sheet[open]")) document.documentElement.classList.remove("has-sheet");
       onClose?.();
     };
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) done();
@@ -138,10 +168,50 @@ export function openSheet({ title, content, actions, className = "", onClose, be
   dlg.addEventListener("click", (e) => {
     if (e.target === dlg) close(); // backdrop tap
   });
+  // The browser may close a dialog on its own (repeated Escape or Back skips the cancel event).
+  // Unsaved work is never lost that way: reopen and ask; otherwise just clean up.
+  dlg.addEventListener("close", () => {
+    if (closed) return;
+    if (confirmClose?.when()) {
+      dlg.showModal();
+      if (ask) {
+        const old = ask;
+        ask = null;
+        old.forceClose();
+      }
+      close();
+      return;
+    }
+    closed = true;
+    dlg.remove();
+    if (!document.querySelector("dialog.sheet[open]")) document.documentElement.classList.remove("has-sheet");
+    onClose?.();
+  });
   attachSwipeToClose(dlg, close);
   document.body.append(dlg);
   dlg.showModal();
-  return { el: dlg, body, close };
+  // The page behind a sheet stays put.
+  document.documentElement.classList.add("has-sheet");
+  return { el: dlg, body, close: () => close(false), forceClose: () => close(true) };
+}
+
+// An in-app replacement for confirm(): resolves true only when the action is chosen.
+export function confirmSheet({ title, message, confirmLabel, cancelLabel = t("cancel"), danger = false }) {
+  return new Promise((resolve) => {
+    let result = false;
+    const sheet = openSheet({
+      title,
+      subtitle: message,
+      className: "sheet--confirm",
+      onClose: () => resolve(result),
+      content: h(
+        "div",
+        { class: "list" },
+        h("button", { class: `row row-btn ${danger ? "tone-danger" : "tone-accent-text"}`, type: "button", onclick: () => { result = true; sheet.close(); } }, h("span", { class: "row-title" }, confirmLabel)),
+        h("button", { class: "row row-btn", type: "button", onclick: () => sheet.close() }, h("span", { class: "row-title" }, cancelLabel))
+      ),
+    });
+  });
 }
 
 function attachSwipeToClose(dlg, close) {
@@ -172,7 +242,10 @@ function attachSwipeToClose(dlg, close) {
 
 // --- Toasts -------------------------------------------------------------
 let toastHost = null;
+let dismissCurrent = null;
 export function toast(message, { action, onAction, duration = 3800, tone = "" } = {}) {
+  // One at a time: a new message replaces the old one instead of stacking over the screen.
+  dismissCurrent?.();
   if (!toastHost) {
     toastHost = h("div", { class: "toast-host", role: "status", "aria-live": "polite" });
     if (typeof toastHost.showPopover === "function") toastHost.setAttribute("popover", "manual");
@@ -200,9 +273,11 @@ export function toast(message, { action, onAction, duration = 3800, tone = "" } 
   const timer = setTimeout(dismiss, duration);
   function dismiss() {
     clearTimeout(timer);
+    if (dismissCurrent === dismiss) dismissCurrent = null;
     node.classList.remove("is-in");
     setTimeout(() => node.remove(), 250);
   }
+  dismissCurrent = dismiss;
   return dismiss;
 }
 
@@ -285,7 +360,8 @@ export function minutesInput(value, { min = 0, max = 300, step = 5, onChange, la
     onfocus: (e) => e.target.select(),
     oninput: (e) => {
       const n = parseInt(e.target.value.replace(/\D/g, ""), 10);
-      if (Number.isFinite(n)) commit(n, false);
+      // Out-of-range input is corrected on the spot (no "999" lingering in the field).
+      if (Number.isFinite(n)) commit(n, n > max || n < min);
     },
     onblur: () => (input.value = String(v)),
     onkeydown: (e) => {

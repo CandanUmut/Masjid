@@ -135,6 +135,23 @@ body {
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
   overflow-x: hidden;
+  /* An app, not a document: no text selection on double-tap, no link previews on long-press */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+/* …except where text is meant to be typed, copied or read at length */
+input,
+textarea,
+select,
+.seed-code,
+.note-card,
+.list-foot,
+.sheet-subtitle,
+.onb-body {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
 }
 button,
 input,
@@ -217,8 +234,10 @@ a {
   text-align: start;
   transition: background 0.2s;
 }
-.place-chip:hover {
-  background: var(--fill);
+@media (hover: hover) {
+  .place-chip:hover {
+    background: var(--fill);
+  }
 }
 .place-chip-icon {
   width: 34px;
@@ -390,8 +409,10 @@ a {
   cursor: pointer;
   transition: background 0.15s;
 }
-.row-btn:hover {
-  background: var(--fill);
+@media (hover: hover) {
+  .row-btn:hover {
+    background: var(--fill);
+  }
 }
 .row-btn:active {
   background: var(--fill-2);
@@ -466,8 +487,14 @@ a {
   background: transparent;
   text-align: start;
 }
-.row-split .row-btn-inner:hover {
-  background: var(--fill);
+@media (hover: hover) {
+  .row-split .row-btn-inner:hover {
+    background: var(--fill);
+  }
+}
+.row-more-space {
+  flex: none;
+  width: 40px;
 }
 .row-more {
   margin-inline-end: 10px;
@@ -687,16 +714,19 @@ a {
   margin-top: 24px;
 }
 .onb-privacy {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: block;
   margin-top: 22px;
   font-size: 13px;
   color: var(--label-2);
+  text-align: center;
 }
+/* The lock sits with the first word, also when the sentence wraps */
 .onb-privacy .icon {
+  display: inline-block;
   width: 15px;
   height: 15px;
+  margin-inline-end: 4px;
+  vertical-align: -2px;
 }
 
 /* ---------- Sheets ---------- */
@@ -799,6 +829,19 @@ a {
   flex: none;
   touch-action: none;
 }
+.sheet-head:has(.sheet-subtitle) {
+  align-items: flex-start;
+}
+.sheet-titles {
+  flex: 1;
+  min-width: 0;
+}
+.sheet-subtitle {
+  margin: 4px 0 0;
+  font-size: 15px;
+  color: var(--label-2);
+  text-wrap: pretty;
+}
 .sheet-title {
   flex: 1;
   margin: 0;
@@ -834,6 +877,13 @@ a {
   justify-content: center;
   gap: 4px;
   margin-top: 12px;
+}
+.list.list-actions {
+  margin-top: 16px;
+}
+.list-actions .row-title,
+.tone-accent-text .row-title {
+  color: var(--accent);
 }
 
 /* ---------- Forms ---------- */
@@ -1081,15 +1131,17 @@ textarea.input {
   border: 0;
   background: transparent;
   overflow: visible;
-  top: auto;
   right: auto;
+  bottom: auto;
   color: inherit;
 }
 .toast-host {
   position: fixed;
   z-index: 100;
   left: 50%;
-  bottom: calc(var(--safe-bottom) + 96px);
+  /* Over the top bar strip, like an iOS banner: chrome, never the countdown or the prayer times */
+  top: calc(var(--safe-top) + 6px);
+  bottom: auto;
   transform: translateX(-50%);
   display: grid;
   gap: 8px;
@@ -1100,18 +1152,17 @@ textarea.input {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px 12px 18px;
+  min-height: 48px;
+  padding: 8px 12px 8px 18px;
   border-radius: 18px;
-  background: var(--glass);
-  border: 0.5px solid var(--glass-border);
-  box-shadow: var(--shadow-2);
-  -webkit-backdrop-filter: saturate(180%) blur(24px);
-  backdrop-filter: saturate(180%) blur(24px);
+  background: var(--surface);
+  border: 0.5px solid var(--sep);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.08);
   font-size: 15px;
   font-weight: 500;
   pointer-events: auto;
   opacity: 0;
-  transform: translateY(12px) scale(0.98);
+  transform: translateY(-14px) scale(0.98);
   transition: opacity 0.25s, transform 0.3s var(--ease);
 }
 .toast.is-in {
@@ -1239,6 +1290,10 @@ body.is-offline .app::before {
   margin-top: 12px;
 }
 .coords-details summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   cursor: pointer;
   color: var(--accent);
   font-size: 15px;
@@ -1277,7 +1332,8 @@ body.is-offline .app::before {
 }
 .preview-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: auto repeat(5, 1fr);
+  grid-template-rows: auto auto auto;
   gap: 4px;
   margin-top: 10px;
   text-align: center;
@@ -1307,6 +1363,25 @@ body.is-offline .app::before {
 }
 .preview-i.is-clamped {
   color: #ffd27a;
+}
+/* Rows line up across cells, so the Adhan / Iqama labels sit beside their times */
+.preview-cell {
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+}
+.preview-cell.preview-labels {
+  background: none;
+  padding-inline: 0 2px;
+  text-align: end;
+}
+.preview-labels .preview-a,
+.preview-labels .preview-i {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+  align-self: center;
 }
 .preview-empty {
   margin: 4px 0;
@@ -1407,6 +1482,9 @@ body.is-offline .app::before {
   font-size: 13px;
   color: var(--label-3);
 }
+.share-scan + .share-name {
+  margin-top: 10px;
+}
 .share-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1480,9 +1558,7 @@ body.is-offline .app::before {
   margin: 0;
   color: var(--label-2);
   font-size: 15px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-wrap: balance;
 }
 .month-actions {
   display: flex;
@@ -1491,7 +1567,7 @@ body.is-offline .app::before {
   margin: 10px 0 0;
 }
 .month-card {
-  overflow-x: auto;
+  overflow: clip;
 }
 .month-table {
   width: 100%;
@@ -1592,7 +1668,7 @@ body.is-offline .app::before {
   background: #fff;
 }
 .q-dial {
-  width: min(76vw, 300px);
+  width: min(76vw, 300px, 46svh);
   aspect-ratio: 1;
   transition: transform 0.25s linear;
 }
@@ -1844,11 +1920,23 @@ body.is-chromeless .app {
   align-items: baseline;
   gap: 2.4vmin;
   font-size: 4vmin;
+  /* A dark glass pill keeps the countdown legible on any sky colour */
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+  padding: 0.8vmin 3vmin;
+  border-radius: 999px;
+  background: rgba(8, 14, 40, 0.42);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 .tv-next-label {
   opacity: 0.85;
 }
 .tv-next-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.18em;
   font-family: var(--font-rounded);
   font-size: 1.7em;
   font-weight: 700;
@@ -1930,8 +2018,9 @@ body.is-chromeless .app {
 .tv-controls {
   position: fixed;
   z-index: 6;
-  bottom: 2vmin;
-  inset-inline-start: 2vmin;
+  /* Top corner: nothing on the board lives there, so they never cover the note or countdown */
+  top: 2vmin;
+  inset-inline-end: 2vmin;
   display: flex;
   gap: 8px;
   opacity: 0;
@@ -2008,11 +2097,12 @@ body.is-chromeless .app {
 }
 .tv-label {
   margin-top: 0.8vh;
-  font-size: clamp(10px, 0.95vw, 18px);
-  font-weight: 600;
+  /* Readable from the back of the hall on landscape and portrait screens alike */
+  font-size: clamp(12px, 1.5vmin, 22px);
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  opacity: 0.6;
+  opacity: 0.75;
 }
 .tv-a,
 .tv-i {
@@ -2287,8 +2377,10 @@ body.is-chromeless .app {
 .date-text:disabled {
   cursor: default;
 }
-.date-text:not(:disabled):hover {
-  background: var(--fill);
+@media (hover: hover) {
+  .date-text:not(:disabled):hover {
+    background: var(--fill);
+  }
 }
 .date-title {
   font-weight: 600;
@@ -2390,20 +2482,10 @@ body.is-chromeless .app {
 .tl-node-dot .icon svg {
   stroke-width: 3;
 }
-button.tl-node:hover .tl-node-dot {
-  transform: scale(1.12);
-}
-button.tl-node:active .tl-node-dot {
-  transform: scale(0.9);
-}
-.tl-node.is-done .tl-node-dot {
-  background: var(--node);
-  box-shadow: inset 0 0 0 2.5px var(--node), 0 4px 12px -4px var(--node);
-}
-.tl-node.is-done .tl-node-dot .icon {
-  opacity: 1;
-  transform: none;
-}
+
+
+
+
 .tl-name {
   display: flex;
   flex-direction: column;
@@ -2488,14 +2570,26 @@ button.tl-node:active .tl-node-dot {
   color: inherit;
   text-decoration: none;
 }
-.foot-meta .meta-link:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .foot-meta .meta-link:hover {
+    text-decoration: underline;
+  }
 }
 
 /* ---------- Wide screens: sky beside the timeline ---------- */
 @media (min-width: 900px) {
-  body[data-route="today"] .app {
+  /* One shell width for every tab, so the top bar never jumps sideways when switching */
+  .app {
     max-width: 1060px;
+  }
+  .view-month {
+    max-width: 820px;
+    margin-inline: auto;
+  }
+  .view-qibla,
+  .view-settings {
+    max-width: 600px;
+    margin-inline: auto;
   }
   .view-today {
     display: grid;
@@ -2837,10 +2931,7 @@ button.tl-node:active .tl-node-dot {
 .tl-node.is-minor .tl-node-dot {
   box-shadow: inset 0 0 0 2px var(--node-vis);
 }
-.tl-node.is-done .tl-node-dot {
-  background: var(--node-vis);
-  box-shadow: inset 0 0 0 2.5px var(--node-vis), 0 4px 12px -4px var(--node-vis);
-}
+
 .tl-row.is-current .tl-node-dot {
   box-shadow: inset 0 0 0 2.5px var(--node-vis), 0 0 0 6px color-mix(in srgb, var(--node-vis) 22%, transparent);
 }
@@ -2857,13 +2948,8 @@ button.tl-node:active .tl-node-dot {
 .tl-row.is-passed > .tl-time {
   color: var(--label-passed);
 }
-.tl-row.is-missed .tl-title,
-.tl-row.is-missed > .tl-time {
-  color: var(--label);
-}
-.tl-row.is-missed .tl-node-dot {
-  box-shadow: inset 0 0 0 2.5px var(--node-vis), 0 0 0 3px color-mix(in srgb, var(--node-vis) 18%, transparent);
-}
+
+
 .tl-ar {
   color: var(--label-2);
   font-size: 13px;
@@ -2881,7 +2967,7 @@ button.tl-node:active .tl-node-dot {
   color: var(--label);
   font-weight: 700;
 }
-.timeline-card.has-iqama .tl-row.is-passed:not(.is-missed) .tl-iqama {
+.timeline-card.has-iqama .tl-row.is-passed .tl-iqama {
   color: var(--label-passed);
 }
 .timeline-card.has-iqama .tl-row.is-current .tl-iqama {
@@ -2898,9 +2984,10 @@ button.tl-node:active .tl-node-dot {
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 0.5px solid transparent;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 body.is-scrolled .topbar {
+  background: color-mix(in srgb, var(--bg) 96%, transparent);
   border-bottom-color: var(--sep);
 }
 .month-table thead th {
@@ -3050,8 +3137,32 @@ body.is-scrolled .topbar {
   text-align: center;
   list-style: none;
 }
-.seed-details summary::-webkit-details-marker {
+.seed-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.seed-details summary::-webkit-details-marker,
+.coords-details summary::-webkit-details-marker {
   display: none;
+}
+/* A chevron instead of the browser's triangle */
+.seed-details summary::after,
+.coords-details summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-top: -3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.2s var(--ease);
+}
+.seed-details[open] > summary::after,
+.coords-details[open] > summary::after {
+  margin-top: 3px;
+  transform: rotate(-135deg);
 }
 .field-error {
   margin: -6px 4px 12px;
@@ -3281,6 +3392,15 @@ body.is-scrolled .topbar {
   align-items: center;
   gap: 6px 8px;
 }
+/* "never earlier than [10 min] after adhan": if it wraps, the input keeps its words */
+.iqama-min-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.iqama-min-label {
+  white-space: nowrap;
+}
 .select-rule {
   width: auto;
   min-height: 40px;
@@ -3386,9 +3506,14 @@ body.is-scrolled .topbar {
   gap: 8px;
 }
 .iqama-sentence .select-rule {
-  flex: 1 1 150px;
+  flex: 1 1 120px;
   min-width: 0;
   max-width: 100%;
+}
+/* Time and rule stay side by side, also in the narrower seasonal-change cards */
+.iqama-sentence .input-time {
+  flex: 0 1 132px;
+  min-width: 104px;
 }
 
 /* =================================================================================
@@ -3405,6 +3530,18 @@ body.is-scrolled .topbar {
   .sheet {
     bottom: 0;
   }
+}
+.sheet.sheet--search {
+  height: min(92dvh, calc(var(--vvh, 100dvh) - 12px));
+}
+.search-results.is-loading {
+  opacity: 0.45;
+  transition: opacity 0.2s;
+}
+.search-spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
 }
 
 /* A plain search field: no native inset/rounded/cancel chrome fighting our own. */
@@ -3446,9 +3583,6 @@ body.is-scrolled .topbar {
   }
   .app {
     padding-bottom: calc(var(--safe-bottom) + 92px);
-  }
-  .toast-host {
-    bottom: calc(var(--safe-bottom) + 84px);
   }
 
   /* Compact top bar */
@@ -3561,41 +3695,6 @@ body.is-scrolled .topbar {
     font-size: 14px;
   }
 }
-/* Short phones (iPhone SE, small Androids): tighten further so Isha still clears the tab bar. */
-@media (max-width: 899px) and (max-height: 720px) {
-  .sky {
-    padding-top: 12px;
-  }
-  .sky-title {
-    font-size: 24px;
-  }
-  .sky-count {
-    font-size: 36px;
-  }
-  .sky-sub {
-    font-size: 13px;
-  }
-  .sky-chart {
-    height: 46px;
-    min-height: 46px;
-  }
-  .sky-peak {
-    display: none;
-  }
-  .tl-row {
-    min-height: 44px;
-  }
-  .tl-row.is-extra {
-    min-height: 30px;
-  }
-  .date-bar .icon-btn {
-    width: 40px;
-    height: 40px;
-  }
-  .timeline-card {
-    margin-top: 10px;
-  }
-}
 
 /* ---------- Self-fitting phone home screen (levels applied by TodayView.fit) ---------- */
 @media (max-width: 899px) {
@@ -3645,6 +3744,14 @@ body.is-scrolled .topbar {
   }
   .view-today.fit-1 .sky-peak {
     display: none;
+  }
+  /* The countdown now sits in the moon's corner: the moon moves to the quiet top centre */
+  .view-today.fit-1 .sky-moon {
+    top: 10px;
+    inset-inline-end: auto;
+    left: calc(50% - 14px);
+    width: 28px;
+    height: 28px;
   }
   .view-today.fit-1 .tl-row:not(.is-extra) {
     min-height: 44px;
@@ -3704,31 +3811,9 @@ body.is-scrolled .topbar {
   }
 }
 
-/* One-time tip that the circles are tappable */
-.tl-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 12px 4px;
-  padding: 6px 6px 6px 12px;
-  border-radius: 12px;
-  background: var(--accent-tint);
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 500;
-}
-.tl-hint > .icon {
-  width: 16px;
-  height: 16px;
-  flex: none;
-}
-.tl-hint span {
-  flex: 1;
-}
-.tl-hint .icon-btn-sm {
-  background: transparent;
-  color: var(--accent);
-}
+
+
+
 
 /* Bigger hit areas without bigger visuals (44px minimum) */
 .tl-node,
@@ -3809,6 +3894,14 @@ body.is-scrolled .topbar {
   80% { transform: translateX(3px); }
 }
 @media (max-width: 899px) {
+  /* Fine-tuning on top of any level: rows lose a few pixels so the last one clears the tab bar. */
+  .view-today.is-squeezed .tl-row:not(.is-extra) {
+    min-height: var(--tl-min) !important;
+    padding-block: 0 !important;
+  }
+  .view-today.is-squeezed .tl-row:not(.is-extra) .tl-node {
+    height: var(--tl-min) !important;
+  }
   /* Level 4 (tiny screens, many rows): one-line sky and dense rows. */
   .view-today.fit-4 .sky-sub {
     display: none;
@@ -3837,7 +3930,7 @@ body.is-scrolled .topbar {
     height: 34px;
   }
   .view-today.fit-4 .timeline {
-    padding-block: 0;
+    padding-block: 4px 0;
   }
 }
 @media (max-width: 899px) {
@@ -3857,4 +3950,227 @@ body.is-scrolled .topbar {
     pointer-events: none;
     background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 0%, transparent), var(--bg) 70%);
   }
+}
+.masjid-card {
+  margin-top: 12px;
+  padding: 14px 16px;
+}
+.masjid-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.masjid-card-text {
+  display: grid;
+  min-width: 0;
+}
+.masjid-card-text strong {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.masjid-card-text span {
+  font-size: 13px;
+  color: var(--label-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.masjid-card-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+/* Icon over label, like the action buttons on a place card in Maps */
+.masjid-card-actions .btn {
+  flex-direction: column;
+  gap: 4px;
+  min-height: 58px !important;
+  padding: 8px 4px !important;
+  font-size: 12.5px !important;
+  text-decoration: none;
+}
+.masjid-card-actions .btn {
+  min-height: 40px;
+  font-size: 14px;
+  padding: 6px 8px;
+}
+html.has-sheet,
+html.has-sheet body {
+  overflow: hidden;
+}
+/* Onboarding: actions first on small screens; the sky shrinks before anything important does */
+.onb-sky {
+  max-height: 24vh;
+  width: auto;
+  aspect-ratio: 340 / 170;
+  max-width: 100%;
+}
+.onboarding .onb-brand {
+  margin-top: 16px;
+}
+.onboarding .onb-verse {
+  margin-top: 28px;
+}
+.onboarding {
+  padding-bottom: 32px;
+}
+/* The bottom fade only exists where there's a tab bar to fade under */
+body.no-tabbar::after {
+  display: none;
+}
+.iqama-warn {
+  margin: -2px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--orange);
+}
+
+/* Friday in the 7-day preview: the Jumu'ah time is the khutbah */
+.week-k {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--label-2);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Print keeps the colour coding (legend swatches, column dots, Friday tint) */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
+
+/* A note at the top of the editor (e.g. editing a copy received by link) */
+.editor-note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--accent-tint);
+  color: var(--label);
+  font-size: 14px;
+}
+.editor-note .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+/* Masjid editor: calculation tucked away under a disclosure */
+.calc-details {
+  margin-top: 22px;
+}
+.calc-details > summary {
+  padding-inline: 4px;
+}
+.calc-details-hint {
+  margin: 0 4px 10px;
+}
+
+/* Dark mode: the dawn/night colours of month dots get a light ring so they don't vanish */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .m-dot {
+    box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 2.5px rgba(255, 255, 255, 0.45);
+  }
+}
+:root[data-theme="dark"] .m-dot {
+  box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 2.5px rgba(255, 255, 255, 0.45);
+}
+/* Places: the check mark marks the active place; titles stay neutral so actions read as actions */
+.row.is-active .row-title,
+.row-split.is-active .row-title {
+  color: var(--label);
+  font-weight: 600;
+}
+
+/* A period header on one line: [1] [April] – Oct 31  × */
+.iqama-change-head {
+  flex-wrap: nowrap;
+}
+.iqama-change-head .select-compact {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+.iqama-change-head .select-month {
+  flex: 0 1 auto;
+}
+.iqama-until {
+  white-space: nowrap;
+  flex: 1 0 auto;
+}
+/* "Add seasonal change" and "Summer & winter" sit together at the end of a prayer */
+.iqama-foot-add {
+  justify-content: flex-start;
+}
+
+/* A period that returns to the first rule */
+.iqama-same {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 15px;
+  color: var(--label-2);
+}
+
+.q-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.q-head .large-title {
+  min-width: 0;
+}
+.q-start {
+  flex: none;
+}
+
+/* Latin names inside Arabic (and vice versa) keep their own direction, so they cut off at the right end */
+.place-chip-name,
+.place-chip-sub,
+.row-title,
+.row-sub,
+.masjid-card-text > *,
+.share-name,
+.share-sub,
+.tv-title h1,
+.tv-title p,
+.tv-note span,
+.note-card p,
+.note-card span {
+  unicode-bidi: plaintext;
+}
+/* The masjid tile stays a square */
+.masjid-cta-icon {
+  align-self: start;
+  aspect-ratio: 1;
+}
+
+.tv-note--long {
+  border-radius: 2.4vmin;
+  font-size: 2.2vmin;
+}
+.tv-note--long span {
+  -webkit-line-clamp: 4;
+}
+
+/* Qibla: the title stays on one line next to the Compass button */
+.q-head .large-title {
+  white-space: nowrap;
+  font-size: clamp(26px, 7.4vw, 34px);
 }

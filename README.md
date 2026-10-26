@@ -7,7 +7,7 @@
 A simple, private prayer-times app that runs entirely in the browser. It has no account, no database and no build step: static files you can host on GitHub Pages.
 
 - **The sky is the interface.** Prayer times come from the sun, so the Today screen draws it. The card is coloured by the sun's *real* altitude at your location: navy at night, blue hour, rose dawn, gold sunset. It plots today's actual sun path with each prayer on it and a dot for the sun right now, plus stars and the real moon phase at night. In Oslo in June you can see why Isha is hard.
-- **A timeline, not a table.** Each prayer is a node coloured by the sky at that moment. Tap a node to mark the prayer as prayed (private, on-device, no streaks). Until you do, Today shows **how long you have left to pray it**, and turns gently urgent near the end. Isha shows "best before midnight". During Ramadan the card switches to **Suhoor ends in** and **Iftar in** automatically.
+- **A timeline, not a table.** Each prayer is a node coloured by the sky at that moment, with the current one gently highlighted. The sky card counts down to the next prayer, or to the iqama on a masjid page. During Ramadan it switches to **Suhoor ends in** and **Iftar in** automatically.
 - **Times for wherever you are.** It uses your location (if you allow it) and updates when you travel. You can also search any city or enter coordinates (the time zone is taken from the coordinates, never assumed).
 - **Calculated on your device.** It uses [adhan-js](https://github.com/batoulapps/adhan-js), so times keep working offline.
 - **Masjid pages, shared with a link.** You write each iqama rule as a sentence: "**40** min *before Asr adhan*", "**45** min *before sunrise*", "**120** min *after Isha adhan*" (type the minutes or nudge them with − / +, with optional rounding), or a fixed time that is never earlier than *N* minutes after adhan. Add **changes during the year** (for example Isha 19:45 from 25 October and 21:15 from 29 March); these repeat every year. Jumu'ah times and an announcement go in too. The whole timetable is packed into a *seed*, a short code in the link and QR code. Anyone who opens it sees the same adhan and iqama times **for every day of the year**, with no server involved. The share sheet previews the next 7 days, and on your own location Today shows **your masjids' next iqama** at a glance.
@@ -22,13 +22,14 @@ A simple, private prayer-times app that runs entirely in the browser. It has no 
 
 ## Privacy
 
-Everything is stored in your browser (`localStorage`). There are only two optional network calls:
+Everything is stored in your browser (`localStorage`). There are only a few optional network calls:
 
 | What | Service | When |
 | --- | --- | --- |
 | City search | [Open-Meteo geocoding](https://open-meteo.com/en/docs/geocoding-api) | When you type in the search box |
 | Place name for your GPS position | [BigDataCloud reverse geocoding](https://www.bigdatacloud.com/free-api/free-reverse-geocode-to-city-api) | When your location changes by more than about 3 km. Only a position rounded to about 1 km is sent, and results are cached |
-| Time zone for typed coordinates | [Open-Meteo](https://open-meteo.com/) | Only when you enter coordinates by hand (rounded to about 1 km). Offline, the app guesses from longitude and asks you to confirm |
+| Address and masjid search | [Photon](https://photon.komoot.io/) (OpenStreetMap data) | When you type in the search box. To show nearby results first, your area is sent rounded to about 10 km |
+| Time zone for a picked address or typed coordinates | [Open-Meteo](https://open-meteo.com/) | Position rounded to about 1 km. Offline (or if the service is busy) a built-in zone table is used: exact in single-zone countries; elsewhere the app picks the nearest zone and, for typed coordinates, asks you to confirm |
 
 Prayer times never need the network.
 
@@ -82,12 +83,14 @@ js/main.js            state, routing, location handling, rendering
 js/engine.js          prayer-time engine (adhan-js presets, auto method, iqama, Jumu'ah)
 js/seed.js            seed encode/decode (place + backup)
 js/time.js            time-zone-aware formatting via Intl (no libraries)
-js/geo.js             geolocation, city search, reverse geocoding
+js/geo.js             geolocation, city/address search, reverse geocoding, time zones
+js/tzdata.js          IANA zone table for offline time-zone lookup (generated)
 js/i18n.js            EN / TR / AR strings
 js/views/*            Today, Month, Qibla, Settings, masjid editor/share, display mode
 js/vendor/            adhan-js (MIT), qrcode-generator (MIT)
 sw.js                 offline cache (bump VERSION on every release)
 tools/make-icons.cjs  regenerates the PNG icons from the SVG design (dev only, needs Playwright)
+tools/make-tzdata.cjs regenerates js/tzdata.js from tzdata's zone.tab
 tests/                node --test suites (engine accuracy, DST, iqama, seeds, offline cache)
 ```
 

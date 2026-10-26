@@ -14,9 +14,11 @@ const MADHAB_R = Object.fromEntries(Object.entries(MADHAB).map(([k, v]) => [v, k
 // --- iqama rules <-> "+10|+10r5|@13:30|" ---------------------------------------------
 // One rule: "+10", "+10r5" (after adhan, rounded up to 5), "-40", "-40r5" (before the next prayer, rounded
 // down) or "@20:15", "@20:15>10" (fixed, ≥10 min after adhan).
-// Seasonal changes follow as "~MMDD<rule>", e.g. "@19:30~0329@21:00~1025@19:30".
+// Seasonal changes follow as "~MMDD<rule>", e.g. "@19:30~0329@21:00~1025=" ("=": back to the first rule).
+// "=" (seasonal changes only) means "back to the first rule", so winter is entered once, not twice.
 function ruleStr(r) {
   if (!r) return "";
+  if (r.mode === "base") return "=";
   if (r.mode === "fixed") return parseHHMM(r.time) ? `@${r.time}${r.min ? `>${Math.min(120, Math.max(0, Math.round(r.min)))}` : ""}` : "";
   const off = Math.max(0, Math.min(300, Math.round(Number(r.offset) || 0)));
   return `${r.mode === "before" ? "-" : "+"}${off}${r.round ? `r${r.round}` : ""}`;
@@ -24,6 +26,7 @@ function ruleStr(r) {
 
 function parseRule(v) {
   let m;
+  if (v === "=") return { mode: "base" };
   if ((m = /^@(\d{1,2}:\d{2})(?:>(\d{1,3}))?$/.exec(v)) && parseHHMM(m[1])) return { mode: "fixed", time: m[1], min: m[2] ? Math.min(120, Number(m[2])) : 0 };
   if ((m = /^([+-])(\d{1,3})(?:r(5|10|15))?$/.exec(v))) return { mode: m[1] === "-" ? "before" : "offset", offset: Math.min(300, Number(m[2])), round: m[3] ? Number(m[3]) : 0 };
   return null;
@@ -35,7 +38,7 @@ export function packIqama(iqama) {
   if (!iqama) return "";
   const parts = PRAYERS.map((p) => {
     const r = iqama[p];
-    const base = ruleStr(r);
+    const base = r?.mode === "base" ? "" : ruleStr(r);
     if (!base) return "";
     const changes = (r.changes || [])
       .filter((c) => validMd(c.from) && ruleStr(c))
@@ -54,7 +57,8 @@ export function unpackIqama(s) {
   let any = false;
   PRAYERS.forEach((p, i) => {
     const [baseStr, ...rest] = (parts[i] || "").split("~");
-    const rule = parseRule(baseStr);
+    const parsed = parseRule(baseStr);
+    const rule = parsed?.mode === "base" ? null : parsed;
     if (rule && rest.length) {
       const changes = [];
       for (const c of rest.slice(0, 12)) {

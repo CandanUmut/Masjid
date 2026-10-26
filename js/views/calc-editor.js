@@ -3,7 +3,7 @@ import { METHODS, TIMES, normalizeCalc, resolveCalc } from "../engine.js";
 import { t } from "../i18n.js";
 import { h, select, stepper } from "../ui.js";
 
-export function calcEditor(calcIn, place, onChange) {
+export function calcEditor(calcIn, place, onChange, { adjHint = "adjustmentsHint" } = {}) {
   let calc = normalizeCalc(calcIn);
   const root = h("div", { class: "calc-editor" });
 
@@ -87,7 +87,7 @@ export function calcEditor(calcIn, place, onChange) {
           )
         )
       ),
-      h("p", { class: "list-foot" }, t("adjustmentsHint"))
+      h("p", { class: "list-foot" }, t(adjHint))
     );
   }
   render();

@@ -23,7 +23,12 @@ export function MonthView(ctx) {
     const off = ctx.settings.hijriOffset;
     const h1 = formatHijriMonth({ ...ym, d: 1 }, ctx.locale, off);
     const h2 = formatHijriMonth({ ...ym, d: n }, ctx.locale, off);
-    const hijriRange = h1 === h2 ? h1 : `${h1} – ${h2}`;
+    // "Rabi II – Jumada I 1448 AH": the year once when both months share it.
+    const sameYear = hijriParts({ ...ym, d: 1 }, off)?.y === hijriParts({ ...ym, d: n }, off)?.y;
+    // Put both month names where the second one sits in its full form, so each language keeps its own word order.
+    const m1 = formatHijriMonth({ ...ym, d: 1 }, ctx.locale, off, { year: false });
+    const m2 = formatHijriMonth({ ...ym, d: n }, ctx.locale, off, { year: false });
+    const hijriRange = h1 === h2 ? h1 : sameYear && h2.includes(m2) ? h2.replace(m2, `${m1} – ${m2}`) : `${h1} – ${h2}`;
     const hasIqama = Boolean(place.iqama || place.jumuah?.length);
     const rows = [];
     for (let d = 1; d <= n; d++) {
@@ -130,7 +135,8 @@ export function MonthView(ctx) {
       h("p", { class: "list-foot no-print" }, t("exportCalHint"))
     );
     // Scroll to today once the view is on screen.
-    if (first && ym.y === today.y && ym.m === today.m) {
+    // (On phones only: on a desktop the whole month fits and the title should stay in view.)
+    if (first && ym.y === today.y && ym.m === today.m && innerWidth < 900) {
       first = false;
       requestAnimationFrame(() => requestAnimationFrame(() => root.querySelector(".is-today")?.scrollIntoView({ block: "center" })));
     }
@@ -156,18 +162,18 @@ function icsText(s) {
   return String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
 }
 
-export function buildIcs(place, calc, ym, label = (k) => k) {
+export function buildIcs(place, calc, ym, label = (k) => k, { fromDay = 1 } = {}) {
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Masjid//Prayer Times//EN",
+    "PRODID:-//Ufuq//Prayer Times//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     `X-WR-CALNAME:${icsText(`${place.name} — ${label("monthTitle")}`)}`,
   ];
   const stamp = icsDate(new Date());
   const n = daysInMonth(ym.y, ym.m);
-  for (let d = 1; d <= n; d++) {
+  for (let d = fromDay; d <= n; d++) {
     const ymd = { y: ym.y, m: ym.m, d };
     const s = scheduleFor(place, calc, ymd);
     for (const r of s.rows) {
@@ -176,7 +182,7 @@ export function buildIcs(place, calc, ym, label = (k) => k) {
       const iq = r.iqama ? `${label("iqama")}: ${partsHHMM(r.iqama.at, place.tz)}` : "";
       lines.push(
         "BEGIN:VEVENT",
-        `UID:${place.id || "here"}-${ymdKey(ymd)}-${r.key}@masjid`,
+        `UID:${place.id || "here"}-${ymdKey(ymd)}-${r.key}@ufuq`,
         `DTSTAMP:${stamp}`,
         `DTSTART:${icsDate(r.adhan)}`,
         `DTEND:${icsDate(end)}`,
@@ -223,7 +229,10 @@ function partsHHMM(d, tz) {
 }
 
 function downloadIcs(ctx, ym) {
-  const ics = buildIcs(ctx.place, ctx.calc, ym, (k) => t(k));
+  // This month: from today on (past alarms are just noise in a calendar).
+  const today = todayYmd(ctx.place.tz);
+  const fromDay = today.y === ym.y && today.m === ym.m ? today.d : 1;
+  const ics = buildIcs(ctx.place, ctx.calc, ym, (k) => t(k), { fromDay });
   const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
   const a = h("a", {
     href: URL.createObjectURL(blob),

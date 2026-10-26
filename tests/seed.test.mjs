@@ -91,3 +91,11 @@ test("'before next prayer' rules and long offsets round-trip", () => {
   assert.deepEqual(u.dhuhr, { mode: "before", offset: 40, round: 5 });
   assert.deepEqual(u.asr, { mode: "offset", offset: 120, round: 0 });
 });
+
+test("a 'back to the first rule' change survives a seed round trip", async () => {
+  const isha = { mode: "fixed", time: "19:45", min: 5, changes: [{ from: "04-01", mode: "fixed", time: "21:30", min: 5 }, { from: "11-01", mode: "base" }] };
+  const back = unpackIqama(packIqama({ fajr: null, dhuhr: null, asr: null, maghrib: null, isha }));
+  assert.deepEqual(back.isha.changes, isha.changes);
+  // "=" is never a valid first rule.
+  assert.equal(unpackIqama("="), null);
+});

@@ -2,7 +2,7 @@ import { t, LANGS } from "../i18n.js";
 import { h, icon, select, segmented, toggle, stepper } from "../ui.js";
 import { calcEditor, row } from "./calc-editor.js";
 
-export const APP_VERSION = "2.1.0";
+export const APP_VERSION = "2.4.2";
 
 export function SettingsView(ctx) {
   const s = ctx.state.settings;
@@ -56,7 +56,12 @@ export function SettingsView(ctx) {
       { class: "list" },
       ["imsak", "sunrise", "duha", "midnight", "lastThird"].map((k) =>
         row(t(k), toggle(s.extras[k], (v) => ctx.update((st) => (st.settings.extras[k] = v), { render: false }), t(k)))
-      ),
+      )
+    ),
+    h("h3", { class: "list-title" }, t("hijriDate")),
+    h(
+      "div",
+      { class: "list" },
       row(
         t("hijriOffset"),
         stepper(s.hijriOffset, {
@@ -68,8 +73,7 @@ export function SettingsView(ctx) {
         })
       )
     ),
-    h("div", { class: "list" }, row(t("tracker"), toggle(s.tracker !== false, (v) => ctx.update((st) => (st.settings.tracker = v), { render: false }), t("tracker")))),
-    h("p", { class: "list-foot" }, t("trackerHint")),
+    h("p", { class: "list-foot" }, t("hijriHint")),
     h("h3", { class: "list-title" }, t("calcDefaults")),
     calcEditor(s.calc, ctx.gpsOrCityPlace(), (calc) => ctx.update((st) => (st.settings.calc = calc), { render: false })).el,
     h("p", { class: "list-foot" }, t("calcHint"))

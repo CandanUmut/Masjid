@@ -46,7 +46,10 @@ function hour12() {
   if (c === "12") return true;
   if (c === "24") return false;
   try {
-    return new Intl.DateTimeFormat(navigator.language, { hour: "numeric" }).resolvedOptions().hour12 ?? false;
+    // Follow the device's regional habit when it speaks the app's language (en-GB → 24h, en-US → 12h);
+    // otherwise the app language's own convention (Turkish UI → 24h, never "ÖÖ 5:55").
+    const loc = String(navigator.language || "").toLowerCase().startsWith(lang()) ? navigator.language : lang();
+    return new Intl.DateTimeFormat(loc, { hour: "numeric" }).resolvedOptions().hour12 ?? false;
   } catch {
     return false;
   }
@@ -100,9 +103,12 @@ function activate(id) {
 function addPlace(place, { activate: act = false, silent = false } = {}) {
   // The same city picked twice: just switch to the one we already have.
   if (place.kind === "city") {
-    const dup = state.places.find((p) => p.kind === "city" && p.id !== place.id && distanceKm(p, place) < 2);
+    // Only the *same* place twice (same name, same spot) — never swap the user's choice for another.
+    const same = (a, b) => String(a || "").toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === String(b || "").toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const dup = state.places.find((p) => p.kind === "city" && p.id !== place.id && distanceKm(p, place) < 2 && same(p.name, place.name));
     if (dup) {
       if (act) activate(dup.id);
+      toast(t("alreadySaved", { p: dup.name }));
       return;
     }
   }
@@ -117,7 +123,7 @@ function addPlace(place, { activate: act = false, silent = false } = {}) {
   if (!silent) toast(t(existed ? "updated" : "added", { p: place.name }));
 }
 
-function removePlace(id) {
+function removePlace(id, { silent = false } = {}) {
   const idx = state.places.findIndex((p) => p.id === id);
   if (idx < 0) return;
   const removed = state.places[idx];
@@ -126,7 +132,7 @@ function removePlace(id) {
     s.places.splice(idx, 1);
     if (wasActive) s.activeId = s.places[0]?.id || "gps";
   });
-  toast(t("removed", { p: removed.name }), {
+  if (!silent) toast(t("removed", { p: removed.name }), {
     action: t("undo"),
     onAction: () =>
       update((s) => {
@@ -157,7 +163,7 @@ async function useGps({ interactive = false } = {}) {
     app.lastGpsAt = Date.now();
     const prev = state.gps;
     const moved = prev ? distanceKm(prev, pos) : Infinity;
-    const keepName = prev && moved < 3;
+    const keepName = Boolean(prev && moved < 3 && prev.name); // no name yet: look it up again
     app.locating = false;
     update((s) => {
       s.gps = { ...pos, name: keepName ? prev.name : "", sub: keepName ? prev.sub : "", cc: keepName ? prev.cc : null, at: Date.now() };
@@ -278,6 +284,7 @@ function renderTabbar() {
   if (!nav) return;
   const r = routes();
   nav.hidden = r[app.route]?.chromeless;
+  document.body.classList.toggle("no-tabbar", nav.hidden);
   nav.replaceChildren(
     ...Object.entries(r)
       .filter(([, def]) => !def.hidden)
@@ -292,6 +299,17 @@ function renderTabbar() {
   );
 }
 
+// Under the place name. In another time zone it also says what time it is there, right where the
+// eye lands, so a traveller never wonders which clock the prayer times are on.
+function topbarSub(place) {
+  if (app.locating) return t("locating");
+  const isGps = place.id === "gps";
+  const base = isGps ? t("located") : place.kind === "masjid" ? place.sub || t("masjid") : place.sub;
+  if (place.tz === deviceTimeZone()) return base;
+  const now = formatTime(new Date(), place.tz, { hour12: hour12(), locale: lang() });
+  return [t("localNow", { t: now }), base].filter(Boolean).join(" · ");
+}
+
 function renderTopbar() {
   const bar = $("#topbar");
   if (!bar) return;
@@ -301,7 +319,7 @@ function renderTopbar() {
   if (bar.hidden) return;
   const isGps = place.id === "gps";
   const label = place.name || t("myLocation");
-  const sub = app.locating ? t("locating") : isGps ? t("located") : place.kind === "masjid" ? place.sub || t("masjid") : place.sub;
+  const sub = topbarSub(place);
   const actions = plugins.flatMap((p) => p.topbarActions?.(makeCtx()) || []);
   bar.replaceChildren(
     h(
@@ -342,8 +360,6 @@ function renderOnboarding() {
       </svg>`,
     }),
     h("div", { class: "onb-brand" }, h("img", { src: "./assets/icons/icon.svg", alt: "", width: 28, height: 28 }), "Ufuq", h("span", { lang: "ar", dir: "rtl" }, "أُفُق")),
-    h("p", { class: "onb-verse", lang: "ar", dir: "rtl" }, VERSE),
-    h("p", { class: "onb-verse-tr" }, lang() === "ar" ? t("verseRef") : `“${t("verse")}” — ${t("verseRef")}`),
     h("h1", { class: "onb-title" }, t("welcomeTitle")),
     h("p", { class: "onb-body" }, t("welcomeBody")),
     denied || failed
@@ -357,18 +373,22 @@ function renderOnboarding() {
     h(
       "div",
       { class: "onb-actions" },
+      // When location is blocked, searching is the way forward, so it becomes the main button.
+      denied ? h("button", { class: "btn btn-primary btn-large", type: "button", onclick: () => openPlacesSheet(makeCtx(), { focusSearch: true }) }, icon("search"), t("searchCity")) : null,
       !unsupported
         ? h(
             "button",
-            { class: "btn btn-primary btn-large", type: "button", disabled: app.locating, onclick: () => useGps({ interactive: true }) },
-            app.locating ? h("span", { class: "spinner spinner--light" }) : icon("location"),
+            { class: `btn ${denied ? "btn-tinted" : "btn-primary"} btn-large`, type: "button", disabled: app.locating, onclick: () => useGps({ interactive: true }) },
+            app.locating ? h("span", { class: `spinner ${denied ? "" : "spinner--light"}` }) : icon("location"),
             app.locating ? t("locating") : t("allowLocation")
           )
         : null,
-      h("button", { class: "btn btn-tinted btn-large", type: "button", onclick: () => openPlacesSheet(makeCtx(), { focusSearch: true }) }, icon("search"), t("searchCity")),
+      denied ? null : h("button", { class: "btn btn-tinted btn-large", type: "button", onclick: () => openPlacesSheet(makeCtx(), { focusSearch: true }) }, icon("search"), t("searchCity")),
       ...plugins.flatMap((p) => p.onboardingActions?.(makeCtx()) || [])
     ),
-    h("p", { class: "onb-privacy" }, icon("lock"), t("privacyNote"))
+    h("p", { class: "onb-privacy" }, icon("lock"), t("privacyNote")),
+    h("p", { class: "onb-verse", lang: "ar", dir: "rtl" }, VERSE),
+    h("p", { class: "onb-verse-tr" }, lang() === "ar" ? t("verseRef") : `“${t("verse")}” — ${t("verseRef")}`),
   );
 }
 
@@ -387,6 +407,7 @@ function render() {
     app.view = null;
     main.replaceChildren(renderOnboarding());
     $("#tabbar").hidden = true;
+    document.body.classList.add("no-tabbar");
     setPhase("dawn");
     return;
   }
@@ -407,6 +428,12 @@ function render() {
 // --- Boot --------------------------------------------------------------------------
 function tick() {
   app.view?.tick?.();
+  const place = activePlace();
+  const subEl = document.querySelector("#topbar .place-chip-sub");
+  if (place && subEl && place.tz !== deviceTimeZone()) {
+    const text = topbarSub(place);
+    if (subEl.textContent !== text) subEl.textContent = text;
+  }
   for (const p of plugins) p.tick?.();
 }
 
@@ -421,8 +448,10 @@ export function start() {
     setInterval(tick, 1000);
   }, 1000 - (Date.now() % 1000));
   document.addEventListener("visibilitychange", () => {
+    // Coming back to the app: bring times up to date (the view handles a new day itself), but never
+    // rebuild the screen — that would lose the day being viewed and re-measure mid-scroll.
     if (document.visibilityState === "visible") {
-      render();
+      tick();
       maybeRefreshGps();
     }
   });

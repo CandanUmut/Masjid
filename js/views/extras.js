@@ -2,9 +2,9 @@
 import { scheduleFor } from "../engine.js";
 import { addDays, todayYmd } from "../time.js";
 import { t } from "../i18n.js";
-import { h, icon, openSheet, select, toggle, toast, copyText } from "../ui.js";
+import { h, icon, openSheet, select, toggle, toast, copyText, confirmSheet } from "../ui.js";
 import { normalizeCalc } from "../engine.js";
-import { backupToSeed } from "../seed.js";
+import { backupToSeed, placeToSeed } from "../seed.js";
 import { DEFAULT_SETTINGS } from "../store.js";
 import { MonthView } from "./month.js";
 import { QiblaView } from "./qibla.js";
@@ -196,8 +196,8 @@ function settingsSections(ctx) {
         {
           class: "row row-btn tone-danger",
           type: "button",
-          onclick: () => {
-            if (!confirm(t("resetConfirm"))) return;
+          onclick: async () => {
+            if (!(await confirmSheet({ title: t("resetAll"), message: t("resetConfirm"), confirmLabel: t("resetAction"), danger: true }))) return;
             try {
               localStorage.clear();
             } catch {
@@ -217,25 +217,49 @@ function settingsSections(ctx) {
 
 async function openBackup(ctx) {
   const seed = await backupToSeed(ctx.state);
+  const d = new Date();
+  const fileName = `ufuq-backup-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}.txt`;
+  const file = () => new File([seed + "\n"], fileName, { type: "text/plain" });
+  const canShareFile = typeof navigator.canShare === "function" && navigator.canShare({ files: [file()] });
+  const download = () => {
+    const a = h("a", { href: URL.createObjectURL(file()), download: fileName });
+    document.body.append(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 1000);
+  };
   openSheet({
     title: t("exportData"),
+    subtitle: t("backupHint"),
     content: [
-      h("p", { class: "list-foot", style: { margin: "0 4px 12px" } }, t("backupHint")),
       h("div", { class: "form-card" }, h("code", { class: "seed-code" }, seed)),
+      h(
+        "div",
+        { class: "list list-actions" },
+        canShareFile
+          ? h("button", { class: "row row-btn", type: "button", onclick: () => navigator.share({ files: [file()], title: fileName }).catch(() => {}) }, icon("share", "row-icon tone-accent"), h("span", { class: "row-title" }, t("shareVia")))
+          : null,
+        h("button", { class: "row row-btn", type: "button", onclick: download }, icon("download", "row-icon tone-accent"), h("span", { class: "row-title" }, t("saveFile"))),
+        h(
+          "button",
+          {
+            class: "row row-btn",
+            type: "button",
+            onclick: async (e) => {
+              const title = e.currentTarget.querySelector(".row-title");
+              if (await copyText(seed)) {
+                title.textContent = t("copied");
+                setTimeout(() => (title.textContent = t("copy")), 1500);
+              }
+            },
+          },
+          icon("copy", "row-icon tone-accent"),
+          h("span", { class: "row-title" }, t("copy"))
+        )
+      ),
     ],
-    actions: h(
-      "button",
-      {
-        class: "btn btn-primary btn-block",
-        type: "button",
-        onclick: async (e) => {
-          const b = e.currentTarget;
-          if (await copyText(seed)) b.lastChild.textContent = t("copied");
-        },
-      },
-      icon("copy"),
-      h("span", {}, t("copy"))
-    ),
   });
 }
 
@@ -274,16 +298,11 @@ export const extrasPlugin = {
   ctx: () => ({
     settingsExtras: () => settingsSections(getCtx()),
     restoreBackup,
-    openDisplay: (place, seed) => {
-      // Open the board in a new tab with the seed so it can be bookmarked on the screen's browser.
-      const url = `${location.href.split("#")[0]}#/tv/${seed}`;
-      window.open(url, "_blank", "noopener");
+    openDisplay: async (place) => {
+      // Always the seed URL, so the board can be bookmarked as a screen's start page.
+      location.hash = `#/tv/${await placeToSeed(place)}`;
     },
   }),
-  topbarActions: (ctx) =>
-    ctx.place?.kind === "masjid"
-      ? [h("a", { class: "icon-btn", href: "#/tv", "aria-label": t("tvMode"), title: t("tvMode") }, icon("tv"))]
-      : [],
   handleHash(name, arg, ctx) {
     if (name !== "tv" || !arg) return false;
     // #/tv/<seed>: import (or refresh) the masjid silently, then show the board.
