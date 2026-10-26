@@ -52,12 +52,13 @@ export function QiblaView(ctx) {
   const facing = h("div", { class: "q-status", "aria-live": "polite" });
   const status = h("p", { class: "list-foot q-hint" });
   const hasSensor = matchMedia("(pointer: coarse)").matches && ("ondeviceorientationabsolute" in window || "ondeviceorientation" in window);
-  const startBtn = hasSensor ? h("button", { class: "btn btn-primary", type: "button", onclick: start }, icon("compass"), t("compassStart")) : null;
+  // In the header, next to the title: always on screen, whatever the phone's height.
+  const startBtn = hasSensor ? h("button", { class: "btn btn-primary btn-sm q-start", type: "button", onclick: start }, icon("compass"), t("compassShort")) : null;
 
   const root = h(
     "div",
     { class: "view view-qibla" },
-    h("h1", { class: "large-title" }, t("qiblaTitle")),
+    h("div", { class: "q-head" }, h("h1", { class: "large-title" }, t("qiblaTitle")), startBtn),
     h(
       "div",
       { class: "q-card", style: (() => { const s = skyAt(place, new Date()); return { "--sky-top": s.top, "--sky-horizon": s.horizon }; })() },
@@ -66,8 +67,7 @@ export function QiblaView(ctx) {
       facing,
       h("div", { class: "q-deg" }, t("qiblaFromNorth", { d: nf.format(Math.round(bearing)) })),
       h("div", { class: "q-sub" }, `${place.name} · ${t("qiblaDistance", { k: nf.format(km) })}`),
-      sunUp ? h("div", { class: "q-sunhint" }, icon("sun"), sunHint(bearing, sunAz, nf)) : null,
-      startBtn ? h("div", { class: "q-actions" }, startBtn) : null
+      sunUp ? h("div", { class: "q-sunhint" }, icon("sun"), sunHint(bearing, sunAz, nf)) : null
     ),
     status
   );

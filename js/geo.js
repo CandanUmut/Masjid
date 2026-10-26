@@ -113,8 +113,10 @@ async function searchAddresses(query, lang, { near = null, worship = false } = {
       const p = f.properties || {};
       const numberFirst = ["US", "CA", "GB", "AU", "NZ", "IE", "FR", "IN", "ZA", "SG", "MY"].includes(String(p.countrycode).toUpperCase());
       const street = (numberFirst ? [p.housenumber, p.street] : [p.street, p.housenumber]).filter(Boolean).join(" ");
-      const name = p.name || street || p.city || p.county || "";
-      const area = [p.name && street ? street : "", p.district || p.locality, p.city && p.city !== name ? p.city : "", p.country]
+      // Typed a house number? Then the address is what was asked for, and the shop there is the detail.
+      const wantsAddress = /\d/.test(query) && p.housenumber && p.street && p.name && !["place_of_worship", "mosque"].includes(p.osm_value);
+      const name = wantsAddress ? street : p.name || street || p.city || p.county || "";
+      const area = [wantsAddress ? p.name : p.name && street ? street : "", p.district || p.locality, p.city && p.city !== name ? p.city : "", p.country]
         .filter(Boolean)
         .join(", ");
       const [lng, lat] = f.geometry.coordinates;
@@ -123,7 +125,7 @@ async function searchAddresses(query, lang, { near = null, worship = false } = {
       const mosque =
         p.osm_value === "mosque" ||
         (p.osm_value === "place_of_worship" && MOSQUE_NAME.test(name)) ||
-        (Boolean(p.name) && !["highway", "place", "boundary", "railway", "shop", "office"].includes(p.osm_key) && MOSQUE_NAME.test(p.name));
+        (Boolean(p.name) && !["highway", "place", "boundary", "railway", "shop", "office", "amenity"].includes(p.osm_key) && MOSQUE_NAME.test(p.name));
       return { name, sub: area, lat: round(lat, 5), lng: round(lng, 5), tz: null, cc: p.countrycode || null, type: mosque ? "mosque" : "address" };
     })
     .filter((x) => x.name);
@@ -157,12 +159,16 @@ export async function searchPlaces(q, lang = "en", near = null) {
   if (cities.status === "rejected" && addresses.status === "rejected") throw cities.reason;
   const c = cities.status === "fulfilled" ? cities.value : [];
   // Mosques: nearby ones first (within ~30 km, closest first), then the rest in relevance order.
-  const m = mosques.status === "fulfilled" ? mosques.value.filter((x) => x.type === "mosque") : [];
-  if (near) {
+  const fromWorship = mosques.status === "fulfilled" ? mosques.value.filter((x) => x.type === "mosque") : [];
+  const fromAddresses = addresses.status === "fulfilled" ? addresses.value : [];
+  let a = [...fromWorship, ...fromAddresses];
+  if (near && mosqueName) {
+    // Looking for a mosque: every mosque result, from either request, nearest first.
     const d = (x) => distanceKm(near, x);
-    m.sort((x, y) => (d(x) < 30 ? d(x) : 1e6) - (d(y) < 30 ? d(y) : 1e6));
+    const rank = (x) => (d(x) < 30 ? d(x) : 1e6);
+    const ms = a.filter((x) => x.type === "mosque").sort((x, y) => rank(x) - rank(y));
+    a = [...ms, ...a.filter((x) => x.type !== "mosque")];
   }
-  const a = [...m, ...(addresses.status === "fulfilled" ? addresses.value : [])];
   const looksLikeAddress = /\d/.test(query) || query.includes(",") || ADDRESS_WORD.test(query);
   const ordered = looksLikeAddress ? [...a, ...c] : [...c.filter((x) => x.exact), ...a.slice(0, 3), ...c.filter((x) => !x.exact), ...a.slice(3)];
   const out = [];
@@ -185,6 +191,11 @@ export async function searchPlaces(q, lang = "en", near = null) {
 // Fill in what an address result lacks (time zone) before it is saved.
 export async function completePlace(f) {
   if (f.tz) return f;
+  // A country with one time zone needs no network at all: picking stays instant.
+  if (f.cc) {
+    const g = await guessTimeZone(f.lat, f.lng, f.cc);
+    if (!g.approximate) return { ...f, tz: g.tz };
+  }
   const { tz } = await timezoneFor(f.lat, f.lng, f.cc);
   return { ...f, tz };
 }
@@ -198,7 +209,7 @@ export async function timezoneFor(lat, lng, cc = null) {
   if (tzCache.has(key)) return tzCache.get(key);
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const j = await fetchJson(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}&timezone=auto&forecast_days=1`, 6000);
+      const j = await fetchJson(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}&timezone=auto&forecast_days=1`, 3000);
       if (j.timezone && j.timezone !== "GMT") {
         const res = { tz: j.timezone, approximate: false };
         tzCache.set(key, res);

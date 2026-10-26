@@ -74,6 +74,7 @@ const P = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.5v.5"/>',
   arrowUp: '<path d="M12 20V4M5.5 10.5 12 4l6.5 6.5"/>',
   kaaba: '<path d="M4 8.5 12 5l8 3.5v9L12 21l-8-3.5v-9Z"/><path d="M4 8.5 12 12l8-3.5M12 12v9M4 11.5l8 3.5 8-3.5"/>',
+  directions: '<path d="M12 2.8 21.2 12 12 21.2 2.8 12Z"/><path d="M9.5 14v-2.2c0-.9.7-1.6 1.6-1.6h3.6M12.8 8.2l2 2-2 2"/>',
   lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
 };
 

@@ -146,3 +146,27 @@ test("iqama 'before the next prayer': Dhuhr 40 min before Asr, Fajr 45 min befor
   assert.equal(tight.iqama.clamped, true);
   assert.equal(tight.iqama.at.getTime(), tight.adhan.getTime());
 });
+
+test("seasonal iqama: a 'base' change goes back to the first rule", async () => {
+  const { activeRule } = await import("../js/engine.js");
+  const rule = { mode: "fixed", time: "19:45", min: 5, changes: [{ from: "04-01", mode: "fixed", time: "21:30", min: 5 }, { from: "11-01", mode: "base" }] };
+  assert.equal(activeRule(rule, { y: 2027, m: 2, d: 1 }).time, "19:45");
+  assert.equal(activeRule(rule, { y: 2027, m: 7, d: 1 }).time, "21:30");
+  assert.equal(activeRule(rule, { y: 2027, m: 11, d: 15 }).time, "19:45");
+  // Editing the winter rule changes both winter periods at once.
+  rule.time = "19:15";
+  assert.equal(activeRule(rule, { y: 2027, m: 12, d: 1 }).time, "19:15");
+});
+
+test("two Jumu'ahs: after the first khutbah, the second one is what's pending", async () => {
+  const { statusAt } = await import("../js/engine.js");
+  const place = { lat: 41.0082, lng: 28.9784, tz: "Europe/Istanbul", cc: "TR", jumuah: ["13:00", "14:15"] };
+  const ymd = { y: 2026, m: 10, d: 30 }; // a Friday
+  const before = statusAt(place, null, ymd, new Date("2026-10-30T09:56:00Z")); // 12:56 local
+  assert.equal(before.current.key, "jumuah");
+  assert.equal(before.pendingIqama.toISOString(), "2026-10-30T10:00:00.000Z");
+  const between = statusAt(place, null, ymd, new Date("2026-10-30T10:30:00Z")); // 13:30 local
+  assert.equal(between.pendingIqama.toISOString(), "2026-10-30T11:15:00.000Z");
+  const after = statusAt(place, null, ymd, new Date("2026-10-30T11:30:00Z"));
+  assert.equal(after.pendingIqama, null);
+});

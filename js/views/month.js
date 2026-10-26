@@ -25,8 +25,10 @@ export function MonthView(ctx) {
     const h2 = formatHijriMonth({ ...ym, d: n }, ctx.locale, off);
     // "Rabi II – Jumada I 1448 AH": the year once when both months share it.
     const sameYear = hijriParts({ ...ym, d: 1 }, off)?.y === hijriParts({ ...ym, d: n }, off)?.y;
-    const h1Short = sameYear ? formatHijriMonth({ ...ym, d: 1 }, ctx.locale, off, { year: false }) : h1;
-    const hijriRange = h1 === h2 ? h1 : `${h1Short} – ${h2}`;
+    // Put both month names where the second one sits in its full form, so each language keeps its own word order.
+    const m1 = formatHijriMonth({ ...ym, d: 1 }, ctx.locale, off, { year: false });
+    const m2 = formatHijriMonth({ ...ym, d: n }, ctx.locale, off, { year: false });
+    const hijriRange = h1 === h2 ? h1 : sameYear && h2.includes(m2) ? h2.replace(m2, `${m1} – ${m2}`) : `${h1} – ${h2}`;
     const hasIqama = Boolean(place.iqama || place.jumuah?.length);
     const rows = [];
     for (let d = 1; d <= n; d++) {

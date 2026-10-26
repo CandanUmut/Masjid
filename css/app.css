@@ -1668,8 +1668,7 @@ body.is-offline .app::before {
   background: #fff;
 }
 .q-dial {
-  /* Leaves room for "Start compass" above the tab bar on short phones */
-  width: min(76vw, 300px, 38svh);
+  width: min(76vw, 300px, 46svh);
   aspect-ratio: 1;
   transition: transform 0.25s linear;
 }
@@ -3982,9 +3981,19 @@ body.is-scrolled .topbar {
 }
 .masjid-card-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: 8px;
   margin-top: 12px;
+}
+/* Icon over label, like the action buttons on a place card in Maps */
+.masjid-card-actions .btn {
+  flex-direction: column;
+  gap: 4px;
+  min-height: 58px !important;
+  padding: 8px 4px !important;
+  font-size: 12.5px !important;
+  text-decoration: none;
 }
 .masjid-card-actions .btn {
   min-height: 40px;
@@ -4105,4 +4114,56 @@ body.no-tabbar::after {
 /* "Add seasonal change" and "Summer & winter" sit together at the end of a prayer */
 .iqama-foot-add {
   justify-content: flex-start;
+}
+
+/* A period that returns to the first rule */
+.iqama-same {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  font-size: 15px;
+  color: var(--label-2);
+}
+
+.q-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.q-head .large-title {
+  min-width: 0;
+}
+.q-start {
+  flex: none;
+}
+
+/* Latin names inside Arabic (and vice versa) keep their own direction, so they cut off at the right end */
+.place-chip-name,
+.place-chip-sub,
+.row-title,
+.row-sub,
+.masjid-card-text > *,
+.share-name,
+.share-sub,
+.tv-title h1,
+.tv-title p,
+.tv-note span,
+.note-card {
+  unicode-bidi: plaintext;
+}
+/* The masjid tile stays a square */
+.masjid-cta-icon {
+  align-self: start;
+  aspect-ratio: 1;
+}
+
+.tv-note--long {
+  border-radius: 2.4vmin;
+  font-size: 2.2vmin;
+}
+.tv-note--long span {
+  -webkit-line-clamp: 4;
 }

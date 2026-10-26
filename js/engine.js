@@ -188,7 +188,8 @@ export function activeRule(rule, ymd) {
   for (const c of [...rule.changes].sort((a, b) => a.from.localeCompare(b.from))) {
     if (c.from <= md) active = c;
   }
-  return active;
+  // A "base" change switches back to the first rule (e.g. winter again from November).
+  return active.mode === "base" ? rule : active;
 }
 
 // What "before the next prayer" means for each prayer: the moment its time ends.
@@ -270,7 +271,13 @@ export function statusAt(place, calc, ymd, now = new Date()) {
   let progress = 0;
   if (current && next) progress = (t - current.adhan.getTime()) / (next.adhan.getTime() - current.adhan.getTime());
   // Pending iqama for the current prayer (adhan called, congregation not yet started).
-  const pendingIqama = current?.iqama && current.iqama.at.getTime() > t ? current.iqama.at : null;
+  // With two Jumu'ahs, the second khutbah is still ahead once the first has started.
+  const pendingIqama =
+    current?.key === "jumuah"
+      ? current.jumuah.find((d) => d.getTime() > t) || null
+      : current?.iqama && current.iqama.at.getTime() > t
+        ? current.iqama.at
+        : null;
   return { today, tomorrow, current, next, progress: Math.min(1, Math.max(0, progress)), pendingIqama };
 }
 

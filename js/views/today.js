@@ -293,7 +293,8 @@ export function TodayView(ctx) {
       const nextC = colors.slice(i + 1).find(Boolean) || c;
       const style = c ? { "--node": c, "--node-next": nextC } : {};
       let subText = null;
-      if (r.key === "jumuah") subText = [t("khutbah"), ...r.jumuah.slice(1).map((d) => t("alsoAt", { t: ctx.fmt(d) }))].join(" · ");
+      // Times never break across lines ("2:15 / PM").
+      if (r.key === "jumuah") subText = [t("khutbah"), ...r.jumuah.slice(1).map((d) => t("alsoAt", { t: ctx.fmt(d).replace(/\s/g, "\u00a0") }))].join(" · ");
       else if (r.key === "dhuhr" && sched.isFriday) subText = t("jumuah");
       list.append(
         h(
@@ -328,7 +329,10 @@ export function TodayView(ctx) {
     const adjusted = Object.values(r.adj).some(Boolean);
     meta.replaceChildren(
       ...[
-        h("a", { href: "#/settings", class: "meta-link" }, t("methodNote", { m: mName, a: t(`${r.madhab}Short`) }) + (adjusted ? ` · ${t("adjusted")}` : "")),
+        // A masjid's method is set by the masjid (in its editor), so only other places link to Settings.
+        place.kind === "masjid"
+          ? h("span", {}, t("methodNote", { m: mName, a: t(`${r.madhab}Short`) }) + (adjusted ? ` · ${t("adjusted")}` : ""))
+          : h("a", { href: "#/settings", class: "meta-link" }, t("methodNote", { m: mName, a: t(`${r.madhab}Short`) }) + (adjusted ? ` · ${t("adjusted")}` : "")),
         place.kind === "masjid" && place.u ? h("span", {}, t("updatedOn", { d: new Date(place.u * 1000).toLocaleDateString(ctx.locale, { day: "numeric", month: "short", year: "numeric" }) })) : null,
       ].filter(Boolean)
     );

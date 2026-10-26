@@ -80,7 +80,7 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
             h(
               "div",
               { class: "preview-cell" },
-              h("span", { class: "preview-p" }, t(r.key)),
+              h("span", { class: "preview-p" }, r.key === "jumuah" ? t("khutbah") : t(r.key)),
               h("span", { class: "preview-a" }, fmt(r.adhan)),
               h("span", { class: `preview-i ${r.iqama?.clamped ? "is-clamped" : ""}` }, r.iqama ? fmt(r.iqama.at) : "—")
             )
@@ -412,7 +412,32 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
         h("span", { class: "iqama-change-from iqama-until" }, `– ${until(rule, i)}`),
         h("button", { class: "icon-btn icon-btn-sm", type: "button", "aria-label": t("remove"), onclick: () => { rule.changes.splice(i, 1); if (!rule.changes.length) delete rule.changes; renderIqama(); renderPreview(); } }, icon("close"))
       ),
-      ...Object.values(ruleSentence(p, c, { onKind: (v) => { convert(p, c, v); renderIqama(); renderPreview(); } })).filter(Boolean)
+      ...(c.mode === "base"
+        ? // Back to the first rule: nothing to enter twice, and it follows any later edit of that rule.
+          [
+            h(
+              "div",
+              { class: "iqama-same" },
+              h("span", {}, t("sameAsFirst", { r: `${dayMonth("01-01")} – ${dayMonth(dayBefore(rule.changes[0].from))}` })),
+              h(
+                "button",
+                {
+                  class: "btn btn-plain btn-sm",
+                  type: "button",
+                  onclick: () => {
+                    const own = { ...rule };
+                    delete own.changes;
+                    for (const k of Object.keys(c)) if (k !== "from") delete c[k];
+                    Object.assign(c, own, { from: c.from });
+                    renderIqama();
+                    renderPreview();
+                  },
+                },
+                t("setOwnTime")
+              )
+            ),
+          ]
+        : Object.values(ruleSentence(p, c, { onKind: (v) => { convert(p, c, v); renderIqama(); renderPreview(); } })).filter(Boolean))
     );
   }
 
@@ -475,8 +500,9 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
                   class: "btn btn-plain btn-sm iqama-add-change",
                   type: "button",
                   onclick: () => {
+                    // Summer gets its own rule; from November it's simply the first rule again.
                     const base = { ...rule };
-                    rule.changes = [{ ...base, from: "04-01" }, { ...base, from: "11-01" }];
+                    rule.changes = [{ ...base, from: "04-01" }, { from: "11-01", mode: "base" }];
                     renderIqama();
                     renderPreview();
                   },
@@ -513,7 +539,7 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
   const noteInput = h("textarea", { class: "input", maxlength: 280, rows: 3, placeholder: t("notePh"), oninput: (e) => (draft.note = e.target.value) }, draft.note);
 
   const sheet = openSheet({
-    title: existing ? t("editMasjid") : t("newMasjid"),
+    title: existing ? t(existing.fromLink ? "editCopy" : "editMasjid") : t("newMasjid"),
     wide: true,
     className: "sheet--tall",
     // Swiping down or tapping outside must never silently throw away an admin's work.
@@ -831,6 +857,13 @@ export async function importSeed(ctx, text, { allowBackup = false, silent = fals
   return true;
 }
 
+// Apple Maps on Apple devices (opens the Maps app), Google Maps everywhere else.
+function directionsUrl(place) {
+  const ll = `${place.lat},${place.lng}`;
+  const apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
+  return apple ? `https://maps.apple.com/?daddr=${ll}&q=${encodeURIComponent(place.name)}` : `https://www.google.com/maps/dir/?api=1&destination=${ll}`;
+}
+
 // Under the times on a masjid page: who this is, and the actions people look for.
 function masjidCard(ctx, place) {
   return h(
@@ -845,10 +878,12 @@ function masjidCard(ctx, place) {
     h(
       "div",
       { class: "masjid-card-actions" },
-      // A congregant's copy: editing is still possible from "…", but it isn't the main action.
-      place.fromLink ? null : h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openMasjidEditor(ctx, place) }, icon("edit"), t("edit")),
+      // What congregants need most: how to get there.
+      h("a", { class: "btn btn-primary btn-sm", href: directionsUrl(place), target: "_blank", rel: "noopener" }, icon("directions"), t("directions")),
       h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openShareSheet(ctx, place) }, icon("share"), t("share")),
-      ctx.openDisplay ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.openDisplay(place) }, icon("tv"), t("tvShort")) : null
+      ctx.openDisplay ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.openDisplay(place) }, icon("tv"), t("tvShort")) : null,
+      // A congregant's copy: editing is still possible from "…", but it isn't a main action.
+      place.fromLink ? null : h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openMasjidEditor(ctx, place) }, icon("edit"), t("edit"))
     )
   );
 }

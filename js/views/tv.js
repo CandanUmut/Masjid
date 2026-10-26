@@ -22,7 +22,8 @@ export function TvView(ctx) {
   const grid = h("div", { class: "tv-grid" });
   const chart = SkyChart(place);
   const qrBox = h("div", { class: "tv-qr", hidden: true });
-  const note = place.note ? h("div", { class: "tv-note" }, icon("info"), h("span", {}, place.note)) : null;
+  // Long announcements get a smaller size and more lines rather than being cut off.
+  const note = place.note ? h("div", { class: `tv-note ${place.note.length > 110 ? "tv-note--long" : ""}` }, icon("info"), h("span", {}, place.note)) : null;
   const overlay = h("div", { class: "tv-overlay", hidden: true });
   const controls = h(
     "div",
@@ -133,9 +134,10 @@ export function TvView(ctx) {
 
     // "Prayer in progress": from iqama until the congregation is done.
     const cur = s.current;
-    const iqAt = cur?.iqama?.at?.getTime();
+    // (Every Jumu'ah counts, when a masjid holds two.)
+    const starts = cur?.key === "jumuah" ? cur.jumuah.map((d) => d.getTime()) : cur?.iqama ? [cur.iqama.at.getTime()] : [];
     const span = (cur?.key === "jumuah" ? IN_JUMUAH_MIN : IN_PRAYER_MIN) * 60000;
-    const inPrayer = Boolean(iqAt && now >= iqAt && now - iqAt < span);
+    const inPrayer = starts.some((at) => now >= at && now - at < span);
     if (inPrayer !== !overlay.hidden) {
       overlay.hidden = !inPrayer;
       if (inPrayer) overlay.replaceChildren(h("div", { class: "tv-overlay-p" }, t(cur.key)), h("div", { class: "tv-overlay-msg" }, t("inPrayer")), h("div", { class: "tv-overlay-sub" }, t("silencePhones")));
