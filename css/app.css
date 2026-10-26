@@ -3520,11 +3520,17 @@ body.is-scrolled .topbar {
    Phone home screen: everything visible at once, nothing hidden under the navigation.
    ================================================================================= */
 
-/* Sheets ride above the on-screen keyboard and never extend under it. */
+/* Sheets ride above the on-screen keyboard and never extend under it. The keyboard measurements are
+   used only while the keyboard is up (html.has-keyboard): a stale value left behind as it closes must
+   never shrink a sheet to a sliver at the bottom of the screen. */
 .sheet {
-  bottom: var(--kb, 0px);
-  max-height: min(92dvh, calc(var(--vvh, 100dvh) - 12px));
+  bottom: 0;
+  max-height: min(92dvh, 860px);
   transition: bottom 0.2s var(--ease), max-height 0.2s var(--ease), transform 0.25s var(--ease);
+}
+html.has-keyboard .sheet {
+  bottom: var(--kb, 0px);
+  max-height: calc(var(--vvh, 100dvh) - 12px);
 }
 @media (min-width: 700px) {
   .sheet {
@@ -3532,7 +3538,10 @@ body.is-scrolled .topbar {
   }
 }
 .sheet.sheet--search {
-  height: min(92dvh, calc(var(--vvh, 100dvh) - 12px));
+  height: min(92dvh, 860px);
+}
+html.has-keyboard .sheet.sheet--search {
+  height: calc(var(--vvh, 100dvh) - 12px);
 }
 .search-results.is-loading {
   opacity: 0.45;

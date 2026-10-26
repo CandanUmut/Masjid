@@ -100,13 +100,24 @@ if (typeof window !== "undefined" && window.visualViewport) {
   };
   const sync = () => {
     const kb = typing() ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
-    root.style.setProperty("--kb", `${kb > 80 ? kb : 0}px`);
-    root.style.setProperty("--vvh", `${kb > 80 ? vv.height : window.innerHeight}px`);
+    if (kb > 80) {
+      root.style.setProperty("--kb", `${kb}px`);
+      root.style.setProperty("--vvh", `${vv.height}px`);
+    } else {
+      // No keyboard: no measurements at all, so nothing stale can linger (sheets use plain dvh).
+      root.style.removeProperty("--kb");
+      root.style.removeProperty("--vvh");
+    }
     root.classList.toggle("has-keyboard", kb > 80);
   };
   vv.addEventListener("resize", sync);
-  document.addEventListener("focusin", () => setTimeout(sync, 60));
-  document.addEventListener("focusout", () => setTimeout(sync, 60));
+  // The keyboard animates in and out: check again once it has settled.
+  const later = () => {
+    setTimeout(sync, 60);
+    setTimeout(sync, 450);
+  };
+  document.addEventListener("focusin", later);
+  document.addEventListener("focusout", later);
   sync();
 }
 
