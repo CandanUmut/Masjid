@@ -3609,3 +3609,243 @@ body.is-scrolled .topbar {
     margin-top: 10px;
   }
 }
+
+/* ---------- Self-fitting phone home screen (levels applied by TodayView.fit) ---------- */
+@media (max-width: 899px) {
+  .tl-sub-until {
+    display: none;
+  }
+  /* Extra times (Imsak, Duha, Midnight…) are quieter and shorter than the five prayers. */
+  .tl-row.is-extra {
+    min-height: 30px;
+    padding-block: 0;
+  }
+  .tl-row.is-extra .tl-node {
+    height: 28px;
+  }
+  .tl-row.is-extra .tl-title {
+    font-size: 14px;
+  }
+  .tl-row.is-extra .tl-time {
+    font-size: 14px;
+  }
+  .note-card {
+    margin-top: 10px;
+  }
+
+  /* Level 1: the sky becomes one band — prayer name and countdown side by side. */
+  .view-today.fit-1 .sky-text {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: end;
+    column-gap: 12px;
+  }
+  .view-today.fit-1 .sky-eyebrow,
+  .view-today.fit-1 .sky-sub {
+    grid-column: 1 / -1;
+  }
+  .view-today.fit-1 .sky-count {
+    font-size: 34px;
+    margin: 0;
+    justify-content: flex-end;
+  }
+  .view-today.fit-1 .sky-title {
+    font-size: 26px;
+  }
+  .view-today.fit-1 .sky-chart {
+    height: 44px;
+    min-height: 44px;
+  }
+  .view-today.fit-1 .sky-peak {
+    display: none;
+  }
+  .view-today.fit-1 .tl-row:not(.is-extra) {
+    min-height: 44px;
+  }
+
+  /* Level 2: tighter rows and a slimmer sun band. */
+  .view-today.fit-2 .sky {
+    padding-top: 10px;
+  }
+  .view-today.fit-2 .sky-sub {
+    font-size: 12.5px;
+  }
+  .view-today.fit-2 .sky-chart {
+    height: 30px;
+    min-height: 30px;
+  }
+  .view-today.fit-2 .sky-mark-label {
+    display: none;
+  }
+  .view-today.fit-2 .tl-row:not(.is-extra) {
+    min-height: 40px;
+  }
+  .view-today.fit-2 .tl-title {
+    font-size: 17px;
+  }
+  .view-today.fit-2 .tl-time {
+    font-size: 15px;
+  }
+  .view-today.fit-2 .tl-ar {
+    display: none;
+  }
+  .view-today.fit-2 .date-bar {
+    padding-block: 2px;
+  }
+  .view-today.fit-2 .date-hijri {
+    display: none;
+  }
+  .view-today.fit-2 .tl-row.is-extra {
+    min-height: 26px;
+  }
+
+  /* Level 3 (very short screens): the times win over the picture. */
+  .view-today.fit-3 .sky-chart {
+    display: none;
+  }
+  .view-today.fit-3 .sky {
+    padding-bottom: 10px;
+  }
+  .view-today.fit-3 .sky-moon {
+    display: none;
+  }
+  .view-today.fit-3 .tl-row:not(.is-extra) {
+    min-height: 36px;
+  }
+  .view-today.fit-3 .timeline-card {
+    margin-top: 8px;
+  }
+}
+
+/* One-time tip that the circles are tappable */
+.tl-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 12px 4px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 12px;
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+}
+.tl-hint > .icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.tl-hint span {
+  flex: 1;
+}
+.tl-hint .icon-btn-sm {
+  background: transparent;
+  color: var(--accent);
+}
+
+/* Bigger hit areas without bigger visuals (44px minimum) */
+.tl-node,
+.date-bar .icon-btn {
+  position: relative;
+}
+.tl-node::after,
+.date-bar .icon-btn::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+
+/* Tab bar: solid enough that content never reads through it */
+@media (max-width: 899px) {
+  .tabbar {
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+  }
+}
+
+/* Search: iOS-like focus (no web-form ring), clear button */
+.search-field:focus-within {
+  box-shadow: none;
+  background: var(--fill-2);
+}
+.search-clear {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--label-3);
+  color: var(--surface);
+  flex: none;
+}
+.search-clear .icon {
+  width: 12px;
+  height: 12px;
+}
+.search-clear .icon svg {
+  stroke-width: 3;
+}
+
+/* Saved places line up with "My location"; glance may wrap to a second line */
+.row.row-split {
+  padding: 0;
+}
+.row-glance {
+  white-space: normal;
+}
+
+/* The top bar already carries the safe-area inset; don't add it twice. */
+.app:has(> .topbar:not([hidden])) {
+  padding-top: 0;
+}
+.onb-warn p {
+  margin: 0;
+}
+.onb-warn .onb-warn-how {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--label-2);
+}
+.onb-warn.is-flash {
+  animation: warn-flash 0.6s var(--ease);
+}
+@keyframes warn-flash {
+  0%, 100% { transform: none; }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+@media (max-width: 899px) {
+  /* Level 4 (tiny screens, many rows): one-line sky and dense rows. */
+  .view-today.fit-4 .sky-sub {
+    display: none;
+  }
+  .view-today.fit-4 .sky-eyebrow {
+    font-size: 11px;
+  }
+  .view-today.fit-4 .tl-row:not(.is-extra) {
+    min-height: 33px;
+  }
+  .view-today.fit-4 .tl-row.is-extra {
+    min-height: 22px;
+  }
+  .view-today.fit-4 .tl-row.is-extra .tl-node {
+    height: 22px;
+  }
+  .view-today.fit-4 .tl-row.is-extra .tl-title,
+  .view-today.fit-4 .tl-row.is-extra .tl-time {
+    font-size: 12.5px;
+  }
+  .view-today.fit-4 .tl-node {
+    height: 33px;
+  }
+  .view-today.fit-4 .date-bar .icon-btn {
+    width: 34px;
+    height: 34px;
+  }
+  .view-today.fit-4 .timeline {
+    padding-block: 0;
+  }
+}

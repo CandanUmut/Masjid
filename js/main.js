@@ -178,6 +178,7 @@ async function useGps({ interactive = false } = {}) {
   } catch (err) {
     app.locating = false;
     app.gpsError = err.code || "error";
+    app.flashWarn = interactive; // tapping again must visibly do something
     if (interactive || state.gps) {
       const key = app.gpsError === "denied" ? "locationDenied" : state.gps ? (app.gpsError === "timeout" ? "locationTimeout" : "locationUnavailable") : "locationFailed";
       if (activePlace() || app.gpsError !== "denied") toast(t(key), { tone: "warn", duration: 6000 });
@@ -345,7 +346,14 @@ function renderOnboarding() {
     h("p", { class: "onb-verse-tr" }, lang() === "ar" ? t("verseRef") : `“${t("verse")}” — ${t("verseRef")}`),
     h("h1", { class: "onb-title" }, t("welcomeTitle")),
     h("p", { class: "onb-body" }, t("welcomeBody")),
-    denied || failed ? h("p", { class: "onb-warn", role: "alert" }, t(unsupported || failed ? "locationFailed" : "locationDenied")) : null,
+    denied || failed
+      ? h(
+          "div",
+          { class: `onb-warn ${app.flashWarn ? "is-flash" : ""}`, role: "alert" },
+          h("p", {}, t(unsupported || failed ? "locationFailed" : "locationDenied")),
+          denied ? h("p", { class: "onb-warn-how" }, t("locationDeniedHow")) : null
+        )
+      : null,
     h(
       "div",
       { class: "onb-actions" },
