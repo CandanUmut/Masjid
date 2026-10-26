@@ -239,7 +239,11 @@ export function scheduleFor(place, calc, ymd) {
         .map((hm) => zonedToInstant(ymd, hm.hh, hm.mm, place.tz));
       row.iqama = row.jumuah[0] ? { at: row.jumuah[0], clamped: false } : null;
     } else if (row.isPrayer && place.iqama) {
-      row.iqama = iqamaFor(key, adhan, place.iqama[key], ymd, place.tz, day.times[IQAMA_END[key]]);
+      const end = day.times[IQAMA_END[key]];
+      row.iqama = iqamaFor(key, adhan, place.iqama[key], ymd, place.tz, end);
+      // An iqama at or after the end of the prayer's time (e.g. Fajr after sunrise) is almost certainly
+      // a typo; flag it so the editor can say so plainly.
+      if (row.iqama && end && row.iqama.at >= end) row.iqama.late = true;
     }
     rows.push(row);
   }

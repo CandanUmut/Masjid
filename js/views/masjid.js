@@ -264,6 +264,7 @@ export function openMasjidEditor(ctx, existing = null) {
   // Iqama rules — each row shows what its rule gives today, so admins see the effect immediately.
   const iqamaList = h("div", { class: "list" });
   const ruleResult = {};
+  const ruleWarn = {};
   function renderRuleResults() {
     if (!hasLoc()) return;
     const sched = scheduleFor(draft, draft.calc, todayYmd(draft.tz));
@@ -272,8 +273,14 @@ export function openMasjidEditor(ctx, existing = null) {
       if (!el) continue;
       const row = sched.rows.find((r) => r.key === p || (p === "dhuhr" && r.key === "jumuah"));
       el.textContent = row?.iqama ? `→ ${formatTime(row.iqama.at, draft.tz, { hour12: ctx.hour12, locale: ctx.locale })}` : "";
-      el.classList.toggle("is-clamped", Boolean(row?.iqama?.clamped));
-      el.title = row?.iqama?.clamped ? t("clampedNote") : "";
+      const bad = Boolean(row?.iqama?.clamped || row?.iqama?.late);
+      el.classList.toggle("is-clamped", bad);
+      // Problems are said in words, right under the rule — not hidden in a hover tooltip.
+      const warn = ruleWarn[p];
+      if (warn) {
+        warn.hidden = !bad;
+        warn.textContent = row?.iqama?.late ? t("iqamaLate", { p: t({ fajr: "sunrise", dhuhr: "asr", asr: "maghrib", maghrib: "isha", isha: "midnight" }[p]) }) : row?.iqama?.clamped ? t("clampedNote") : "";
+      }
     }
   }
   // ---- Iqama rules read as sentences: "[40] min [before Asr adhan ▾]", "[20:15] [at a fixed time ▾]" ----
@@ -384,6 +391,7 @@ export function openMasjidEditor(ctx, existing = null) {
       ...PRAYERS.map((p) => {
         const rule = draft.iqama[p];
         ruleResult[p] = h("span", { class: "iqama-result", "aria-live": "polite" });
+        ruleWarn[p] = h("p", { class: "iqama-warn", hidden: true, role: "status" });
         const { line, extra } = ruleSentence(p, rule, {
           withOff: true,
           onKind: (v) => {
@@ -396,7 +404,7 @@ export function openMasjidEditor(ctx, existing = null) {
             renderPreview();
           },
         });
-        const body = [line];
+        const body = [line, ruleWarn[p]];
         let addBtn = null;
         if (rule) {
           if (rule.changes?.length) {
@@ -461,7 +469,7 @@ export function openMasjidEditor(ctx, existing = null) {
     wide: true,
     className: "sheet--tall",
     // Swiping down or tapping outside must never silently throw away an admin's work.
-    beforeClose: () => saved || JSON.stringify(draft) === initial || confirm(t("discardChanges")),
+    confirmClose: { when: () => !saved && JSON.stringify(draft) !== initial },
     content: [
       preview,
       h("h3", { class: "list-title" }, t("masjid")),
@@ -507,12 +515,15 @@ export function openMasjidEditor(ctx, existing = null) {
               note: draft.note.trim(),
               jumuah: draft.jumuah.filter(Boolean),
               calc: { ...draft.calc, method: r.method, madhab: r.madhab },
-              u: Math.floor(Date.now() / 1000),
             };
-            ctx.addPlace(place, { activate: true });
+            const unchanged = existing && JSON.stringify(draft) === initial;
+            place.u = unchanged && existing.u ? existing.u : Math.floor(Date.now() / 1000);
             saved = true;
-            sheet.close();
-            setTimeout(() => openShareSheet(ctx, place), 260);
+            if (!unchanged) ctx.addPlace(place, { activate: true });
+            else ctx.activate(place.id);
+            sheet.forceClose();
+            // A brand-new masjid is meant to be shared; an edit just saves.
+            if (!existing) setTimeout(() => openShareSheet(ctx, place), 260);
           },
         },
         t("save")

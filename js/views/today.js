@@ -209,6 +209,12 @@ export function TodayView(ctx) {
       eyebrow.textContent = t("iqamaStartsIn");
       title.textContent = t(cur.key);
       sub.textContent = `${t("adhan")} ${ctx.fmt(cur.adhan)} · ${t("iqama")} ${ctx.fmt(s.pendingIqama)}`;
+    } else if (next?.key === "sunrise") {
+      // Sunrise isn't a prayer: what matters before it is how long Fajr lasts.
+      eyebrow.textContent = t("endsIn");
+      title.textContent = t("fajr");
+      const dhuhr = s.today.rows.find((r) => r.key === "dhuhr" || r.key === "jumuah");
+      sub.textContent = `${t("sunrise")} ${ctx.fmt(next.adhan)}${dhuhr && next.day === 0 ? ` · ${t(dhuhr.key)} ${ctx.fmt(dhuhr.adhan)}` : ""}`;
     } else if (next) {
       const duhaStart = s.today.times.duha;
       eyebrow.textContent =

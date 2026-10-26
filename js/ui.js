@@ -1,4 +1,5 @@
 // Tiny DOM toolkit: element builder, icons, sheets (native <dialog>) and toasts.
+import { t } from "./i18n.js";
 
 export function h(tag, attrs, ...children) {
   const node = document.createElement(tag);
@@ -110,7 +111,9 @@ if (typeof window !== "undefined" && window.visualViewport) {
 
 // --- Sheets -------------------------------------------------------------
 // A sheet is a native <dialog> styled as an iOS bottom sheet. Returns { el, close, body }.
-export function openSheet({ title, content, actions, className = "", onClose, beforeClose, wide = false } = {}) {
+// `confirmClose`: { when: () => boolean } — ask "Discard changes?" (as a sheet, not a browser dialog)
+// before closing by swipe, backdrop, Escape or the close button.
+export function openSheet({ title, content, actions, className = "", onClose, confirmClose, wide = false } = {}) {
   const body = h("div", { class: "sheet-body" }, content);
   const dlg = h(
     "dialog",
@@ -120,15 +123,27 @@ export function openSheet({ title, content, actions, className = "", onClose, be
       "header",
       { class: "sheet-head" },
       h("h2", { class: "sheet-title" }, title || ""),
-      h("button", { class: "icon-btn sheet-close", type: "button", "aria-label": "Close", onclick: () => close() }, icon("close"))
+      h("button", { class: "icon-btn sheet-close", type: "button", "aria-label": t("close"), onclick: () => close() }, icon("close"))
     ),
     body,
     actions ? h("footer", { class: "sheet-foot" }, actions) : null
   );
   let closed = false;
-  function close() {
+  function close(force = false) {
     if (closed) return;
-    if (beforeClose && !beforeClose()) return;
+    if (!force && confirmClose?.when()) {
+      const ask = openSheet({
+        title: t("discardChanges"),
+        className: "sheet--confirm",
+        content: h(
+          "div",
+          { class: "list" },
+          h("button", { class: "row row-btn tone-danger", type: "button", onclick: () => { ask.close(); close(true); } }, icon("trash", "row-icon"), h("span", { class: "row-title" }, t("discard"))),
+          h("button", { class: "row row-btn", type: "button", onclick: () => ask.close() }, icon("edit", "row-icon"), h("span", { class: "row-title" }, t("keepEditing")))
+        ),
+      });
+      return;
+    }
     closed = true;
     dlg.classList.add("is-closing");
     const done = () => {
@@ -152,7 +167,7 @@ export function openSheet({ title, content, actions, className = "", onClose, be
   dlg.showModal();
   // The page behind a sheet stays put.
   document.documentElement.classList.add("has-sheet");
-  return { el: dlg, body, close };
+  return { el: dlg, body, close: () => close(false), forceClose: () => close(true) };
 }
 
 function attachSwipeToClose(dlg, close) {
@@ -296,7 +311,8 @@ export function minutesInput(value, { min = 0, max = 300, step = 5, onChange, la
     onfocus: (e) => e.target.select(),
     oninput: (e) => {
       const n = parseInt(e.target.value.replace(/\D/g, ""), 10);
-      if (Number.isFinite(n)) commit(n, false);
+      // Out-of-range input is corrected on the spot (no "999" lingering in the field).
+      if (Number.isFinite(n)) commit(n, n > max || n < min);
     },
     onblur: () => (input.value = String(v)),
     onkeydown: (e) => {

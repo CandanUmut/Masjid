@@ -3827,3 +3827,29 @@ html.has-sheet body {
   overflow: hidden;
 }
 html { scrollbar-gutter: stable; }
+/* Onboarding: actions first on small screens; the sky shrinks before anything important does */
+.onb-sky {
+  max-height: 24vh;
+  width: auto;
+  aspect-ratio: 340 / 170;
+  max-width: 100%;
+}
+.onboarding .onb-brand {
+  margin-top: 16px;
+}
+.onboarding .onb-verse {
+  margin-top: 28px;
+}
+.onboarding {
+  padding-bottom: 32px;
+}
+/* The bottom fade only exists where there's a tab bar to fade under */
+body.no-tabbar::after {
+  display: none;
+}
+.iqama-warn {
+  margin: -2px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--orange);
+}

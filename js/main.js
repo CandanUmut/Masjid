@@ -46,7 +46,10 @@ function hour12() {
   if (c === "12") return true;
   if (c === "24") return false;
   try {
-    return new Intl.DateTimeFormat(navigator.language, { hour: "numeric" }).resolvedOptions().hour12 ?? false;
+    // Follow the device's regional habit when it speaks the app's language (en-GB → 24h, en-US → 12h);
+    // otherwise the app language's own convention (Turkish UI → 24h, never "ÖÖ 5:55").
+    const loc = String(navigator.language || "").toLowerCase().startsWith(lang()) ? navigator.language : lang();
+    return new Intl.DateTimeFormat(loc, { hour: "numeric" }).resolvedOptions().hour12 ?? false;
   } catch {
     return false;
   }
@@ -100,9 +103,12 @@ function activate(id) {
 function addPlace(place, { activate: act = false, silent = false } = {}) {
   // The same city picked twice: just switch to the one we already have.
   if (place.kind === "city") {
-    const dup = state.places.find((p) => p.kind === "city" && p.id !== place.id && distanceKm(p, place) < 2);
+    // Only the *same* place twice (same name, same spot) — never swap the user's choice for another.
+    const same = (a, b) => String(a || "").toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === String(b || "").toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const dup = state.places.find((p) => p.kind === "city" && p.id !== place.id && distanceKm(p, place) < 2 && same(p.name, place.name));
     if (dup) {
       if (act) activate(dup.id);
+      toast(t("alreadySaved", { p: dup.name }));
       return;
     }
   }
@@ -278,6 +284,7 @@ function renderTabbar() {
   if (!nav) return;
   const r = routes();
   nav.hidden = r[app.route]?.chromeless;
+  document.body.classList.toggle("no-tabbar", nav.hidden);
   nav.replaceChildren(
     ...Object.entries(r)
       .filter(([, def]) => !def.hidden)
@@ -342,8 +349,6 @@ function renderOnboarding() {
       </svg>`,
     }),
     h("div", { class: "onb-brand" }, h("img", { src: "./assets/icons/icon.svg", alt: "", width: 28, height: 28 }), "Ufuq", h("span", { lang: "ar", dir: "rtl" }, "أُفُق")),
-    h("p", { class: "onb-verse", lang: "ar", dir: "rtl" }, VERSE),
-    h("p", { class: "onb-verse-tr" }, lang() === "ar" ? t("verseRef") : `“${t("verse")}” — ${t("verseRef")}`),
     h("h1", { class: "onb-title" }, t("welcomeTitle")),
     h("p", { class: "onb-body" }, t("welcomeBody")),
     denied || failed
@@ -368,7 +373,9 @@ function renderOnboarding() {
       h("button", { class: "btn btn-tinted btn-large", type: "button", onclick: () => openPlacesSheet(makeCtx(), { focusSearch: true }) }, icon("search"), t("searchCity")),
       ...plugins.flatMap((p) => p.onboardingActions?.(makeCtx()) || [])
     ),
-    h("p", { class: "onb-privacy" }, icon("lock"), t("privacyNote"))
+    h("p", { class: "onb-privacy" }, icon("lock"), t("privacyNote")),
+    h("p", { class: "onb-verse", lang: "ar", dir: "rtl" }, VERSE),
+    h("p", { class: "onb-verse-tr" }, lang() === "ar" ? t("verseRef") : `“${t("verse")}” — ${t("verseRef")}`),
   );
 }
 
@@ -387,6 +394,7 @@ function render() {
     app.view = null;
     main.replaceChildren(renderOnboarding());
     $("#tabbar").hidden = true;
+    document.body.classList.add("no-tabbar");
     setPhase("dawn");
     return;
   }
