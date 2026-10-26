@@ -27,3 +27,12 @@ test("sky is dark at night and bright at noon", () => {
   assert.equal(skyColors(-30).night, true);
   assert.equal(skyColors(40).night, false);
 });
+
+test("sun azimuth: due south-ish at solar noon in the northern hemisphere", async () => {
+  const { sunAzimuth } = await import("../js/astro.js");
+  const day = computeDay(ist, { method: "MWL" }, ymd);
+  const az = sunAzimuth(day.times.dhuhr, ist.lat, ist.lng);
+  assert.ok(Math.abs(az - 180) < 3, String(az));
+  const rise = sunAzimuth(day.times.sunrise, ist.lat, ist.lng);
+  assert.ok(rise > 95 && rise < 120, String(rise)); // late October: sun rises south of east
+});

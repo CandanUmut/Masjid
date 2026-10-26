@@ -2,6 +2,16 @@ import { qiblaBearing, distanceToKaabaKm } from "../engine.js";
 import { t } from "../i18n.js";
 import { h, icon } from "../ui.js";
 import { skyAt } from "./today.js";
+import { sunAltitude, sunAzimuth } from "../astro.js";
+
+// "Qibla is 37° to the left of the sun" — relative to someone facing the sun.
+function sunHint(qibla, sunAz, nf) {
+  const diff = ((qibla - sunAz + 540) % 360) - 180;
+  const d = Math.round(Math.abs(diff));
+  if (d < 5) return t("qiblaAtSun");
+  if (d > 175) return t("qiblaBehindSun");
+  return t(diff > 0 ? "qiblaRightOfSun" : "qiblaLeftOfSun", { d: nf.format(d) });
+}
 
 export function QiblaView(ctx) {
   const { place } = ctx;
@@ -14,16 +24,26 @@ export function QiblaView(ctx) {
     const major = i % 18 === 0;
     ticks.push(`<line x1="100" y1="${major ? 8 : 11}" x2="100" y2="${major ? 18 : 15}" transform="rotate(${i * 5} 100 100)" class="${major ? "tick-major" : "tick"}"/>`);
   }
-  const card = ["N", "E", "S", "W"]
-    .map((c, i) => `<text x="100" y="34" transform="rotate(${i * 90} 100 100)" class="${c === "N" ? "q-dir-n" : "q-dir"}" text-anchor="middle">${c}</text>`)
+  // Cardinal letters stay upright (no rotated "E"/"W").
+  const card = [["N", 100, 34], ["E", 166, 100], ["S", 100, 166], ["W", 34, 100]]
+    .map(([c, x, y]) => `<text x="${x}" y="${y}" class="${c === "N" ? "q-dir-n" : "q-dir"}" text-anchor="middle" dominant-baseline="central">${c}</text>`)
     .join("");
+  // Where the sun is right now: with it on the dial you can find the Qibla without any compass.
+  const now = new Date();
+  const sunAlt = sunAltitude(now, place.lat, place.lng);
+  const sunAz = sunAzimuth(now, place.lat, place.lng);
+  const sunUp = sunAlt > 1;
+  const sunMark = sunUp
+    ? `<g transform="rotate(${sunAz.toFixed(1)} 100 100)"><circle cx="100" cy="24" r="7.5" class="q-sun"/><circle cx="100" cy="24" r="12" class="q-sun-glow"/></g>`
+    : "";
   const dial = h("div", {
     class: "q-dial",
     html: `<svg viewBox="0 0 200 200" aria-hidden="true">
       <circle cx="100" cy="100" r="96" class="q-ring"/>
-      ${ticks.join("")}${card}
+      ${ticks.join("")}${card}${sunMark}
       <g transform="rotate(${bearing} 100 100)" class="q-needle">
-        <path d="M100 40 L108 100 L100 94 L92 100 Z" class="q-needle-head"/>
+        <line x1="100" y1="100" x2="100" y2="46" class="q-needle-line"/>
+        <path d="M100 40 L105.5 50 L94.5 50 Z" class="q-needle-head"/>
         <circle cx="100" cy="100" r="5" class="q-hub"/>
         <g transform="translate(100 30)"><rect x="-9" y="-12" width="18" height="18" rx="3" class="q-kaaba"/><rect x="-9" y="-7" width="18" height="3" class="q-kaaba-band"/></g>
       </g>
@@ -31,7 +51,8 @@ export function QiblaView(ctx) {
   });
   const facing = h("div", { class: "q-status", "aria-live": "polite" });
   const status = h("p", { class: "list-foot q-hint" });
-  const startBtn = h("button", { class: "btn btn-primary", type: "button", onclick: start }, icon("compass"), t("compassStart"));
+  const hasSensor = matchMedia("(pointer: coarse)").matches && ("ondeviceorientationabsolute" in window || "ondeviceorientation" in window);
+  const startBtn = hasSensor ? h("button", { class: "btn btn-primary", type: "button", onclick: start }, icon("compass"), t("compassStart")) : null;
 
   const root = h(
     "div",
@@ -45,11 +66,12 @@ export function QiblaView(ctx) {
       facing,
       h("div", { class: "q-deg" }, t("qiblaFromNorth", { d: nf.format(Math.round(bearing)) })),
       h("div", { class: "q-sub" }, `${place.name} · ${t("qiblaDistance", { k: nf.format(km) })}`),
-      h("div", { class: "q-actions" }, startBtn)
+      sunUp ? h("div", { class: "q-sunhint" }, icon("sun"), sunHint(bearing, sunAz, nf)) : null,
+      startBtn ? h("div", { class: "q-actions" }, startBtn) : null
     ),
     status
   );
-  status.textContent = t("compassHint");
+  status.textContent = hasSensor ? t("compassHint") : t(sunUp ? "noCompassSun" : "noCompass");
 
   let heading = null;
   let listening = false;
@@ -81,7 +103,7 @@ export function QiblaView(ctx) {
       const ev = "ondeviceorientationabsolute" in window ? "deviceorientationabsolute" : "deviceorientation";
       window.addEventListener(ev, onOrient);
       listening = ev;
-      startBtn.hidden = true;
+      if (startBtn) startBtn.hidden = true;
       setTimeout(() => {
         if (heading == null) status.textContent = t("compassUnsupported");
       }, 2500);

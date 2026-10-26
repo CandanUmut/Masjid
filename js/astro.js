@@ -91,3 +91,35 @@ export function sunPath(lat, lng, startMs, endMs, steps = 144) {
   }
   return out;
 }
+
+// Sun azimuth in degrees clockwise from North (same NOAA approximation as sunAltitude).
+export function sunAzimuth(date, lat, lng) {
+  const jd = date.getTime() / 86400000 + 2440587.5;
+  const n = jd - 2451545.0;
+  const L = (280.46 + 0.9856474 * n) % 360;
+  const g = ((357.528 + 0.9856003 * n) % 360) * RAD;
+  const lambda = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * RAD;
+  const eps = (23.439 - 0.0000004 * n) * RAD;
+  const dec = Math.asin(Math.sin(eps) * Math.sin(lambda));
+  const ra = Math.atan2(Math.cos(eps) * Math.sin(lambda), Math.cos(lambda));
+  const gmst = (280.46061837 + 360.98564736629 * n) % 360;
+  const ha = (gmst + lng) * RAD - ra;
+  const phi = lat * RAD;
+  const az = Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(phi) - Math.tan(dec) * Math.cos(phi));
+  return ((az / RAD + 180) % 360 + 360) % 360;
+}
+
+// Relative luminance (0–1) of an "rgb(r,g,b)" colour, for choosing legible ink on top of it.
+export function luminance(rgb) {
+  const [r, g, b] = (rgb.match(/\d+/g) || [0, 0, 0]).map((v) => {
+    const c = Number(v) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+export function mixRgb(a, b, t) {
+  const A = (a.match(/\d+/g) || [0, 0, 0]).map(Number);
+  const B = (b.match(/\d+/g) || [0, 0, 0]).map(Number);
+  return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(",")})`;
+}

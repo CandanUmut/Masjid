@@ -385,6 +385,13 @@ function render() {
   const v = def.view(ctx);
   app.view = v;
   main.replaceChildren(v.el);
+  // New screen, new page: start at the top (re-renders of the same screen keep their place).
+  if (app.lastRoute !== app.route) {
+    app.lastRoute = app.route;
+    window.scrollTo(0, 0);
+  }
+  const bar = $("#topbar");
+  if (bar && !bar.hidden) document.documentElement.style.setProperty("--topbar-h", `${bar.offsetHeight}px`);
   if (!def.needsPlace) setPhase("none");
 }
 
@@ -413,6 +420,11 @@ export function start() {
   window.addEventListener("storage", (e) => {
     if (e.key && e.key.startsWith("masjid.state")) location.reload();
   });
+  window.addEventListener(
+    "scroll",
+    () => document.body.classList.toggle("is-scrolled", window.scrollY > 8),
+    { passive: true }
+  );
   window.addEventListener("online", () => document.body.classList.remove("is-offline"));
   window.addEventListener("offline", () => document.body.classList.add("is-offline"));
   if (!navigator.onLine) document.body.classList.add("is-offline");

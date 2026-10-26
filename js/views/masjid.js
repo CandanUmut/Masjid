@@ -7,6 +7,7 @@ import { h, icon, openSheet, segmented, stepper, select, toast, copyText, deboun
 import { allTimeZones, deviceTimeZone, todayYmd, formatTime, timeParts, tzOffsetMinutes } from "../time.js";
 import { newId } from "../store.js";
 import { calcEditor } from "./calc-editor.js";
+import { skyAt } from "./today.js";
 import qrcode from "../vendor/qrcode.js";
 
 const DEFAULT_IQAMA = {
@@ -53,6 +54,9 @@ export function openMasjidEditor(ctx, existing = null) {
       return;
     }
     renderRuleResults();
+    const sky = skyAt(draft, new Date());
+    preview.style.setProperty("--sky-top", sky.top);
+    preview.style.setProperty("--sky-horizon", sky.horizon);
     const sched = scheduleFor(draft, draft.calc, todayYmd(draft.tz));
     // Keep cells compact: AM/PM goes on a small second line.
     const fmt = (d) => {
@@ -92,7 +96,7 @@ export function openMasjidEditor(ctx, existing = null) {
 
   // Location
   const locLine = h("div", { class: "loc-line" });
-  const searchBox = h("input", { class: "input", type: "search", placeholder: t("searchPlaceholder"), "aria-label": t("searchCity") });
+  const searchBox = h("input", { class: "search-input", type: "search", placeholder: t("searchPlaceholder"), "aria-label": t("searchCity") });
   const searchResults = h("div", { class: "list search-results", hidden: true });
   const latIn = h("input", { class: "input", inputmode: "decimal", "aria-label": t("latitude") });
   const lngIn = h("input", { class: "input", inputmode: "decimal", "aria-label": t("longitude") });
@@ -429,11 +433,14 @@ export function openMasjidEditor(ctx, existing = null) {
     ],
   });
 
+  // Show the problem right under the field it belongs to, and bring that field into view.
   function fail(msg, focusEl) {
-    err.textContent = msg;
-    err.hidden = false;
-    err.scrollIntoView({ behavior: "smooth", block: "center" });
-    focusEl?.focus();
+    sheet.el.querySelectorAll(".field-error").forEach((n) => n.remove());
+    const anchor = focusEl?.closest(".field, .search-field") || focusEl;
+    const note = h("p", { class: "form-error field-error", role: "alert" }, msg);
+    anchor?.after(note);
+    focusEl?.focus({ preventScroll: true });
+    (anchor || note).scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   renderLoc();
@@ -503,9 +510,13 @@ export async function openShareSheet(ctx, place) {
         place.kind === "masjid" ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => printPoster(place, qr) }, icon("print"), t("poster")) : null,
         ctx.openDisplay ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => { sheet.close(); ctx.openDisplay(place, seed); } }, icon("tv"), t("tvMode")) : null
       ),
-      h("h3", { class: "list-title" }, t("seed")),
-      h("div", { class: "form-card" }, h("code", { class: "seed-code" }, seed), h("div", { class: "btn-row" }, copyBtn(seed, t("copy")))),
-      h("p", { class: "list-foot" }, t("seedHint")),
+      h(
+        "details",
+        { class: "seed-details" },
+        h("summary", {}, t("showCode")),
+        h("div", { class: "form-card" }, h("code", { class: "seed-code" }, seed), h("div", { class: "btn-row" }, copyBtn(seed, t("copy")))),
+        h("p", { class: "list-foot" }, t("seedHint"))
+      ),
       h("p", { class: "list-foot" }, t("seedUpdateHint")),
     ],
   });

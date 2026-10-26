@@ -31,6 +31,7 @@
   --label: #000000;
   --label-2: rgba(60, 60, 67, 0.6);
   --label-3: rgba(60, 60, 67, 0.3);
+  --label-passed: rgba(60, 60, 67, 0.72);
   --sep: rgba(60, 60, 67, 0.18);
   --fill: rgba(120, 120, 128, 0.12);
   --fill-2: rgba(120, 120, 128, 0.2);
@@ -66,6 +67,7 @@
     --label: #ffffff;
     --label-2: rgba(235, 235, 245, 0.6);
     --label-3: rgba(235, 235, 245, 0.3);
+    --label-passed: rgba(235, 235, 245, 0.66);
     --sep: rgba(84, 84, 88, 0.55);
     --fill: rgba(120, 120, 128, 0.24);
     --fill-2: rgba(120, 120, 128, 0.36);
@@ -92,6 +94,7 @@
   --label: #ffffff;
   --label-2: rgba(235, 235, 245, 0.6);
   --label-3: rgba(235, 235, 245, 0.3);
+  --label-passed: rgba(235, 235, 245, 0.66);
   --sep: rgba(84, 84, 88, 0.55);
   --fill: rgba(120, 120, 128, 0.24);
   --fill-2: rgba(120, 120, 128, 0.36);
@@ -1670,8 +1673,8 @@ body.is-chromeless .app {
 .tv {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 2.6vmin;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 2.2vmin;
   height: 100dvh;
   overflow: hidden;
   padding: 3.6vmin 4vmin;
@@ -2702,4 +2705,373 @@ button.tl-node:active .tl-node-dot {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* =================================================================================
+   Polish pass (critic round 3): contrast, rhythm, states.
+   ================================================================================= */
+
+/* Legible white text on any sky: a soft scrim behind the text block + a real shadow. */
+.sky::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 62%;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(8, 14, 40, 0.28), rgba(8, 14, 40, 0));
+  opacity: 0;
+  transition: opacity 2s;
+}
+.sky.is-bright::before {
+  opacity: 1;
+}
+.sky-text {
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.3);
+}
+.sky-count {
+  display: flex;
+  align-items: baseline;
+  gap: 0.18em;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.22);
+}
+.dur-part {
+  display: inline-flex;
+  align-items: baseline;
+}
+.dur-unit {
+  margin-inline-start: 0.04em;
+  font-size: 0.42em;
+  font-weight: 600;
+  opacity: 0.8;
+  letter-spacing: 0;
+}
+.dur-sec {
+  font-size: 0.5em;
+  opacity: 0.75;
+}
+.sky.is-urgent .sky-count {
+  color: #ffd28a;
+}
+.sky.is-urgent .sky-eyebrow {
+  box-shadow: 0 0 0 4px rgba(255, 159, 10, 0.25);
+}
+.sky-sub {
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.35);
+}
+.sky-mark-label,
+.sky-peak {
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+.sky-mark.is-low .sky-mark-label {
+  top: auto;
+  bottom: 10px;
+}
+.sky-mark.is-crowded .sky-mark-label {
+  opacity: 0;
+}
+.sky-peak {
+  position: absolute;
+  transform: translate(-50%, -150%);
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* Phones: a shorter sky so the current prayer is visible on first paint. */
+@media (max-width: 899px) {
+  .sky {
+    min-height: 0;
+    padding-top: 18px;
+  }
+  .sky-title {
+    font-size: 34px;
+  }
+  .sky-count {
+    font-size: clamp(42px, 12.5vw, 56px);
+  }
+  .sky-chart {
+    min-height: 84px;
+    height: 84px;
+    flex: none;
+  }
+  .sky-moon {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* Dark mode: a daylight sky shouldn't glare against black. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .sky.is-bright {
+    filter: brightness(0.86) saturate(0.92);
+  }
+}
+:root[data-theme="dark"] .sky.is-bright {
+  filter: brightness(0.86) saturate(0.92);
+}
+
+/* ---------- Timeline states ---------- */
+.tl-row {
+  --node-ink: #fff;
+  --node-vis: var(--node);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tl-row {
+    --node-vis: color-mix(in srgb, var(--node) 62%, #fff);
+  }
+}
+:root[data-theme="dark"] .tl-row {
+  --node-vis: color-mix(in srgb, var(--node) 62%, #fff);
+}
+.tl-row::before {
+  background: linear-gradient(var(--node-vis), color-mix(in srgb, var(--node-next) 62%, var(--node-vis)));
+}
+.tl-node-dot {
+  box-shadow: inset 0 0 0 2.5px var(--node-vis);
+  color: var(--node-ink);
+}
+.tl-node.is-minor .tl-node-dot {
+  box-shadow: inset 0 0 0 2px var(--node-vis);
+}
+.tl-node.is-done .tl-node-dot {
+  background: var(--node-vis);
+  box-shadow: inset 0 0 0 2.5px var(--node-vis), 0 4px 12px -4px var(--node-vis);
+}
+.tl-row.is-current .tl-node-dot {
+  box-shadow: inset 0 0 0 2.5px var(--node-vis), 0 0 0 6px color-mix(in srgb, var(--node-vis) 22%, transparent);
+}
+@keyframes now-pulse {
+  50% {
+    box-shadow: inset 0 0 0 2.5px var(--node-vis), 0 0 0 10px color-mix(in srgb, var(--node-vis) 8%, transparent);
+  }
+}
+.tl-row.is-current {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--node-vis) 16%, transparent), transparent 85%);
+}
+/* Prayed rows go quiet; missed ones stay vivid with an open node, so "mark it" stays obvious. */
+.tl-row.is-passed .tl-title,
+.tl-row.is-passed > .tl-time {
+  color: var(--label-passed);
+}
+.tl-row.is-missed .tl-title,
+.tl-row.is-missed > .tl-time {
+  color: var(--label);
+}
+.tl-row.is-missed .tl-node-dot {
+  box-shadow: inset 0 0 0 2.5px var(--node-vis), 0 0 0 3px color-mix(in srgb, var(--node-vis) 18%, transparent);
+}
+.tl-ar {
+  color: var(--label-2);
+  font-size: 13px;
+}
+.tl-title {
+  flex-wrap: wrap;
+  column-gap: 8px;
+}
+/* With iqama, the iqama is what you plan around: make it the primary column. */
+.timeline-card.has-iqama .tl-adhan {
+  color: var(--label-2);
+  font-weight: 500;
+}
+.timeline-card.has-iqama .tl-iqama {
+  color: var(--label);
+  font-weight: 700;
+}
+.timeline-card.has-iqama .tl-row.is-passed:not(.is-missed) .tl-iqama {
+  color: var(--label-passed);
+}
+.timeline-card.has-iqama .tl-row.is-current .tl-iqama {
+  color: var(--accent);
+}
+.date-bar .icon-btn {
+  width: 44px;
+  height: 44px;
+}
+
+/* ---------- Topbar: frosted, so scrolled content never collides with it ---------- */
+.topbar {
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid transparent;
+  transition: border-color 0.2s;
+}
+body.is-scrolled .topbar {
+  border-bottom-color: var(--sep);
+}
+.month-table thead th {
+  top: var(--topbar-h, 64px);
+  z-index: 1;
+}
+
+/* ---------- Onboarding ---------- */
+.onb-title,
+.onb-body {
+  text-wrap: balance;
+}
+.onb-privacy {
+  justify-content: center;
+}
+.onb-warn {
+  max-width: 360px;
+}
+
+/* ---------- Arabic UI gets a refined Arabic face, not bold sans ---------- */
+[lang="ar"] .sky-title,
+[lang="ar"] .tl-title,
+[lang="ar"] .large-title,
+[lang="ar"] .tv-p,
+[lang="ar"] .tv-title h1,
+[lang="ar"] .onb-title {
+  font-family: "Geeza Pro", "Noto Naskh Arabic", "Noto Sans Arabic", "Segoe UI", var(--font);
+  font-weight: 500;
+}
+
+/* ---------- Desktop: use the height, centre the composition ---------- */
+@media (min-width: 900px) {
+  .view-today {
+    min-height: calc(100dvh - 210px);
+    align-content: center;
+  }
+  .view-today .sky-title {
+    font-size: 56px;
+  }
+}
+.m-day {
+  width: 64px;
+}
+.m-divider td {
+  padding: 6px 12px !important;
+  text-align: start !important;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-tint);
+}
+.q-needle-line {
+  stroke: #fff;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.q-sun {
+  fill: #ffd36b;
+}
+.q-sun-glow {
+  fill: rgba(255, 211, 107, 0.25);
+}
+.q-sunhint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 14px;
+  font-weight: 600;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25);
+}
+.q-sunhint .icon {
+  width: 18px;
+  height: 18px;
+  color: #ffd36b;
+}
+.q-card {
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.25);
+}
+
+.tv-sky {
+  margin: -1vmin -4vmin 0;
+}
+.tv-sky .sky-chart {
+  height: 15vmin;
+  min-height: 0;
+  margin: 0;
+}
+.tv-sky .sky-mark-label {
+  font-size: 1.9vmin;
+}
+.tv-sky .sky-peak {
+  font-size: 1.7vmin;
+}
+.tv-sky .sky-sun {
+  width: 3vmin;
+  height: 3vmin;
+  margin: -1.5vmin 0 0 -1.5vmin;
+}
+.tv-cell {
+  justify-content: center;
+  max-height: 52vmin;
+  align-self: center;
+  height: 100%;
+}
+.preview-card {
+  --sky-top: #1d2556;
+  --sky-horizon: #4a3b8f;
+  background: linear-gradient(180deg, var(--sky-top), var(--sky-horizon));
+  box-shadow: 0 14px 40px -18px var(--sky-horizon);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.3);
+}
+.preview-cell {
+  background: rgba(0, 0, 0, 0.14);
+}
+.share-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  width: 100%;
+}
+.share-actions .btn {
+  flex-direction: column;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px 8px;
+  border-radius: 16px;
+  font-size: 13px;
+}
+.share-actions .btn .icon {
+  width: 22px;
+  height: 22px;
+}
+.seed-details {
+  margin-top: 18px;
+}
+.seed-details summary {
+  cursor: pointer;
+  padding: 8px 4px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--accent);
+  text-align: center;
+  list-style: none;
+}
+.seed-details summary::-webkit-details-marker {
+  display: none;
+}
+.field-error {
+  margin: -6px 4px 12px;
+}
+.m-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 0 auto 4px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--surface), 0 0 0 2px var(--sep);
+}
+.q-sunhint {
+  background: rgba(8, 14, 40, 0.22);
+}
+.q-card {
+  background: linear-gradient(180deg, var(--sky-top, #1d2556), color-mix(in srgb, var(--sky-horizon, #37307a) 65%, var(--sky-top, #1d2556)));
+}
+@media (max-width: 420px) {
+  .timeline-card.has-iqama .tl-ar {
+    display: none;
+  }
 }

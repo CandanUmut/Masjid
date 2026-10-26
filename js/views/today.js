@@ -1,10 +1,11 @@
 // Today: a live sky drawn from the real sun, and the day's prayers as a timeline coloured by that sky.
 import { statusAt, scheduleFor, METHODS } from "../engine.js";
-import { addDays, formatCountdown, formatDate, formatHijri, hijriParts, todayYmd, ymdKey, zonedToInstant } from "../time.js";
-import { sunAltitude, sunPath, skyColors, moonPhase, moonPath } from "../astro.js";
+import { addDays, formatDate, formatHijri, hijriParts, todayYmd, ymdKey } from "../time.js";
+import { sunAltitude, skyColors, moonPhase, moonPath, luminance, mixRgb } from "../astro.js";
 import { isPrayed, setPrayed } from "../tracker.js";
 import { t, lang } from "../i18n.js";
 import { h, icon } from "../ui.js";
+import { SkyChart } from "./skychart.js";
 
 export const ARABIC = {
   fajr: "الفجر", sunrise: "الشروق", dhuhr: "الظهر", asr: "العصر", maghrib: "المغرب", isha: "العشاء",
@@ -16,11 +17,23 @@ export function phaseOf(key) {
   return { fajr: "dawn", sunrise: "morning", dhuhr: "day", jumuah: "day", asr: "afternoon", maghrib: "sunset", isha: "night" }[key] || "night";
 }
 
-// Colour of the sky at a given instant (used for timeline nodes and the hero).
+// Colour of the sky at a given instant (used for timeline nodes, the hero, Qibla and the TV board).
 export function skyAt(place, date) {
   const alt = sunAltitude(date, place.lat, place.lng);
   const later = sunAltitude(new Date(date.getTime() + 30 * 60000), place.lat, place.lng);
   return { alt, ...skyColors(alt, later < alt) };
+}
+
+// A countdown that reads as a duration ("1h 23m 45s"), never as a time of day.
+export function durationNode(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hh = Math.floor(total / 3600);
+  const mm = Math.floor((total % 3600) / 60);
+  const ss = total % 60;
+  const unit = (v, u, cls = "") => h("span", { class: `dur-part ${cls}` }, String(v), h("span", { class: "dur-unit" }, t(u)));
+  if (hh) return [unit(hh, "uH"), unit(mm, "uM"), unit(ss, "uS", "dur-sec")];
+  if (mm) return [unit(mm, "uM"), unit(ss, "uS", "dur-sec")];
+  return [unit(ss, "uS")];
 }
 
 // Stable pseudo-random stars for a given day.
@@ -42,15 +55,8 @@ export function TodayView(ctx) {
   const title = h("div", { class: "sky-title" });
   const count = h("div", { class: "sky-count", role: "timer" });
   const sub = h("div", { class: "sky-sub" });
-  const chart = h("div", { class: "sky-chart", "aria-hidden": "true" });
-  const hero = h(
-    "section",
-    { class: "sky" },
-    starLayer,
-    moon,
-    h("div", { class: "sky-text" }, eyebrow, title, count, sub),
-    chart
-  );
+  const chart = SkyChart(place);
+  const hero = h("section", { class: "sky" }, starLayer, moon, h("div", { class: "sky-text" }, eyebrow, title, count, sub), chart.el);
 
   const note = place.note ? h("div", { class: "note-card" }, icon("info"), h("p", {}, place.note)) : null;
 
@@ -78,7 +84,6 @@ export function TodayView(ctx) {
 
   let lastStatus = null;
   let lastDayKey = "";
-  let chartKey = "";
 
   function setOffset(n) {
     viewOffset = Math.max(-366, Math.min(366, n));
@@ -94,60 +99,13 @@ export function TodayView(ctx) {
     if (Math.abs(dx) > 60) setOffset(viewOffset + ((dx < 0) !== (document.dir === "rtl") ? 1 : -1));
   });
 
-  // ---------- Sky chart: the real path of the sun today ----------
-  function renderChart(ymd, sched) {
-    const key = `${ymdKey(ymd)}|${place.lat}|${place.lng}`;
-    if (key === chartKey) return;
-    chartKey = key;
-    const start = zonedToInstant(ymd, 0, 0, place.tz).getTime();
-    const end = zonedToInstant(addDays(ymd, 1), 0, 0, place.tz).getTime();
-    const pts = sunPath(place.lat, place.lng, start, end, 144);
-    const maxAlt = Math.max(12, ...pts.map((p) => p.alt));
-    const minAlt = Math.min(-12, ...pts.map((p) => p.alt));
-    const H = 100;
-    const hy = 64; // horizon line, % from top
-    const yOf = (alt) => (alt >= 0 ? hy - (alt / maxAlt) * (hy - 10) : hy + (alt / minAlt) * (96 - hy));
-    const xOf = (ms) => ((ms - start) / (end - start)) * 100;
-    const d = pts.map((p, i) => `${i ? "L" : "M"}${xOf(p.ms).toFixed(2)} ${yOf(p.alt).toFixed(2)}`).join(" ");
-    chart.innerHTML = `<svg viewBox="0 0 100 ${H}" preserveAspectRatio="none">
-      <defs>
-        <clipPath id="sky-above"><rect x="0" y="0" width="100" height="${hy}"/></clipPath>
-        <clipPath id="sky-below"><rect x="0" y="${hy}" width="100" height="${H - hy}"/></clipPath>
-        <linearGradient id="sky-ground" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity=".2"/><stop offset="1" stop-color="#000" stop-opacity=".04"/></linearGradient>
-      </defs>
-      <rect x="0" y="${hy}" width="100" height="${H - hy}" fill="url(#sky-ground)"/>
-      <line x1="0" y1="${hy}" x2="100" y2="${hy}" class="sky-horizon"/>
-      <path d="${d}" class="sky-path sky-path-day" clip-path="url(#sky-above)"/>
-      <path d="${d}" class="sky-path sky-path-night" clip-path="url(#sky-below)"/>
-    </svg>`;
-    // Prayer markers sit exactly on the curve at their times.
-    chart._markers = [];
-    for (const r of sched.rows) {
-      if (!r.adhan) continue;
-      const alt = sunAltitude(r.adhan, place.lat, place.lng);
-      const m = h(
-        "span",
-        { class: `sky-mark ${r.isPrayer ? "" : "is-minor"}`, style: { left: `${xOf(r.adhan.getTime())}%`, top: `${yOf(alt)}%` } },
-        h("span", { class: "sky-mark-label" }, t(r.key))
-      );
-      m.dataset.key = r.key;
-      chart.append(m);
-      chart._markers.push(m);
-    }
-    const sun = h("span", { class: "sky-sun" });
-    chart.append(sun);
-    chart._sun = sun;
-    chart._xOf = xOf;
-    chart._yOf = yOf;
-  }
-
-  function renderSky(now, s) {
-    const ymd = todayYmd(place.tz, now);
-    renderChart(ymd, s.today);
+  function renderSky(now, ymd, s) {
+    chart.update(now, { ...s, ymd });
     const sky = skyAt(place, now);
     hero.style.setProperty("--sky-top", sky.top);
     hero.style.setProperty("--sky-horizon", sky.horizon);
     hero.classList.toggle("is-night", sky.night);
+    hero.classList.toggle("is-bright", sky.alt > 4);
     const darkness = Math.min(1, Math.max(0, (-sky.alt - 4) / 10));
     starLayer.style.opacity = String(darkness);
     if (!starLayer.childElementCount) {
@@ -158,25 +116,15 @@ export function TodayView(ctx) {
     // Moon with its real phase (mirrored in the southern hemisphere).
     if (sky.alt < -2) {
       const ph = moonPhase(now);
-      const k = Math.round(ph * 100);
-      if (moon.dataset.k !== String(k)) {
-        moon.dataset.k = String(k);
+      const k = String(Math.round(ph * 100));
+      if (moon.dataset.k !== k) {
+        moon.dataset.k = k;
         moon.innerHTML = `<svg viewBox="0 0 40 40" style="${place.lat < 0 ? "transform:scaleX(-1)" : ""}"><circle cx="20" cy="20" r="14" class="moon-dark"/><path d="${moonPath(ph, 20, 20, 14)}" class="moon-lit"/></svg>`;
       }
       moon.style.opacity = String(Math.min(1, darkness + 0.35));
     } else if (moon.dataset.k) {
       moon.innerHTML = "";
       moon.dataset.k = "";
-    }
-    if (chart._sun) {
-      chart._sun.style.left = `${chart._xOf(now.getTime())}%`;
-      chart._sun.style.top = `${chart._yOf(sky.alt)}%`;
-      chart._sun.classList.toggle("is-below", sky.alt < 0);
-    }
-    for (const m of chart._markers || []) {
-      const row = s.today.rows.find((r) => r.key === m.dataset.key);
-      m.classList.toggle("is-next", s.next?.day === 0 && m.dataset.key === s.next.key);
-      m.classList.toggle("is-past", Boolean(row?.adhan && row.adhan <= now));
     }
     ctx.setPhase(sky.night ? "night" : "day");
   }
@@ -187,46 +135,60 @@ export function TodayView(ctx) {
     const ymd = todayYmd(place.tz, now);
     const s = statusAt(place, calc, ymd, now);
     lastStatus = s;
-    renderSky(now, s);
+    renderSky(now, ymd, s);
     const cur = s.current;
     const next = s.next;
-    const curDayKey = cur ? ymdKey(addDays(ymd, cur.day)) : "";
+    const curDay = cur ? addDays(ymd, cur.day) : ymd;
     const ramadan = hijriParts(ymd, ctx.settings.hijriOffset)?.m === 9;
     const curIsPrayer = cur && cur.key !== "sunrise";
-    const curPrayed = curIsPrayer && isPrayed(curDayKey, slot(cur.key));
+    const curPrayed = curIsPrayer && isPrayed(ymdKey(curDay), slot(cur.key));
+    const iqAt = (r) => (r?.iqama ? ` · ${t("iqamaAt", { t: ctx.fmt(r.iqama.at) })}` : "");
+
     let mode = "next";
     if (s.pendingIqama) mode = "iqama";
-    else if (ramadan && next && (next.key === "maghrib" || next.key === "fajr")) mode = next.key === "maghrib" ? "iftar" : "suhoor";
     else if (tracking && curIsPrayer && !curPrayed && next) mode = "left";
+    else if (ramadan && next && (next.key === "maghrib" || next.key === "fajr")) mode = "ramadan";
 
-    const target = mode === "iqama" ? s.pendingIqama : next?.adhan;
-    const msLeft = target ? target - now : 0;
-    hero.classList.toggle("is-urgent", mode === "left" && msLeft < 20 * 60000);
-    hero.dataset.mode = mode;
-
+    let target = mode === "iqama" ? s.pendingIqama : next?.adhan;
     if (mode === "iqama") {
       eyebrow.textContent = t("iqamaStartsIn");
       title.textContent = t(cur.key);
       sub.textContent = `${t("adhan")} ${ctx.fmt(cur.adhan)} · ${t("iqama")} ${ctx.fmt(s.pendingIqama)}`;
-    } else if (mode === "iftar" || mode === "suhoor") {
-      eyebrow.textContent = t(mode === "iftar" ? "iftarIn" : "suhoorEndsIn");
-      title.textContent = t(mode);
-      sub.textContent = `${t(next.key)} ${ctx.fmt(next.adhan)}${next.iqama ? ` · ${t("iqamaAt", { t: ctx.fmt(next.iqama.at) })}` : ""}`;
     } else if (mode === "left") {
       eyebrow.textContent = t("timeLeftToPray");
       title.textContent = t(cur.key);
       sub.textContent = t("endsAt", { t: ctx.fmt(next.adhan), p: t(next.key) });
-      // Isha is valid until Fajr, but praying it before (Islamic) midnight is preferred.
+      if (ramadan && next.key === "maghrib") sub.textContent += ` · ${t("iftar")} ${ctx.fmt(next.adhan)}`;
+      // Isha is valid until Fajr, but best before (Islamic) midnight: count down to that first.
       if (cur.key === "isha") {
-        const mid = (cur.day === 0 ? s.today : scheduleFor(place, calc, addDays(ymd, -1))).times.midnight;
-        if (mid && mid > now) sub.textContent = t("bestBefore", { t: ctx.fmt(mid) });
+        const mid = scheduleFor(place, calc, curDay).times.midnight;
+        if (mid && mid > now) {
+          target = mid;
+          eyebrow.textContent = t("bestBeforeMidnight");
+          sub.textContent = t("validUntil", { t: ctx.fmt(next.adhan), p: t(next.key) });
+        }
       }
-    } else if (next) {
-      eyebrow.textContent = next.day === 1 ? `${t("next")} · ${t("tomorrow")}` : cur?.key === "sunrise" ? t("sunriseNote") : t("next");
+    } else if (mode === "ramadan") {
+      eyebrow.textContent = t(next.key === "maghrib" ? "iftarIn" : "suhoorEndsIn");
       title.textContent = t(next.key);
-      sub.textContent = `${t("adhan")} ${ctx.fmt(next.adhan)}${next.iqama ? ` · ${t("iqamaAt", { t: ctx.fmt(next.iqama.at) })}` : ""}`;
+      sub.textContent = `${t("adhan")} ${ctx.fmt(next.adhan)}${iqAt(next)}`;
+    } else if (next) {
+      const duhaStart = s.today.times.duha;
+      eyebrow.textContent =
+        next.day === 1
+          ? `${t("next")} · ${t("tomorrow")}`
+          : cur?.key === "sunrise"
+            ? duhaStart && now < duhaStart
+              ? t("sunRising", { t: ctx.fmt(duhaStart) })
+              : t("duhaNow")
+            : t("next");
+      title.textContent = t(next.key);
+      sub.textContent = `${t("adhan")} ${ctx.fmt(next.adhan)}${iqAt(next)}`;
     }
-    count.textContent = formatCountdown(msLeft);
+    const msLeft = target ? target - now : 0;
+    hero.classList.toggle("is-urgent", mode === "left" && msLeft < 20 * 60000);
+    hero.dataset.mode = mode;
+    count.replaceChildren(...durationNode(msLeft));
     count.setAttribute("aria-label", `${eyebrow.textContent} ${title.textContent}: ${count.textContent}`);
   }
 
@@ -245,6 +207,7 @@ export function TodayView(ctx) {
     timelineCard.classList.toggle("is-other-day", !isToday);
 
     const hasIqama = Boolean(place.iqama || place.jumuah?.length);
+    timelineCard.classList.toggle("has-iqama", hasIqama);
     const now = Date.now();
     const status = lastStatus;
     const extras = ctx.settings.extras;
@@ -263,22 +226,29 @@ export function TodayView(ctx) {
     if (extras.midnight && sched.times.midnight) rows.push({ key: "midnight", adhan: sched.times.midnight, extra: true });
     if (extras.lastThird && sched.times.lastThird) rows.push({ key: "lastThird", adhan: sched.times.lastThird, extra: true });
 
-    const colors = rows.map((r) => (r.adhan ? skyAt(place, r.adhan) : null));
-    const nodeColor = (c) => `color-mix(in srgb, ${c.top} 45%, ${c.horizon})`;
+    // Each node takes the sky's colour at that moment, plus ink that stays legible on it.
+    const paint = (r) => {
+      if (!r.adhan) return null;
+      const c = skyAt(place, r.adhan);
+      const fill = mixRgb(c.top, c.horizon, 0.55);
+      return { fill, ink: luminance(fill) > 0.42 ? "#10131f" : "#fff" };
+    };
+    const colors = rows.map(paint);
     list.replaceChildren();
     if (hasIqama) {
       list.append(h("div", { class: "tl-head", "aria-hidden": "true" }, h("span"), h("span", { class: "tl-time" }, t("adhan")), h("span", { class: "tl-time" }, t("iqama"))));
     }
     rows.forEach((r, i) => {
       const isCurrent = isToday && status?.current?.day === 0 && status.current.key === r.key && !r.extra;
-      const passed = isToday && r.adhan && r.adhan.getTime() <= now && !isCurrent;
+      const passed = (viewOffset < 0 || (isToday && r.adhan && r.adhan.getTime() <= now)) && !isCurrent;
       const future = viewOffset > 0 || (isToday && (!r.adhan || r.adhan.getTime() > now));
       const c = colors[i];
       const nextC = colors.slice(i + 1).find(Boolean) || c;
       const canTrack = tracking && r.isPrayer && !r.extra && !future;
       const done = canTrack && isPrayed(dayKey, slot(r.key));
+      const missed = canTrack && passed && !done;
       const label = t(r.key);
-      const style = c ? { "--node": nodeColor(c), "--node-next": nodeColor(nextC) } : {};
+      const style = c ? { "--node": c.fill, "--node-next": nextC.fill, "--node-ink": c.ink } : {};
 
       const node = canTrack
         ? h(
@@ -294,7 +264,9 @@ export function TodayView(ctx) {
                 setPrayed(dayKey, slot(r.key), on);
                 btn.classList.toggle("is-done", on);
                 btn.setAttribute("aria-pressed", String(on));
-                btn.closest(".tl-row").classList.toggle("is-done", on);
+                const row = btn.closest(".tl-row");
+                row.classList.toggle("is-done", on);
+                row.classList.toggle("is-missed", !on && passed);
                 if (on) navigator.vibrate?.(8);
                 renderHero();
               },
@@ -312,7 +284,7 @@ export function TodayView(ctx) {
         h(
           "div",
           {
-            class: `tl-row ${r.extra ? "is-extra" : ""} ${isCurrent ? "is-current" : ""} ${passed ? "is-passed" : ""} ${done ? "is-done" : ""}`,
+            class: `tl-row ${r.extra ? "is-extra" : ""} ${isCurrent ? "is-current" : ""} ${passed ? "is-passed" : ""} ${done ? "is-done" : ""} ${missed ? "is-missed" : ""}`,
             role: "listitem",
             style,
             "aria-current": isCurrent ? "time" : null,
@@ -321,10 +293,10 @@ export function TodayView(ctx) {
           h(
             "span",
             { class: "tl-name" },
-            h("span", { class: "tl-title" }, label, lang() !== "ar" && ARABIC[r.key] && !r.extra ? h("span", { class: "tl-ar", lang: "ar", dir: "rtl" }, ARABIC[r.key]) : null),
+            h("span", { class: "tl-title" }, h("span", { class: "tl-title-text" }, label), lang() !== "ar" && ARABIC[r.key] && !r.extra ? h("span", { class: "tl-ar", lang: "ar", dir: "rtl" }, ARABIC[r.key]) : null),
             subText ? h("small", { class: "tl-sub" }, subText) : null
           ),
-          h("span", { class: "tl-time" }, ctx.fmt(r.adhan)),
+          h("span", { class: "tl-time tl-adhan" }, ctx.fmt(r.adhan)),
           hasIqama
             ? h(
                 "span",

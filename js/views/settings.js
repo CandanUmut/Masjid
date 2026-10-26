@@ -85,7 +85,7 @@ export function SettingsView(ctx) {
       h("div", { class: "row about-row" }, icon("lock", "row-icon tone-green"), h("div", { class: "row-main" }, h("span", { class: "row-title" }, t("privacy")), h("span", { class: "row-sub wrap" }, t("privacyBody")))),
       h("div", { class: "row" }, h("span", { class: "row-label" }, t("version")), h("span", { class: "row-value" }, APP_VERSION))
     ),
-    h("p", { class: "list-foot" }, "Calculations by adhan-js (MIT). Place search by Open-Meteo, place names by BigDataCloud.")
+    h("p", { class: "list-foot" }, t("credits"))
   );
   return { el: root };
 }

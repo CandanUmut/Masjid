@@ -6,6 +6,7 @@ import { todayYmd, formatDate, formatHijri, formatCountdown, partsInTz, timePart
 import { t } from "../i18n.js";
 import { h, icon } from "../ui.js";
 import { phaseOf, skyAt } from "./today.js";
+import { SkyChart } from "./skychart.js";
 import { placeToSeed, seedUrl } from "../seed.js";
 import qrcode from "../vendor/qrcode.js";
 
@@ -19,6 +20,7 @@ export function TvView(ctx) {
   const date = h("div", { class: "tv-date" });
   const nextBox = h("div", { class: "tv-next" });
   const grid = h("div", { class: "tv-grid" });
+  const chart = SkyChart(place);
   const qrBox = h("div", { class: "tv-qr", hidden: true });
   const note = place.note ? h("div", { class: "tv-note" }, icon("info"), h("span", {}, place.note)) : null;
   const overlay = h("div", { class: "tv-overlay", hidden: true });
@@ -39,6 +41,7 @@ export function TvView(ctx) {
       h("div", { class: "tv-title" }, h("h1", {}, place.name), place.sub ? h("p", {}, place.sub) : null),
       h("div", { class: "tv-time" }, h("div", { class: "tv-clock-row" }, clock), date)
     ),
+    h("div", { class: "tv-sky" }, chart.el),
     grid,
     h("footer", { class: "tv-foot" }, h("div", { class: "tv-foot-main" }, nextBox, note), qrBox),
     overlay,
@@ -81,6 +84,7 @@ export function TvView(ctx) {
     secs.textContent = `:${String(p.ss).padStart(2, "0")}`;
     clock.replaceChildren(tp.main, secs, tp.period ? h("small", {}, tp.period) : null);
     const s = statusAt(place, calc, ymd, now);
+    chart.update(now, { ...s, ymd });
     const key = `${ymd.d}|${s.current?.key}|${s.next?.key}|${Boolean(s.pendingIqama)}`;
     root.dataset.phase = phaseOf(s.current?.key);
     if (p.ss === 0 || !root.style.getPropertyValue("--sky-top")) {

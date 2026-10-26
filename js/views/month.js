@@ -2,6 +2,8 @@ import { scheduleFor, METHODS } from "../engine.js";
 import { todayYmd, daysInMonth, formatDate, formatHijriMonth, hijriParts, sameYmd, partsInTz, timeParts, ymdKey } from "../time.js";
 import { t } from "../i18n.js";
 import { h, icon } from "../ui.js";
+import { skyAt } from "./today.js";
+import { mixRgb } from "../astro.js";
 
 const COLS = ["fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha"];
 
@@ -29,6 +31,10 @@ export function MonthView(ctx) {
       const s = scheduleFor(place, calc, ymd);
       const isToday = sameYmd(ymd, today);
       const hj = hijriParts(ymd, off);
+      // A new Hijri month gets its own divider row instead of widening the day column.
+      if (hj?.d === 1 && d > 1) {
+        rows.push(h("tr", { class: "m-divider" }, h("td", { colspan: String(COLS.length + 1) }, formatHijriMonth(ymd, ctx.locale, off))));
+      }
       rows.push(
         h(
           "tr",
@@ -37,12 +43,7 @@ export function MonthView(ctx) {
             "th",
             { scope: "row", class: "m-day" },
             h("span", { class: "m-d" }, String(d)),
-            h(
-              "span",
-              { class: "m-w" },
-              formatDate(ymd, ctx.locale, { weekday: "short" }),
-              hj ? h("span", { class: "m-h" }, ` · ${hj.d === 1 ? formatHijriMonth(ymd, ctx.locale, off).replace(/\s*\d+.*$/u, "") || hj.d : hj.d}`) : null
-            )
+            h("span", { class: "m-w" }, formatDate(ymd, ctx.locale, { weekday: "short" }), hj ? h("span", { class: "m-h" }, ` · ${hj.d}`) : null)
           ),
           COLS.map((k) => {
             const r = s.rows.find((x) => x.key === k || (k === "dhuhr" && x.key === "jumuah"));
@@ -102,7 +103,26 @@ export function MonthView(ctx) {
           "table",
           { class: "month-table" },
           h("caption", { class: "sr-only" }, `${t("monthTitle")} — ${title}`),
-          h("thead", {}, h("tr", {}, h("th", { scope: "col" }, t("day")), COLS.map((k) => h("th", { scope: "col", class: k === "sunrise" ? "m-sun" : "" }, t(k))))),
+          h(
+            "thead",
+            {},
+            h(
+              "tr",
+              {},
+              h("th", { scope: "col" }, t("day")),
+              COLS.map((k) => {
+                // Same sky-coloured dot as the Today timeline, sampled mid-month.
+                const at = scheduleFor(place, calc, { ...ym, d: 15 }).times[k];
+                const c = at ? skyAt(place, at) : null;
+                return h(
+                  "th",
+                  { scope: "col", class: k === "sunrise" ? "m-sun" : "" },
+                  c ? h("i", { class: "m-dot", style: { background: mixRgb(c.top, c.horizon, 0.55) } }) : null,
+                  t(k)
+                );
+              })
+            )
+          ),
           h("tbody", {}, rows)
         )
       ),
