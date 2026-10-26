@@ -1564,29 +1564,34 @@ body.is-offline .app::before {
   .month-table td, .month-table tbody th { padding: 8px 4px; }
 }
 
-/* ---------- Qibla ---------- */
+/* ---------- Qibla — same live sky as Today, a quiet instrument on top ---------- */
 .q-card {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 34px 20px 24px;
+  margin-top: 4px;
+  padding: 40px 20px 26px;
+  border-radius: 30px;
   text-align: center;
+  color: #fff;
+  background: linear-gradient(180deg, var(--sky-top, #1d2556), var(--sky-horizon, #37307a));
+  box-shadow: 0 24px 60px -30px var(--sky-horizon, #37307a);
 }
 .q-top-mark {
   position: absolute;
-  top: 16px;
+  top: 18px;
   left: 50%;
   width: 4px;
   height: 18px;
   margin-left: -2px;
   border-radius: 4px;
-  background: var(--label);
+  background: #fff;
 }
 .q-dial {
-  width: min(78vw, 300px);
+  width: min(76vw, 300px);
   aspect-ratio: 1;
-  transition: transform 0.2s linear;
+  transition: transform 0.25s linear;
 }
 .q-dial svg {
   width: 100%;
@@ -1594,34 +1599,34 @@ body.is-offline .app::before {
   overflow: visible;
 }
 .q-ring {
-  fill: var(--surface-2);
-  stroke: var(--sep);
+  fill: rgba(255, 255, 255, 0.1);
+  stroke: rgba(255, 255, 255, 0.35);
 }
 .tick {
-  stroke: var(--label-3);
+  stroke: rgba(255, 255, 255, 0.4);
   stroke-width: 1;
 }
 .tick-major {
-  stroke: var(--label);
+  stroke: #fff;
   stroke-width: 2;
 }
 .q-dir,
 .q-dir-n {
   font: 600 13px var(--font);
-  fill: var(--label-2);
+  fill: rgba(255, 255, 255, 0.75);
 }
 .q-dir-n {
-  fill: var(--red);
+  fill: #ffd27a;
 }
 .q-needle-head {
-  fill: var(--green);
+  fill: #fff;
 }
 .q-hub {
-  fill: var(--label);
+  fill: #fff;
 }
 .q-kaaba {
-  fill: #1c1c1e;
-  stroke: var(--surface);
+  fill: #111;
+  stroke: #fff;
   stroke-width: 1.5;
 }
 .q-kaaba-band {
@@ -1630,24 +1635,27 @@ body.is-offline .app::before {
 .q-status {
   min-height: 24px;
   margin-top: 14px;
-  color: var(--green);
-  font-weight: 600;
+  font-weight: 700;
+  color: #b8ffcb;
 }
 .q-deg {
-  font-family: var(--font-rounded);
+  font-family: var(--font-serif);
   font-size: 34px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 600;
 }
 .q-sub {
-  color: var(--label-2);
+  opacity: 0.85;
   font-size: 15px;
 }
 .q-actions {
   margin-top: 18px;
 }
+.q-actions .btn-primary {
+  background: rgba(255, 255, 255, 0.95);
+  color: #0b3a8a;
+}
 .view-qibla.is-facing .q-ring {
-  fill: color-mix(in srgb, var(--green) 16%, var(--surface-2));
+  fill: rgba(52, 199, 89, 0.35);
 }
 .q-hint {
   text-align: center;
@@ -2677,4 +2685,21 @@ button.tl-node:active .tl-node-dot {
   .month-table tbody th { padding: 2.5px 4px; }
   .m-d { font-size: 11.5px; }
   .m-w, .m-iq { font-size: 10px; }
+}
+.row-glance {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.row-glance-in {
+  font-weight: 500;
+  color: var(--label-2);
+}
+.row-glance {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

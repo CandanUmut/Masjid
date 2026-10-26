@@ -1,6 +1,7 @@
 import { qiblaBearing, distanceToKaabaKm } from "../engine.js";
 import { t } from "../i18n.js";
 import { h, icon } from "../ui.js";
+import { skyAt } from "./today.js";
 
 export function QiblaView(ctx) {
   const { place } = ctx;
@@ -38,7 +39,7 @@ export function QiblaView(ctx) {
     h("h1", { class: "large-title" }, t("qiblaTitle")),
     h(
       "div",
-      { class: "card q-card" },
+      { class: "q-card", style: (() => { const s = skyAt(place, new Date()); return { "--sky-top": s.top, "--sky-horizon": s.horizon }; })() },
       h("div", { class: "q-top-mark", "aria-hidden": "true" }),
       dial,
       facing,

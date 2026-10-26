@@ -1,7 +1,8 @@
 import { searchPlaces, timezoneFor, reverseGeocode } from "../geo.js";
 import { t, lang } from "../i18n.js";
 import { h, icon, openSheet, debounce, select } from "../ui.js";
-import { allTimeZones } from "../time.js";
+import { allTimeZones, todayYmd, formatTime } from "../time.js";
+import { statusAt } from "../engine.js";
 import { newId } from "../store.js";
 
 export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
@@ -87,7 +88,8 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
           "span",
           { class: "row-main" },
           h("span", { class: "row-title" }, t("myLocation")),
-          h("span", { class: "row-sub" }, gps?.name ? [gps.name, gps.sub].filter(Boolean).join(", ") : t("useMyLocation"))
+          h("span", { class: "row-sub" }, gps?.name ? [gps.name, gps.sub].filter(Boolean).join(", ") : t("useMyLocation")),
+          gps ? glance(ctx, { ...gps, id: "gps" }) : null
         ),
         st.activeId === "gps" ? icon("check", "row-check") : null
       )
@@ -106,7 +108,8 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
               "span",
               { class: "row-main" },
               h("span", { class: "row-title" }, p.name),
-              h("span", { class: "row-sub" }, p.kind === "masjid" ? [t("masjid"), p.sub].filter(Boolean).join(" · ") : p.sub || p.tz)
+              h("span", { class: "row-sub" }, p.kind === "masjid" ? [t("masjid"), p.sub].filter(Boolean).join(" · ") : p.sub || p.tz),
+              glance(ctx, p)
             ),
             active ? icon("check", "row-check") : null
           ),
@@ -136,6 +139,32 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
   renderSaved();
   if (focusSearch) setTimeout(() => input.focus(), 250);
   return sheet;
+}
+
+// At a glance: the next prayer at that place, and its local time when it's in another time zone.
+function glance(ctx, p) {
+  try {
+    const now = new Date();
+    const s = statusAt(p, p.calc || ctx.settings.calc, todayYmd(p.tz, now), now);
+    if (!s.next) return null;
+    const fmt = (d) => formatTime(d, p.tz, { hour12: ctx.hour12, locale: ctx.locale });
+    return h(
+      "span",
+      { class: "row-glance" },
+      `${t(s.next.key)} ${fmt(s.next.adhan)}`,
+      h("span", { class: "row-glance-in" }, ` · ${t("inDur", { t: humanDuration(s.next.adhan - now) })}`),
+      p.tz !== ctx.deviceTz ? h("span", { class: "row-glance-in" }, ` · ${t("localNow", { t: fmt(now) })}`) : null
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function humanDuration(ms) {
+  const mins = Math.max(1, Math.round(ms / 60000));
+  const hh = Math.floor(mins / 60);
+  const mm = mins % 60;
+  return hh ? `${hh} ${t("hShort")} ${mm} ${t("min")}` : `${mm} ${t("min")}`;
 }
 
 function placeMenu(ctx, p, anchor, rerender, parentSheet) {
