@@ -217,8 +217,10 @@ a {
   text-align: start;
   transition: background 0.2s;
 }
-.place-chip:hover {
-  background: var(--fill);
+@media (hover: hover) {
+  .place-chip:hover {
+    background: var(--fill);
+  }
 }
 .place-chip-icon {
   width: 34px;
@@ -390,8 +392,10 @@ a {
   cursor: pointer;
   transition: background 0.15s;
 }
-.row-btn:hover {
-  background: var(--fill);
+@media (hover: hover) {
+  .row-btn:hover {
+    background: var(--fill);
+  }
 }
 .row-btn:active {
   background: var(--fill-2);
@@ -466,8 +470,10 @@ a {
   background: transparent;
   text-align: start;
 }
-.row-split .row-btn-inner:hover {
-  background: var(--fill);
+@media (hover: hover) {
+  .row-split .row-btn-inner:hover {
+    background: var(--fill);
+  }
 }
 .row-more {
   margin-inline-end: 10px;
@@ -1089,7 +1095,8 @@ textarea.input {
   position: fixed;
   z-index: 100;
   left: 50%;
-  bottom: calc(var(--safe-bottom) + 96px);
+  top: calc(var(--safe-top) + 10px);
+  bottom: auto;
   transform: translateX(-50%);
   display: grid;
   gap: 8px;
@@ -1102,16 +1109,14 @@ textarea.input {
   gap: 12px;
   padding: 12px 14px 12px 18px;
   border-radius: 18px;
-  background: var(--glass);
-  border: 0.5px solid var(--glass-border);
-  box-shadow: var(--shadow-2);
-  -webkit-backdrop-filter: saturate(180%) blur(24px);
-  backdrop-filter: saturate(180%) blur(24px);
+  background: var(--surface);
+  border: 0.5px solid var(--sep);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.08);
   font-size: 15px;
   font-weight: 500;
   pointer-events: auto;
   opacity: 0;
-  transform: translateY(12px) scale(0.98);
+  transform: translateY(-14px) scale(0.98);
   transition: opacity 0.25s, transform 0.3s var(--ease);
 }
 .toast.is-in {
@@ -1239,6 +1244,10 @@ body.is-offline .app::before {
   margin-top: 12px;
 }
 .coords-details summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   cursor: pointer;
   color: var(--accent);
   font-size: 15px;
@@ -1277,7 +1286,8 @@ body.is-offline .app::before {
 }
 .preview-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: auto repeat(5, 1fr);
+  grid-template-rows: auto auto auto;
   gap: 4px;
   margin-top: 10px;
   text-align: center;
@@ -1307,6 +1317,25 @@ body.is-offline .app::before {
 }
 .preview-i.is-clamped {
   color: #ffd27a;
+}
+/* Rows line up across cells, so the Adhan / Iqama labels sit beside their times */
+.preview-cell {
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+}
+.preview-cell.preview-labels {
+  background: none;
+  padding-inline: 0 2px;
+  text-align: end;
+}
+.preview-labels .preview-a,
+.preview-labels .preview-i {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+  align-self: center;
 }
 .preview-empty {
   margin: 4px 0;
@@ -1491,7 +1520,7 @@ body.is-offline .app::before {
   margin: 10px 0 0;
 }
 .month-card {
-  overflow-x: auto;
+  overflow: clip;
 }
 .month-table {
   width: 100%;
@@ -2287,8 +2316,10 @@ body.is-chromeless .app {
 .date-text:disabled {
   cursor: default;
 }
-.date-text:not(:disabled):hover {
-  background: var(--fill);
+@media (hover: hover) {
+  .date-text:not(:disabled):hover {
+    background: var(--fill);
+  }
 }
 .date-title {
   font-weight: 600;
@@ -2478,8 +2509,10 @@ body.is-chromeless .app {
   color: inherit;
   text-decoration: none;
 }
-.foot-meta .meta-link:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .foot-meta .meta-link:hover {
+    text-decoration: underline;
+  }
 }
 
 /* ---------- Wide screens: sky beside the timeline ---------- */
@@ -2880,9 +2913,10 @@ body.is-chromeless .app {
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   backdrop-filter: saturate(180%) blur(20px);
   border-bottom: 0.5px solid transparent;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, background-color 0.2s;
 }
 body.is-scrolled .topbar {
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
   border-bottom-color: var(--sep);
 }
 .month-table thead th {
@@ -3032,8 +3066,32 @@ body.is-scrolled .topbar {
   text-align: center;
   list-style: none;
 }
-.seed-details summary::-webkit-details-marker {
+.seed-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.seed-details summary::-webkit-details-marker,
+.coords-details summary::-webkit-details-marker {
   display: none;
+}
+/* A chevron instead of the browser's triangle */
+.seed-details summary::after,
+.coords-details summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-top: -3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.2s var(--ease);
+}
+.seed-details[open] > summary::after,
+.coords-details[open] > summary::after {
+  margin-top: 3px;
+  transform: rotate(-135deg);
 }
 .field-error {
   margin: -6px 4px 12px;
@@ -3263,6 +3321,15 @@ body.is-scrolled .topbar {
   align-items: center;
   gap: 6px 8px;
 }
+/* "never earlier than [10 min] after adhan": if it wraps, the input keeps its words */
+.iqama-min-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.iqama-min-label {
+  white-space: nowrap;
+}
 .select-rule {
   width: auto;
   min-height: 40px;
@@ -3428,9 +3495,6 @@ body.is-scrolled .topbar {
   }
   .app {
     padding-bottom: calc(var(--safe-bottom) + 92px);
-  }
-  .toast-host {
-    bottom: calc(var(--safe-bottom) + 84px);
   }
 
   /* Compact top bar */
@@ -3734,6 +3798,14 @@ body.is-scrolled .topbar {
   80% { transform: translateX(3px); }
 }
 @media (max-width: 899px) {
+  /* Fine-tuning on top of any level: rows lose a few pixels so the last one clears the tab bar. */
+  .view-today.is-squeezed .tl-row:not(.is-extra) {
+    min-height: var(--tl-min) !important;
+    padding-block: 0 !important;
+  }
+  .view-today.is-squeezed .tl-row:not(.is-extra) .tl-node {
+    height: var(--tl-min) !important;
+  }
   /* Level 4 (tiny screens, many rows): one-line sky and dense rows. */
   .view-today.fit-4 .sky-sub {
     display: none;
@@ -3762,7 +3834,7 @@ body.is-scrolled .topbar {
     height: 34px;
   }
   .view-today.fit-4 .timeline {
-    padding-block: 0;
+    padding-block: 4px 0;
   }
 }
 @media (max-width: 899px) {
@@ -3826,7 +3898,6 @@ html.has-sheet,
 html.has-sheet body {
   overflow: hidden;
 }
-html { scrollbar-gutter: stable; }
 /* Onboarding: actions first on small screens; the sky shrinks before anything important does */
 .onb-sky {
   max-height: 24vh;

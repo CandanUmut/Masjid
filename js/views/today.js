@@ -329,22 +329,41 @@ export function TodayView(ctx) {
     );
   }
 
-  // Phones: every prayer must be visible on first paint. Measure once after layout and tighten step by
-  // step until the last row clears the tab bar. Only re-measured when the *width* changes (rotation):
-  // Safari's toolbar collapsing while you scroll changes the height, and that must never resize things.
+  // Phones: every prayer must be visible on first paint. Measure once after layout and tighten until the
+  // last row clears the tab bar: first by trimming a few pixels off each row (invisible), and only when
+  // that isn't enough by stepping to a denser layout. Only re-measured when the *width* changes
+  // (rotation): Safari's toolbar collapsing while you scroll changes the height, and must never resize things.
   const FIT = ["fit-1", "fit-2", "fit-3", "fit-4"];
+  const SQUEEZE_MAX = 6; // px per row we can take away before the rows feel cramped
   let fitWidth = 0;
   function fit() {
-    root.classList.remove(...FIT);
+    root.classList.remove(...FIT, "is-squeezed");
     if (!root.isConnected || innerWidth >= 900) return;
     fitWidth = innerWidth;
     const bar = document.getElementById("tabbar");
     const limit = (bar && !bar.hidden ? bar.getBoundingClientRect().top : innerHeight) + scrollY - 6;
-    for (let i = 0; i <= FIT.length; i++) {
-      if (i) root.classList.add(FIT[i - 1]);
+    const overflow = () => {
       const last = [...list.querySelectorAll(".tl-row")].pop();
-      if (!last || last.getBoundingClientRect().bottom + scrollY <= limit) return;
+      return last ? last.getBoundingClientRect().bottom + scrollY - limit : 0;
+    };
+    const squeeze = (over, maxPer) => {
+      const rows = [...list.querySelectorAll(".tl-row:not(.is-extra)")];
+      if (!rows.length) return false;
+      const per = Math.ceil(over / rows.length);
+      const h0 = rows[0].getBoundingClientRect().height;
+      if (per > maxPer || h0 - per < 30) return false;
+      root.style.setProperty("--tl-min", `${Math.floor(h0 - per)}px`);
+      root.classList.add("is-squeezed");
+      return true;
+    };
+    let over = overflow();
+    for (let i = 0; i < FIT.length && over > 0; i++) {
+      if (squeeze(over, SQUEEZE_MAX)) return;
+      root.classList.add(FIT[i]);
+      over = overflow();
     }
+    // Still short on the densest layout: squeeze as far as is still tappable.
+    if (over > 0) squeeze(over, Infinity);
   }
   const onResize = () => {
     if (innerWidth !== fitWidth) requestAnimationFrame(fit);

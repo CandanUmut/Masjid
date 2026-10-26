@@ -4,7 +4,7 @@ import { addDays, todayYmd } from "../time.js";
 import { t } from "../i18n.js";
 import { h, icon, openSheet, select, toggle, toast, copyText } from "../ui.js";
 import { normalizeCalc } from "../engine.js";
-import { backupToSeed } from "../seed.js";
+import { backupToSeed, placeToSeed } from "../seed.js";
 import { DEFAULT_SETTINGS } from "../store.js";
 import { MonthView } from "./month.js";
 import { QiblaView } from "./qibla.js";
@@ -274,10 +274,9 @@ export const extrasPlugin = {
   ctx: () => ({
     settingsExtras: () => settingsSections(getCtx()),
     restoreBackup,
-    openDisplay: (place, seed) => {
-      // Open the board in a new tab with the seed so it can be bookmarked on the screen's browser.
-      const url = `${location.href.split("#")[0]}#/tv/${seed}`;
-      window.open(url, "_blank", "noopener");
+    openDisplay: async (place) => {
+      // Always the seed URL, so the board can be bookmarked as a screen's start page.
+      location.hash = `#/tv/${await placeToSeed(place)}`;
     },
   }),
   handleHash(name, arg, ctx) {

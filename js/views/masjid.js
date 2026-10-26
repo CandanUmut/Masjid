@@ -8,6 +8,7 @@ import { allTimeZones, deviceTimeZone, todayYmd, formatTime, formatDate, timePar
 import { newId } from "../store.js";
 import { calcEditor } from "./calc-editor.js";
 import { skyAt } from "./today.js";
+import { placeOptions } from "./places.js";
 import qrcode from "../vendor/qrcode.js";
 
 const DEFAULT_IQAMA = {
@@ -19,7 +20,7 @@ const DEFAULT_IQAMA = {
 };
 
 // --- Editor -----------------------------------------------------------------------------
-export function openMasjidEditor(ctx, existing = null) {
+export function openMasjidEditor(ctx, existing = null, prefill = null) {
   const base = ctx.place && ctx.place.kind !== "masjid" ? ctx.place : ctx.state.gps;
   const draft = existing
     ? structuredClone(existing)
@@ -37,9 +38,13 @@ export function openMasjidEditor(ctx, existing = null) {
         jumuah: ["13:30"],
         note: "",
       };
+  // From a mosque search result: start with its name and location.
+  if (!existing && prefill) for (const k of ["name", "sub", "lat", "lng", "tz", "cc"]) if (prefill[k] != null) draft[k] = prefill[k];
   draft.calc = normalizeCalc(draft.calc);
   draft.iqama = draft.iqama || {};
   draft.jumuah = draft.jumuah || [];
+  draft.sub = draft.sub || "";
+  draft.note = draft.note || "";
   const initial = JSON.stringify(draft);
   let saved = false;
 
@@ -68,6 +73,7 @@ export function openMasjidEditor(ctx, existing = null) {
       h(
         "div",
         { class: "preview-grid" },
+        h("div", { class: "preview-cell preview-labels", "aria-hidden": "true" }, h("span", { class: "preview-p" }, "\u00a0"), h("span", { class: "preview-a" }, t("adhan")), h("span", { class: "preview-i" }, t("iqama"))),
         sched.rows
           .filter((r) => r.isPrayer)
           .map((r) =>
@@ -90,9 +96,9 @@ export function openMasjidEditor(ctx, existing = null) {
     maxlength: 80,
     value: draft.name,
     placeholder: t("masjidNamePh"),
-    oninput: (e) => { draft.name = e.target.value; renderPreview(); },
+    oninput: (e) => { draft.name = e.target.value; renderPreview(); renderLoc(false); },
   });
-  const subInput = h("input", { class: "input", type: "text", maxlength: 120, value: draft.sub, placeholder: t("addressPh"), oninput: (e) => (draft.sub = e.target.value) });
+  const subInput = h("input", { class: "input", type: "text", maxlength: 120, value: draft.sub, placeholder: t("addressPh"), oninput: (e) => { draft.sub = e.target.value; renderLoc(false); } });
 
   // Location
   const locLine = h("div", { class: "loc-line" });
@@ -138,6 +144,7 @@ export function openMasjidEditor(ctx, existing = null) {
   latIn.addEventListener("input", onCoords);
   lngIn.addEventListener("input", onCoords);
 
+  const coordsText = () => `${draft.lat.toFixed(4)}, ${draft.lng.toFixed(4)}`;
   function renderLoc(syncInputs = true) {
     // A time zone far from what the longitude implies almost always means a mistake (3h-wrong times).
     const offH = tzOffsetMinutes(Date.now(), draft.tz) / 60;
@@ -147,8 +154,9 @@ export function openMasjidEditor(ctx, existing = null) {
       h(
         "span",
         { class: "row-main" },
-        h("span", { class: "row-title" }, hasLoc() ? `${draft.lat.toFixed(5)}, ${draft.lng.toFixed(5)}` : t("setLocation")),
-        h("span", { class: "row-sub" }, draft.tz.replace(/_/g, " ")),
+        // People recognise an address, not coordinates: show those underneath.
+        h("span", { class: "row-title" }, !hasLoc() ? t("setLocation") : (draft.sub || "").trim() || (draft.name || "").trim() || coordsText()),
+        h("span", { class: "row-sub" }, [hasLoc() && ((draft.sub || "").trim() || (draft.name || "").trim()) ? coordsText() : null, draft.tz.replace(/_/g, " ")].filter(Boolean).join(" · ")),
         mismatch ? h("span", { class: "form-warn" }, t("tzMismatch")) : null
       )
     );
@@ -353,8 +361,13 @@ export function openMasjidEditor(ctx, existing = null) {
     } else if (kind === "fixed") {
       extra.append(
         h("span", { class: "iqama-min-label" }, t("atLeast")),
-        minutesInput(rule.min || 0, { min: 0, max: 120, step: 5, label: t("atLeast"), unit: t("min"), hours: hoursFmt, onChange: (v) => { rule.min = v; renderPreview(); } }),
-        h("span", { class: "iqama-min-label" }, t("afterAdhanShort"))
+        // Input and "after adhan" stay together when the sentence wraps.
+        h(
+          "span",
+          { class: "iqama-min-group" },
+          minutesInput(rule.min || 0, { min: 0, max: 120, step: 5, label: t("atLeast"), unit: t("min"), hours: hoursFmt, onChange: (v) => { rule.min = v; renderPreview(); } }),
+          h("span", { class: "iqama-min-label" }, t("afterAdhanShort"))
+        )
       );
     }
     return { line, extra: extra.childElementCount ? extra : null };
@@ -640,7 +653,7 @@ export async function openShareSheet(ctx, place) {
           : null,
         copyBtn(url, t("copyLink")),
         place.kind === "masjid" ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => printPoster(place, qr) }, icon("print"), t("poster")) : null,
-        ctx.openDisplay ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => { sheet.close(); ctx.openDisplay(place, seed); } }, icon("tv"), t("tvMode")) : null
+        place.kind === "masjid" && ctx.openDisplay ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => { sheet.forceClose(); ctx.openDisplay(place); } }, icon("tv"), t("tvMode")) : null
       ),
       place.iqama ? weekPreview(ctx, place) : null,
       h(
@@ -650,7 +663,7 @@ export async function openShareSheet(ctx, place) {
         h("div", { class: "form-card" }, h("code", { class: "seed-code" }, seed), h("div", { class: "btn-row" }, copyBtn(seed, t("copy")))),
         h("p", { class: "list-foot" }, t("seedHint"))
       ),
-      h("p", { class: "list-foot" }, t("seedUpdateHint")),
+      place.kind === "masjid" ? h("p", { class: "list-foot" }, t("seedUpdateHint")) : null,
     ],
   });
   return sheet;
@@ -750,24 +763,6 @@ export async function importSeed(ctx, text, { allowBackup = false, silent = fals
   return true;
 }
 
-// --- Managing a saved place: always one tap away ---------------------------------------------------
-export function placeOptions(ctx, place) {
-  const item = (ic, label, fn, cls = "") =>
-    h("button", { class: `row row-btn ${cls}`, type: "button", onclick: () => { sheet.close(); setTimeout(fn, 240); } }, icon(ic, "row-icon"), h("span", { class: "row-title" }, label));
-  const isMasjid = place.kind === "masjid";
-  const sheet = openSheet({
-    title: place.name,
-    content: h(
-      "div",
-      { class: "list" },
-      isMasjid ? item("edit", t("editMasjid"), () => openMasjidEditor(currentCtx(), place)) : null,
-      item("share", t("share"), () => openShareSheet(currentCtx(), place)),
-      isMasjid ? item("tv", t("tvMode"), () => currentCtx().go("tv")) : null,
-      item("trash", isMasjid ? t("removeMasjid") : t("remove"), () => currentCtx().removePlace(place.id), "tone-danger")
-    ),
-  });
-}
-
 // Under the times on a masjid page: who this is, and the actions people look for.
 function masjidCard(ctx, place) {
   return h(
@@ -784,7 +779,7 @@ function masjidCard(ctx, place) {
       { class: "masjid-card-actions" },
       h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openMasjidEditor(ctx, place) }, icon("edit"), t("edit")),
       h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openShareSheet(ctx, place) }, icon("share"), t("share")),
-      h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.go("tv") }, icon("tv"), t("tvShort"))
+      ctx.openDisplay ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.openDisplay(place) }, icon("tv"), t("tvShort")) : null
     )
   );
 }
@@ -794,7 +789,7 @@ export const masjidPlugin = {
   ctx: () => ({
     shareMasjid: (p) => openShareSheet(currentCtx(), p),
     editMasjid: (p) => openMasjidEditor(currentCtx(), p),
-    createMasjid: () => openMasjidEditor(currentCtx()),
+    createMasjid: (prefill) => openMasjidEditor(currentCtx(), null, prefill),
     masjidCard: (p) => masjidCard(currentCtx(), p),
     openSeed: () => openSeedInput(currentCtx()),
     extraPlaceActions: (sheet) => [
@@ -805,7 +800,7 @@ export const masjidPlugin = {
   topbarActions: (ctx) =>
     ctx.place && ctx.place.id !== "gps"
       ? [
-          h("button", { class: "icon-btn", type: "button", "aria-label": t("share"), onclick: () => openShareSheet(ctx, ctx.place) }, icon("share")),
+          ctx.place.kind === "masjid" ? h("button", { class: "icon-btn", type: "button", "aria-label": t("share"), onclick: () => openShareSheet(ctx, ctx.place) }, icon("share")) : null,
           h("button", { class: "icon-btn", type: "button", "aria-label": t("placeOptions"), onclick: () => placeOptions(ctx, ctx.place) }, icon("more")),
         ]
       : [],

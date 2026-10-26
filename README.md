@@ -22,14 +22,14 @@ A simple, private prayer-times app that runs entirely in the browser. It has no 
 
 ## Privacy
 
-Everything is stored in your browser (`localStorage`). There are only two optional network calls:
+Everything is stored in your browser (`localStorage`). There are only a few optional network calls:
 
 | What | Service | When |
 | --- | --- | --- |
 | City search | [Open-Meteo geocoding](https://open-meteo.com/en/docs/geocoding-api) | When you type in the search box |
 | Place name for your GPS position | [BigDataCloud reverse geocoding](https://www.bigdatacloud.com/free-api/free-reverse-geocode-to-city-api) | When your location changes by more than about 3 km. Only a position rounded to about 1 km is sent, and results are cached |
 | Address and masjid search | [Photon](https://photon.komoot.io/) (OpenStreetMap data) | When you type in the search box; the time zone of a picked address is then looked up via Open-Meteo |
-| Time zone for typed coordinates | [Open-Meteo](https://open-meteo.com/) | Only when you enter coordinates by hand (rounded to about 1 km). Offline, the app guesses from longitude and asks you to confirm |
+| Time zone for a picked address or typed coordinates | [Open-Meteo](https://open-meteo.com/) | Position rounded to about 1 km. Offline (or if the service is busy) a built-in zone table is used: exact in single-zone countries; elsewhere the app picks the nearest zone and, for typed coordinates, asks you to confirm |
 
 Prayer times never need the network.
 
@@ -83,12 +83,14 @@ js/main.js            state, routing, location handling, rendering
 js/engine.js          prayer-time engine (adhan-js presets, auto method, iqama, Jumu'ah)
 js/seed.js            seed encode/decode (place + backup)
 js/time.js            time-zone-aware formatting via Intl (no libraries)
-js/geo.js             geolocation, city search, reverse geocoding
+js/geo.js             geolocation, city/address search, reverse geocoding, time zones
+js/tzdata.js          IANA zone table for offline time-zone lookup (generated)
 js/i18n.js            EN / TR / AR strings
 js/views/*            Today, Month, Qibla, Settings, masjid editor/share, display mode
 js/vendor/            adhan-js (MIT), qrcode-generator (MIT)
 sw.js                 offline cache (bump VERSION on every release)
 tools/make-icons.cjs  regenerates the PNG icons from the SVG design (dev only, needs Playwright)
+tools/make-tzdata.cjs regenerates js/tzdata.js from tzdata's zone.tab
 tests/                node --test suites (engine accuracy, DST, iqama, seeds, offline cache)
 ```
 

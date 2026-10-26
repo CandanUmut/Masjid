@@ -62,9 +62,11 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
                 place = { ...f, tz: f.tz || deviceTimeZone() };
               }
               const gps = ctx.state.gps;
-              if (gps && f.type === "city" && distanceKm(gps, place) < 10) ctx.activate("gps");
-              else ctx.addPlace({ id: newId(), kind: "city", name: place.name, sub: place.sub, lat: place.lat, lng: place.lng, tz: place.tz, cc: place.cc }, { activate: true });
+              const useHere = () => ctx.addPlace({ id: newId(), kind: "city", name: place.name, sub: place.sub, lat: place.lat, lng: place.lng, tz: place.tz, cc: place.cc }, { activate: true });
               sheet.close();
+              if (gps && f.type === "city" && distanceKm(gps, place) < 10) ctx.activate("gps");
+              else if (f.type === "mosque" && ctx.createMasjid) setTimeout(() => mosqueChoice(ctx, place, useHere), 240);
+              else useHere();
             },
           },
           icon(f.type === "mosque" ? "mosque" : f.type === "address" ? "pin" : "globe", "row-icon"),
@@ -140,8 +142,8 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
             {
               class: "icon-btn row-more",
               type: "button",
-              "aria-label": `${t("edit")} ${p.name}`,
-              onclick: (e) => placeMenu(ctx, p, e.currentTarget, () => renderSaved(), sheet),
+              "aria-label": `${t("placeOptions")}: ${p.name}`,
+              onclick: () => placeOptions(ctx, p, { closeParent: () => sheet.close(), onRemoved: () => renderSaved() }),
             },
             icon("more")
           )
@@ -161,6 +163,37 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
   renderSaved();
   if (focusSearch) setTimeout(() => input.focus(), 250);
   return sheet;
+}
+
+// A mosque from search: most people want its iqama times, which only a masjid page has.
+function mosqueChoice(ctx, place, useHere) {
+  const pick = (fn) => () => {
+    sheet.close();
+    setTimeout(fn, 240);
+  };
+  const sheet = openSheet({
+    title: place.name,
+    content: [
+      place.sub ? h("p", { class: "list-foot" }, place.sub) : null,
+      h(
+        "div",
+        { class: "list" },
+        h(
+          "button",
+          { class: "row row-btn", type: "button", onclick: pick(() => ctx.createMasjid(place)) },
+          icon("mosque", "row-icon tone-accent"),
+          h("span", { class: "row-main" }, h("span", { class: "row-title" }, t("addMasjid")), h("span", { class: "row-sub" }, t("mosqueSetupSub"))),
+          icon("chevronRight", "row-chevron flip-rtl")
+        ),
+        h(
+          "button",
+          { class: "row row-btn", type: "button", onclick: pick(useHere) },
+          icon("pin", "row-icon"),
+          h("span", { class: "row-main" }, h("span", { class: "row-title" }, t("justTimesHere")), h("span", { class: "row-sub" }, t("justTimesHereSub")))
+        )
+      ),
+    ],
+  });
 }
 
 // At a glance: the next prayer at that place, and its local time when it's in another time zone.
@@ -189,23 +222,53 @@ export function humanDuration(ms) {
   return hh ? `${hh} ${t("hShort")} ${mm} ${t("min")}` : `${mm} ${t("min")}`;
 }
 
-function placeMenu(ctx, p, anchor, rerender, parentSheet) {
-  const items = [];
-  if (p.kind === "masjid" && ctx.shareMasjid) {
-    items.push(h("button", { class: "row row-btn", type: "button", onclick: () => { menu.close(); parentSheet.close(); ctx.shareMasjid(p); } }, icon("share", "row-icon"), t("share")));
-  }
-  if (p.kind === "masjid" && ctx.editMasjid) {
-    items.push(h("button", { class: "row row-btn", type: "button", onclick: () => { menu.close(); parentSheet.close(); ctx.editMasjid(p); } }, icon("edit", "row-icon"), t("edit")));
-  }
-  items.push(
+// One menu for a saved place, wherever it's opened from (Places list or the "…" in the top bar).
+export function placeOptions(ctx, place, { closeParent, onRemoved } = {}) {
+  const isMasjid = place.kind === "masjid";
+  const item = (ic, label, fn, { cls = "", keepParent = false } = {}) =>
     h(
       "button",
-      { class: "row row-btn tone-danger", type: "button", onclick: () => { menu.close(); ctx.removePlace(p.id); rerender(); } },
-      icon("trash", "row-icon"),
-      t("remove")
-    )
-  );
-  const menu = openSheet({ title: p.name, content: h("div", { class: "list" }, items) });
+      { class: `row row-btn ${cls}`, type: "button", onclick: () => { sheet.close(); if (!keepParent) closeParent?.(); setTimeout(fn, 240); } },
+      icon(ic, "row-icon"),
+      h("span", { class: "row-title" }, label)
+    );
+  const sheet = openSheet({
+    title: place.name,
+    content: h(
+      "div",
+      { class: "list" },
+      isMasjid && ctx.editMasjid ? item("edit", t("editMasjid"), () => ctx.editMasjid(place)) : null,
+      !isMasjid ? item("edit", t("rename"), () => renamePlace(ctx, place)) : null,
+      ctx.shareMasjid ? item("share", t("share"), () => ctx.shareMasjid(place)) : null,
+      isMasjid && ctx.openDisplay ? item("tv", t("tvMode"), () => ctx.openDisplay(place)) : null,
+      item("trash", isMasjid ? t("removeMasjid") : t("remove"), () => { ctx.removePlace(place.id); onRemoved?.(); }, { cls: "tone-danger", keepParent: true })
+    ),
+  });
+  return sheet;
+}
+
+function renamePlace(ctx, place) {
+  const input = h("input", { class: "input", type: "text", value: place.name, "aria-label": t("masjidName"), autocomplete: "off", enterkeyhint: "done" });
+  const save = () => {
+    const name = input.value.trim();
+    if (name && name !== place.name) ctx.addPlace({ ...place, name }, { silent: true });
+    sheet.forceClose();
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      save();
+    }
+  });
+  const sheet = openSheet({
+    title: t("rename"),
+    content: [h("label", { class: "field" }, h("span", {}, t("masjidName")), input), place.sub ? h("p", { class: "list-foot" }, place.sub) : null],
+    actions: h("button", { class: "btn btn-primary btn-block", type: "button", onclick: save }, t("save")),
+  });
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 250);
 }
 
 function coordsForm(ctx, parentSheet) {

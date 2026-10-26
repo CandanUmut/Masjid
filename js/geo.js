@@ -1,6 +1,6 @@
 // Location helpers. GPS never leaves the device except for an optional, cached
 // reverse-geocode lookup to show a friendly place name.
-import { deviceTimeZone } from "./time.js";
+import { deviceTimeZone, tzOffsetMinutes } from "./time.js";
 
 export function geoSupported() {
   return "geolocation" in navigator;
@@ -121,6 +121,9 @@ async function searchAddresses(query, lang) {
 
 // One search box for everything: cities first when the query is a city name, addresses and masjids
 // otherwise ("350 5th Ave", "East London Mosque"). Near-duplicates are dropped.
+// Words that mean "this is an address or a building", in the languages people search in.
+const ADDRESS_WORD = /(^|[\s,])(mosque|masjid|mescid|cami|camii|jami|jamia|islamic|street|st\.?|ave\.?|avenue|road|rd\.?|blvd|lane|drive|dr\.?|cad(desi)?\.?|cd\.?|sok(ak|ağı)?\.?|sk\.?|mah(alle(si)?)?\.?|bulvar[ıi]?|rue|strasse|straße|str\.?|calle|via|شارع|مسجد|جامع)(?=$|[\s,])/iu;
+
 export async function searchPlaces(q, lang = "en") {
   const query = String(q || "").trim();
   if (query.length < 2) return [];
@@ -128,12 +131,15 @@ export async function searchPlaces(q, lang = "en") {
   if (cities.status === "rejected" && addresses.status === "rejected") throw cities.reason;
   const c = cities.status === "fulfilled" ? cities.value : [];
   const a = addresses.status === "fulfilled" ? addresses.value : [];
-  const looksLikeAddress = /\d/.test(query) || query.includes(",") || /\b(mosque|masjid|cami|camii|mescid|jami|street|st|ave|road|rd|cad|sok)\b/i.test(query);
+  const looksLikeAddress = /\d/.test(query) || query.includes(",") || ADDRESS_WORD.test(query);
   const ordered = looksLikeAddress ? [...a, ...c] : [...c.filter((x) => x.exact), ...a.slice(0, 3), ...c.filter((x) => !x.exact), ...a.slice(3)];
   const out = [];
   for (const x of ordered) {
     // Same place twice, or many things registered at one address (shops, radio stations…): keep one.
-    if (out.some((y) => (distanceKm(x, y) < 0.3 && norm(x.name) === norm(y.name)) || (x.type !== "city" && y.type !== "city" && x.sub && x.sub === y.sub && distanceKm(x, y) < 0.05))) continue;
+    const dup = (y) =>
+      (norm(x.name) === norm(y.name) && (distanceKm(x, y) < 0.3 || (x.sub && x.sub === y.sub))) ||
+      (x.type !== "city" && y.type !== "city" && x.sub && x.sub === y.sub && distanceKm(x, y) < 0.05);
+    if (out.some(dup)) continue;
     out.push(x);
     if (out.length >= 10) break;
   }
@@ -143,21 +149,55 @@ export async function searchPlaces(q, lang = "en") {
 // Fill in what an address result lacks (time zone) before it is saved.
 export async function completePlace(f) {
   if (f.tz) return f;
-  const { tz } = await timezoneFor(f.lat, f.lng);
+  const { tz } = await timezoneFor(f.lat, f.lng, f.cc);
   return { ...f, tz };
 }
 
-// IANA time zone for coordinates. Online: Open-Meteo (rounded position). Offline: a UTC offset from
-// longitude, flagged as approximate so the UI can ask the user to confirm.
-export async function timezoneFor(lat, lng) {
+// IANA time zone for coordinates. Online: Open-Meteo (rounded position), with one retry when it is
+// busy. Otherwise the bundled zone table: exact for single-zone countries, the nearest zone's city
+// elsewhere (flagged approximate so the UI can ask the user to confirm).
+const tzCache = new Map();
+export async function timezoneFor(lat, lng, cc = null) {
+  const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  if (tzCache.has(key)) return tzCache.get(key);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const j = await fetchJson(`https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}&timezone=auto&forecast_days=1`, 6000);
+      if (j.timezone && j.timezone !== "GMT") {
+        const res = { tz: j.timezone, approximate: false };
+        tzCache.set(key, res);
+        return res;
+      }
+      break;
+    } catch (e) {
+      if (attempt === 0 && /HTTP (429|5\d\d)/.test(e.message)) await new Promise((r) => setTimeout(r, 900));
+      else break;
+    }
+  }
+  return guessTimeZone(lat, lng, cc);
+}
+
+export async function guessTimeZone(lat, lng, cc = null) {
   try {
-    const j = await fetchJson(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}&timezone=auto&forecast_days=1`,
-      6000
-    );
-    if (j.timezone && j.timezone !== "GMT") return { tz: j.timezone, approximate: false };
+    const { ZONES } = await import("./tzdata.js");
+    const all = ZONES.split(";").map((r) => {
+      const [c, la, lo, tz] = r.split(",");
+      return { cc: c, lat: Number(la), lng: Number(lo), tz };
+    });
+    const same = cc ? all.filter((z) => z.cc === String(cc).toUpperCase()) : [];
+    // Never a zone whose clock is far from the sun's (e.g. across the date line).
+    const solar = lng / 15;
+    const pool = (same.length ? same : all).filter((z) => same.length === 1 || Math.abs(tzOffsetMinutes(Date.now(), z.tz) / 60 - solar) <= 3);
+    let best = null;
+    let bestKm = Infinity;
+    for (const z of pool) {
+      const d = distanceKm({ lat, lng }, z);
+      if (d < bestKm) [best, bestKm] = [z, d];
+    }
+    // One zone for the whole country is the answer; otherwise the nearest zone city is a good guess.
+    if (best && (same.length || bestKm < 1000)) return { tz: best.tz, approximate: same.length !== 1 };
   } catch {
-    /* offline */
+    /* table unavailable */
   }
   const off = Math.round(lng / 15);
   return { tz: off === 0 ? "UTC" : `Etc/GMT${off > 0 ? "-" : "+"}${Math.abs(off)}`, approximate: true };
