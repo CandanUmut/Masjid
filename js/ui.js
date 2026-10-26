@@ -6,7 +6,12 @@ export function h(tag, attrs, ...children) {
     for (const [k, v] of Object.entries(attrs)) {
       if (v == null || v === false) continue;
       if (k === "class") node.className = v;
-      else if (k === "style" && typeof v === "object") Object.assign(node.style, v);
+      else if (k === "style" && typeof v === "object") {
+        for (const [prop, val] of Object.entries(v)) {
+          if (prop.startsWith("--")) node.style.setProperty(prop, val);
+          else node.style[prop] = val;
+        }
+      }
       else if (k.startsWith("on") && typeof v === "function") node.addEventListener(k.slice(2), v);
       else if (k === "html") node.innerHTML = v;
       else if (k in node && typeof v !== "string") node[k] = v;
@@ -153,7 +158,17 @@ let toastHost = null;
 export function toast(message, { action, onAction, duration = 3800, tone = "" } = {}) {
   if (!toastHost) {
     toastHost = h("div", { class: "toast-host", role: "status", "aria-live": "polite" });
+    if (typeof toastHost.showPopover === "function") toastHost.setAttribute("popover", "manual");
     document.body.append(toastHost);
+  }
+  // A popover lives in the top layer, so toasts (and their Undo buttons) stay above open sheets.
+  if (toastHost.hasAttribute("popover")) {
+    try {
+      if (toastHost.matches(":popover-open")) toastHost.hidePopover();
+      toastHost.showPopover();
+    } catch {
+      /* ignore */
+    }
   }
   const node = h(
     "div",

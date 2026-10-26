@@ -1,7 +1,7 @@
-import { searchPlaces } from "../geo.js";
+import { searchPlaces, timezoneFor, reverseGeocode } from "../geo.js";
 import { t, lang } from "../i18n.js";
 import { h, icon, openSheet, debounce, select } from "../ui.js";
-import { allTimeZones, deviceTimeZone } from "../time.js";
+import { allTimeZones } from "../time.js";
 import { newId } from "../store.js";
 
 export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
@@ -12,6 +12,7 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
     "aria-label": t("searchCity"),
     autocomplete: "off",
     enterkeyhint: "search",
+    autofocus: true,
   });
   const results = h("div", { class: "list search-results", hidden: true });
   const savedWrap = h("div");
@@ -157,11 +158,62 @@ function placeMenu(ctx, p, anchor, rerender, parentSheet) {
 }
 
 function coordsForm(ctx, parentSheet) {
-  const lat = h("input", { class: "input", type: "text", inputmode: "decimal", placeholder: "41.0082", "aria-label": t("latitude") });
-  const lng = h("input", { class: "input", type: "text", inputmode: "decimal", placeholder: "28.9784", "aria-label": t("longitude") });
+  const lat = h("input", { class: "input", type: "text", inputmode: "decimal", placeholder: "21.4225", "aria-label": t("latitude") });
+  const lng = h("input", { class: "input", type: "text", inputmode: "decimal", placeholder: "39.8262", "aria-label": t("longitude") });
   const name = h("input", { class: "input", type: "text", placeholder: t("addressPh"), "aria-label": t("masjidName") });
-  let tz = deviceTimeZone();
   const err = h("p", { class: "form-error", hidden: true });
+  // Time zone comes from the coordinates (never the device). Offline we can only guess, so we ask.
+  let tz = null;
+  const tzWrap = h("label", { class: "field", hidden: true });
+  const goBtn = h("button", { class: "btn btn-primary btn-block", type: "button", onclick: submit }, t("go"));
+
+  async function submit() {
+    const la = Number(String(lat.value).replace(",", "."));
+    const lo = Number(String(lng.value).replace(",", "."));
+    if (lat.value === "" || lng.value === "" || !Number.isFinite(la) || !Number.isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180) {
+      err.textContent = t("invalidCoords");
+      err.hidden = false;
+      return;
+    }
+    err.hidden = true;
+    if (!tz) {
+      goBtn.disabled = true;
+      goBtn.replaceChildren(h("span", { class: "spinner spinner--light" }), t("timezone") + "…");
+      const res = await timezoneFor(la, lo);
+      goBtn.disabled = false;
+      goBtn.replaceChildren(t("go"));
+      tz = res.tz;
+      if (res.approximate) {
+        // Let the user confirm the guess before we compute anything with it.
+        tzWrap.replaceChildren(
+          h("span", {}, t("timezone")),
+          select(tz, [{ value: tz, label: `${tz} (${t("approximate")})` }].concat(allTimeZones().map((z) => ({ value: z, label: z.replace(/_/g, " ") }))), (v) => (tz = v)),
+          h("small", { class: "field-hint" }, t("tzConfirm"))
+        );
+        tzWrap.hidden = false;
+        return;
+      }
+    }
+    let info = { name: "", sub: "", cc: null };
+    try {
+      info = await reverseGeocode(la, lo, lang());
+    } catch {
+      /* offline: fine */
+    }
+    ctx.addPlace(
+      { id: newId(), kind: "city", name: name.value.trim() || info.name || `${la.toFixed(3)}, ${lo.toFixed(3)}`, sub: info.sub || tz.replace(/_/g, " "), lat: la, lng: lo, tz, cc: info.cc },
+      { activate: true }
+    );
+    sheet.close();
+    parentSheet.close();
+  }
+  const reset = () => {
+    tz = null;
+    tzWrap.hidden = true;
+  };
+  lat.addEventListener("input", reset);
+  lng.addEventListener("input", reset);
+
   const sheet = openSheet({
     title: t("enterCoords"),
     content: [
@@ -169,28 +221,9 @@ function coordsForm(ctx, parentSheet) {
         h("label", { class: "field" }, h("span", {}, t("latitude")), lat),
         h("label", { class: "field" }, h("span", {}, t("longitude")), lng)),
       h("label", { class: "field" }, h("span", {}, t("masjidName")), name),
-      h("label", { class: "field" }, h("span", {}, t("timezone")),
-        select(tz, allTimeZones().map((z) => ({ value: z, label: z.replace(/_/g, " ") })), (v) => (tz = v))),
+      tzWrap,
       err,
     ],
-    actions: h("button", {
-      class: "btn btn-primary btn-block",
-      type: "button",
-      onclick: () => {
-        const la = Number(String(lat.value).replace(",", "."));
-        const lo = Number(String(lng.value).replace(",", "."));
-        if (!Number.isFinite(la) || !Number.isFinite(lo) || Math.abs(la) > 90 || Math.abs(lo) > 180 || lat.value === "" || lng.value === "") {
-          err.textContent = t("invalidCoords");
-          err.hidden = false;
-          return;
-        }
-        ctx.addPlace(
-          { id: newId(), kind: "city", name: name.value.trim() || `${la.toFixed(3)}, ${lo.toFixed(3)}`, sub: tz.replace(/_/g, " "), lat: la, lng: lo, tz, cc: null },
-          { activate: true }
-        );
-        sheet.close();
-        parentSheet.close();
-      },
-    }, t("go")),
+    actions: goBtn,
   });
 }

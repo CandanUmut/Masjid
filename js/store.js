@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS = {
   clock: "auto", // auto | 12 | 24
   extras: { imsak: false, sunrise: true, duha: false, midnight: false, lastThird: false },
   hijriOffset: 0,
+  tracker: true,
   calc: { ...DEFAULT_CALC },
   notify: { enabled: false, before: 0, iqama: false },
 };

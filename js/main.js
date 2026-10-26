@@ -87,8 +87,10 @@ function update(fn, { render: doRender = true, relayout = false } = {}) {
   fn(state);
   save(state);
   applyAppearance();
-  if (relayout) layout();
-  else if (doRender) render();
+  if (relayout) {
+    layout();
+    refreshGpsName();
+  } else if (doRender) render();
 }
 
 function activate(id) {
@@ -96,6 +98,14 @@ function activate(id) {
 }
 
 function addPlace(place, { activate: act = false, silent = false } = {}) {
+  // The same city picked twice: just switch to the one we already have.
+  if (place.kind === "city") {
+    const dup = state.places.find((p) => p.kind === "city" && p.id !== place.id && distanceKm(p, place) < 2);
+    if (dup) {
+      if (act) activate(dup.id);
+      return;
+    }
+  }
   const idx = state.places.findIndex((p) => p.id === place.id);
   const existed = idx >= 0;
   update((s) => {
@@ -128,32 +138,37 @@ function removePlace(id) {
 
 // --- Location -------------------------------------------------------------------
 async function useGps({ interactive = false } = {}) {
-  if (state.activeId !== "gps") update((s) => (s.activeId = "gps"));
   if (app.locating) return;
   if (!geoSupported()) {
     app.gpsError = "unsupported";
+    if (interactive) toast(t("locationFailed"), { tone: "warn" });
     render();
     return;
   }
+  // Only switch to "My location" right away if we have a previous fix to show meanwhile;
+  // otherwise keep the current place until a fix actually arrives.
+  if (state.gps && state.activeId !== "gps") update((s) => (s.activeId = "gps"));
   app.locating = true;
   app.gpsError = null;
-  renderTopbar();
-  if (!state.gps) render();
+  if (!activePlace()) render();
+  else renderTopbar();
   try {
     const pos = await getPosition();
     app.lastGpsAt = Date.now();
     const prev = state.gps;
     const moved = prev ? distanceKm(prev, pos) : Infinity;
     const keepName = prev && moved < 3;
+    app.locating = false;
     update((s) => {
       s.gps = { ...pos, name: keepName ? prev.name : "", sub: keepName ? prev.sub : "", cc: keepName ? prev.cc : null, at: Date.now() };
+      s.activeId = "gps";
       s.onboarded = true;
     });
     if (!keepName) {
       try {
         const info = await reverseGeocode(pos.lat, pos.lng, lang());
         update((s) => {
-          if (s.gps && s.gps.lat === pos.lat && s.gps.lng === pos.lng) Object.assign(s.gps, info);
+          if (s.gps && s.gps.lat === pos.lat && s.gps.lng === pos.lng) Object.assign(s.gps, info, { nameLang: lang() });
         }, { render: state.activeId === "gps" });
         if (prev && moved > 30 && state.activeId === "gps") toast(t("travelling", { p: info.name || t("myLocation") }));
       } catch {
@@ -161,16 +176,26 @@ async function useGps({ interactive = false } = {}) {
       }
     }
   } catch (err) {
+    app.locating = false;
     app.gpsError = err.code || "error";
-    if (interactive || !state.gps) {
-      const msg = { denied: "locationDenied", timeout: "locationTimeout" }[app.gpsError] || "locationUnavailable";
-      if (state.gps || app.gpsError !== "denied") toast(t(msg), { tone: "warn", duration: 5000 });
+    if (interactive || state.gps) {
+      const key = app.gpsError === "denied" ? "locationDenied" : state.gps ? (app.gpsError === "timeout" ? "locationTimeout" : "locationUnavailable") : "locationFailed";
+      if (activePlace() || app.gpsError !== "denied") toast(t(key), { tone: "warn", duration: 6000 });
     }
     render();
   } finally {
     app.locating = false;
     renderTopbar();
   }
+}
+
+// Place names come back in the UI language; refresh the GPS name when the language changes.
+function refreshGpsName() {
+  const g = state.gps;
+  if (!g || g.nameLang === lang()) return;
+  reverseGeocode(g.lat, g.lng, lang())
+    .then((info) => update((s) => s.gps && Object.assign(s.gps, info, { nameLang: lang() }), { render: state.activeId === "gps" }))
+    .catch(() => {});
 }
 
 async function maybeRefreshGps() {
@@ -289,16 +314,37 @@ function renderTopbar() {
   );
 }
 
+const VERSE = "إِنَّ الصَّلَاةَ كَانَتْ عَلَى الْمُؤْمِنِينَ كِتَابًا مَّوْقُوتًا";
+
 function renderOnboarding() {
   const denied = app.gpsError === "denied";
+  const failed = app.gpsError && !denied;
   const unsupported = app.gpsError === "unsupported";
+  const arc = "M14 150 Q170 -34 326 150";
+  const at = (u) => {
+    const x = (1 - u) ** 2 * 14 + 2 * (1 - u) * u * 170 + u * u * 326;
+    const y = (1 - u) ** 2 * 150 + 2 * (1 - u) * u * -34 + u * u * 150;
+    return `cx="${x.toFixed(1)}" cy="${y.toFixed(1)}"`;
+  };
   return h(
     "div",
     { class: "view onboarding" },
-    h("div", { class: "onb-art", "aria-hidden": "true" }, icon("mosque")),
+    h("div", {
+      class: "onb-sky",
+      "aria-hidden": "true",
+      html: `<svg viewBox="0 0 340 170">
+        <line x1="0" y1="150" x2="340" y2="150" class="onb-horizon"/>
+        <path d="${arc}" class="onb-arc"/>
+        <circle ${at(0)} r="3.5" class="onb-dot"/><circle ${at(0.5)} r="3.5" class="onb-dot"/>
+        <circle ${at(0.72)} r="3.5" class="onb-dot"/><circle ${at(1)} r="3.5" class="onb-dot"/>
+        <circle r="11" class="onb-sun"><animateMotion dur="12s" repeatCount="indefinite" path="${arc}"/></circle>
+      </svg>`,
+    }),
+    h("p", { class: "onb-verse", lang: "ar", dir: "rtl" }, VERSE),
+    h("p", { class: "onb-verse-tr" }, lang() === "ar" ? t("verseRef") : `“${t("verse")}” — ${t("verseRef")}`),
     h("h1", { class: "onb-title" }, t("welcomeTitle")),
     h("p", { class: "onb-body" }, t("welcomeBody")),
-    denied || unsupported ? h("p", { class: "onb-warn" }, t(unsupported ? "locationUnavailable" : "locationDenied")) : null,
+    denied || failed ? h("p", { class: "onb-warn", role: "alert" }, t(unsupported || failed ? "locationFailed" : "locationDenied")) : null,
     h(
       "div",
       { class: "onb-actions" },
@@ -331,6 +377,7 @@ function render() {
     app.view?.destroy?.();
     app.view = null;
     main.replaceChildren(renderOnboarding());
+    $("#tabbar").hidden = true;
     setPhase("dawn");
     return;
   }

@@ -13,12 +13,13 @@ export function calcEditor(calcIn, place, onChange) {
   }
 
   function render() {
-    const r = place ? resolveCalc(place, calc) : null;
+    // What "Automatic" would pick here, independent of any manual override.
+    const r = place ? resolveCalc(place, { ...calc, method: "auto", madhab: "auto", highLat: "auto" }) : null;
     const autoLabel = r ? t("autoFor", { m: METHODS[r.method]?.name || r.method }) : t("automatic");
     const methodOptions = [{ value: "auto", label: autoLabel }].concat(
       Object.entries(METHODS).map(([id, m]) => ({
         value: id,
-        label: id === "Custom" ? m.name : `${m.name}${m.ishaInterval ? ` (${m.fajr}°, ${m.ishaInterval} ${t("min")})` : ` (${m.fajr}°, ${m.isha}°)`}`,
+        label: id === "Custom" ? m.name : `${m.name} · ${m.fajr}° / ${m.ishaInterval ? `${m.ishaInterval} ${t("min")}` : `${m.isha}°`}`,
       }))
     );
     const madhabAuto = r ? `${t("automatic")} · ${t(r.madhab)}` : t("automatic");

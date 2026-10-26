@@ -4,7 +4,7 @@ import { statusAt, scheduleFor } from "../engine.js";
 import { todayYmd, formatDate, formatHijri, formatCountdown, partsInTz, timeParts } from "../time.js";
 import { t } from "../i18n.js";
 import { h, icon } from "../ui.js";
-import { phaseOf } from "./today.js";
+import { phaseOf, skyAt } from "./today.js";
 
 export function TvView(ctx) {
   const { place, calc } = ctx;
@@ -52,6 +52,11 @@ export function TvView(ctx) {
     const s = statusAt(place, calc, ymd, now);
     const key = `${ymd.d}|${s.current?.key}|${s.next?.key}|${Boolean(s.pendingIqama)}`;
     root.dataset.phase = phaseOf(s.current?.key);
+    if (p.ss === 0 || !root.style.getPropertyValue("--sky-top")) {
+      const sky = skyAt(place, now);
+      root.style.setProperty("--sky-top", sky.top);
+      root.style.setProperty("--sky-horizon", sky.horizon);
+    }
     if (key !== lastKey) {
       lastKey = key;
       date.textContent = `${formatDate(ymd, ctx.locale, { weekday: "long", day: "numeric", month: "long" })} · ${formatHijri(ymd, ctx.locale, ctx.settings.hijriOffset)}`;

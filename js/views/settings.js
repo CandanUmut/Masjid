@@ -68,6 +68,8 @@ export function SettingsView(ctx) {
         })
       )
     ),
+    h("div", { class: "list" }, row(t("tracker"), toggle(s.tracker !== false, (v) => ctx.update((st) => (st.settings.tracker = v), { render: false }), t("tracker")))),
+    h("p", { class: "list-foot" }, t("trackerHint")),
     h("h3", { class: "list-title" }, t("calcDefaults")),
     calcEditor(s.calc, ctx.gpsOrCityPlace(), (calc) => ctx.update((st) => (st.settings.calc = calc), { render: false })).el,
     h("p", { class: "list-foot" }, t("calcHint"))

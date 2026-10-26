@@ -1,7 +1,7 @@
 // Masjid pages: create/edit, share as link / QR / seed code, and open shared seeds.
 import { PRAYERS, DEFAULT_CALC, resolveCalc, scheduleFor, normalizeCalc } from "../engine.js";
 import { placeToSeed, parseSeed, seedUrl } from "../seed.js";
-import { getPosition, reverseGeocode, searchPlaces } from "../geo.js";
+import { getPosition, reverseGeocode, searchPlaces, timezoneFor } from "../geo.js";
 import { t, lang } from "../i18n.js";
 import { h, icon, openSheet, segmented, stepper, select, toast, copyText, debounce } from "../ui.js";
 import { allTimeZones, deviceTimeZone, todayYmd, formatTime, timeParts } from "../time.js";
@@ -101,6 +101,20 @@ export function openMasjidEditor(ctx, existing = null) {
     h("div", { class: "form-grid" }, h("label", { class: "field" }, h("span", {}, t("latitude")), latIn), h("label", { class: "field" }, h("span", {}, t("longitude")), lngIn)),
     h("label", { class: "field" }, h("span", {}, t("timezone")), tzSel)
   );
+  // Typed coordinates: look up their real time zone and country (never assume the device's).
+  const lookupCoords = debounce(async (la, lo) => {
+    const res = await timezoneFor(la, lo);
+    if (draft.lat !== la || draft.lng !== lo) return;
+    draft.tz = res.tz;
+    try {
+      draft.cc = (await reverseGeocode(la, lo, lang())).cc;
+    } catch {
+      /* offline */
+    }
+    renderLoc(false);
+    renderPreview();
+    calcBox.refresh();
+  }, 600);
   const onCoords = () => {
     const la = Number(latIn.value.replace(",", "."));
     const lo = Number(lngIn.value.replace(",", "."));
@@ -110,6 +124,7 @@ export function openMasjidEditor(ctx, existing = null) {
       renderLoc(false);
       renderPreview();
       calcBox.refresh();
+      lookupCoords(la, lo);
     }
   };
   latIn.addEventListener("input", onCoords);
@@ -451,6 +466,7 @@ export async function openShareSheet(ctx, place) {
             )
           : null,
         copyBtn(url, t("copyLink")),
+        place.kind === "masjid" ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => printPoster(place, qr) }, icon("print"), t("poster")) : null,
         ctx.openDisplay ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => { sheet.close(); ctx.openDisplay(place, seed); } }, icon("tv"), t("tvMode")) : null
       ),
       h("h3", { class: "list-title" }, t("seed")),
@@ -460,6 +476,29 @@ export async function openShareSheet(ctx, place) {
     ],
   });
   return sheet;
+}
+
+// A one-page poster for the masjid entrance: name, big QR, one line of instruction.
+function printPoster(place, qr) {
+  const poster = h(
+    "div",
+    { class: "poster" },
+    h("div", { class: "poster-mark", "aria-hidden": "true" }, icon("mosque")),
+    h("h1", {}, place.name),
+    place.sub ? h("p", { class: "poster-sub" }, place.sub) : null,
+    h("div", { class: "poster-qr", html: qr.createSvgTag({ cellSize: 8, margin: 2, scalable: true }) }),
+    h("p", { class: "poster-cta" }, t("posterCta")),
+    h("p", { class: "poster-fine" }, t("posterFine"))
+  );
+  document.body.append(poster);
+  document.body.classList.add("is-printing-poster");
+  const done = () => {
+    document.body.classList.remove("is-printing-poster");
+    poster.remove();
+    window.removeEventListener("afterprint", done);
+  };
+  window.addEventListener("afterprint", done);
+  window.print();
 }
 
 // --- Open a seed --------------------------------------------------------------------------

@@ -34,11 +34,14 @@ export function getPosition({ timeout = 12000, maximumAge = 5 * 60 * 1000 } = {}
 
 const REV_KEY = "masjid.revgeo.v1";
 
+// Only a position rounded to 2 decimals (~1 km) is ever sent.
 export async function reverseGeocode(lat, lng, lang = "en") {
-  const key = `${lat.toFixed(2)},${lng.toFixed(2)},${lang}`;
+  const rl = lat.toFixed(2);
+  const rg = lng.toFixed(2);
+  const key = `${rl},${rg},${lang}`;
   const cache = readJson(REV_KEY, {});
   if (cache[key]) return cache[key];
-  const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=${encodeURIComponent(lang)}`;
+  const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${rl}&longitude=${rg}&localityLanguage=${encodeURIComponent(lang)}`;
   const j = await fetchJson(url, 6000);
   const name = j.city || j.locality || j.principalSubdivision || "";
   const out = {
@@ -66,6 +69,22 @@ export async function searchPlaces(q, lang = "en") {
     tz: r.timezone || "UTC",
     cc: r.country_code || null,
   }));
+}
+
+// IANA time zone for coordinates. Online: Open-Meteo (rounded position). Offline: a UTC offset from
+// longitude, flagged as approximate so the UI can ask the user to confirm.
+export async function timezoneFor(lat, lng) {
+  try {
+    const j = await fetchJson(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}&timezone=auto&forecast_days=1`,
+      6000
+    );
+    if (j.timezone && j.timezone !== "GMT") return { tz: j.timezone, approximate: false };
+  } catch {
+    /* offline */
+  }
+  const off = Math.round(lng / 15);
+  return { tz: off === 0 ? "UTC" : `Etc/GMT${off > 0 ? "-" : "+"}${Math.abs(off)}`, approximate: true };
 }
 
 export function distanceKm(a, b) {
