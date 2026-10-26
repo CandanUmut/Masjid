@@ -1,6 +1,6 @@
 // Offline support: every app file is precached, so the app (and prayer times) work with no network.
-// Bump VERSION whenever any file changes; the app then offers a one-tap reload.
-const VERSION = "2.5.0";
+// Bump VERSION whenever any file changes; installed copies update themselves.
+const VERSION = "2.5.2";
 const CACHE = `masjid-${VERSION}`;
 const FILES = [
   "./",
@@ -43,8 +43,15 @@ const FILES = [
   "./assets/fonts/newsreader-latin-ext-600-normal.woff2",
 ];
 
+// A new version takes over as soon as it's downloaded (the page reloads itself at a quiet moment),
+// so nobody stays stuck on an old copy with bugs that are already fixed.
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: "reload" })))));
+  event.waitUntil(
+    caches
+      .open(CACHE)
+      .then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: "reload" }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (event) => {

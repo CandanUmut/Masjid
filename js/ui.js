@@ -91,6 +91,7 @@ export function icon(name, cls = "") {
 // Track the visible area so sheets (and their search results) always sit above the keyboard.
 // Only while a text field inside a sheet is focused — otherwise Safari's toolbar collapsing during a
 // scroll would also look like a "keyboard" and nudge sheets around.
+let syncViewport = () => {};
 if (typeof window !== "undefined" && window.visualViewport) {
   const vv = window.visualViewport;
   const root = document.documentElement;
@@ -110,6 +111,7 @@ if (typeof window !== "undefined" && window.visualViewport) {
     }
     root.classList.toggle("has-keyboard", kb > 80);
   };
+  syncViewport = sync;
   vv.addEventListener("resize", sync);
   // The keyboard animates in and out: check again once it has settled.
   const later = () => {
@@ -199,6 +201,8 @@ export function openSheet({ title, subtitle, content, actions, className = "", o
     onClose?.();
   });
   attachSwipeToClose(dlg, close);
+  // Measure afresh as every sheet opens: nothing left over from an earlier keyboard can size it.
+  syncViewport();
   document.body.append(dlg);
   dlg.showModal();
   // The page behind a sheet stays put.

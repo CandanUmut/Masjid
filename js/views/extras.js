@@ -93,29 +93,25 @@ function setupPwa() {
   navigator.serviceWorker
     .register("./sw.js")
     .then((reg) => {
-      const offerUpdate = (worker) =>
-        toast(t("updateReady"), {
-          action: t("reload"),
-          duration: 15000,
-          onAction: () => worker.postMessage({ type: "SKIP_WAITING" }),
-        });
-      if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
-      reg.addEventListener("updatefound", () => {
-        const w = reg.installing;
-        w?.addEventListener("statechange", () => {
-          if (w.state === "installed" && navigator.serviceWorker.controller) offerUpdate(w);
-        });
-      });
+      // Look for a new version now and then, and whenever the app comes back to the foreground.
       setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") reg.update().catch(() => {});
+      });
     })
     .catch(() => {});
-  // Reload only when an *existing* worker is replaced (an update), never on the very first install.
+  // A new version took over: reload into it, but never while someone is in the middle of something
+  // (a sheet or editor open). Not on the very first install either.
   const hadController = Boolean(navigator.serviceWorker.controller);
-  let reloading = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (reloading || !hadController) return;
-    reloading = true;
+  let pending = false;
+  const reloadWhenQuiet = () => {
+    if (document.querySelector("dialog[open]")) return setTimeout(reloadWhenQuiet, 1500);
     location.reload();
+  };
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (pending || !hadController) return;
+    pending = true;
+    reloadWhenQuiet();
   });
 }
 
