@@ -2,7 +2,7 @@ import { t, LANGS } from "../i18n.js";
 import { h, icon, select, segmented, toggle, stepper } from "../ui.js";
 import { calcEditor, row } from "./calc-editor.js";
 
-export const APP_VERSION = "2.3.1";
+export const APP_VERSION = "2.4.0";
 
 export function SettingsView(ctx) {
   const s = ctx.state.settings;

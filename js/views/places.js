@@ -256,7 +256,7 @@ export function placeOptions(ctx, place, { closeParent, onRemoved } = {}) {
     content: h(
       "div",
       { class: "list" },
-      isMasjid && ctx.editMasjid ? item("edit", t("editMasjid"), () => ctx.editMasjid(place)) : null,
+      isMasjid && ctx.editMasjid ? item("edit", place.fromLink ? t("editCopy") : t("editMasjid"), () => ctx.editMasjid(place)) : null,
       !isMasjid ? item("edit", t("rename"), () => renamePlace(ctx, place)) : null,
       ctx.shareMasjid ? item("share", t("share"), () => ctx.shareMasjid(place)) : null,
       isMasjid && ctx.openDisplay ? item("tv", t("tvMode"), () => ctx.openDisplay(place)) : null,

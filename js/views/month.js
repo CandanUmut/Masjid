@@ -23,7 +23,10 @@ export function MonthView(ctx) {
     const off = ctx.settings.hijriOffset;
     const h1 = formatHijriMonth({ ...ym, d: 1 }, ctx.locale, off);
     const h2 = formatHijriMonth({ ...ym, d: n }, ctx.locale, off);
-    const hijriRange = h1 === h2 ? h1 : `${h1} – ${h2}`;
+    // "Rabi II – Jumada I 1448 AH": the year once when both months share it.
+    const sameYear = hijriParts({ ...ym, d: 1 }, off)?.y === hijriParts({ ...ym, d: n }, off)?.y;
+    const h1Short = sameYear ? formatHijriMonth({ ...ym, d: 1 }, ctx.locale, off, { year: false }) : h1;
+    const hijriRange = h1 === h2 ? h1 : `${h1Short} – ${h2}`;
     const hasIqama = Boolean(place.iqama || place.jumuah?.length);
     const rows = [];
     for (let d = 1; d <= n; d++) {

@@ -165,6 +165,8 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
       lngIn.value = String(draft.lng);
     }
     tzSel.value = draft.tz;
+    // With a location set, moving the masjid is a rare act: a quiet button, not a call to action.
+    useHereBtn.className = hasLoc() ? "btn btn-plain btn-sm" : "btn btn-tinted";
   }
 
   const useHereBtn = h(
@@ -267,7 +269,7 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
   const calcBox = calcEditor(draft.calc, { get lat() { return draft.lat || 0; }, get lng() { return draft.lng || 0; }, get tz() { return draft.tz; }, get cc() { return draft.cc; } }, (c) => {
     draft.calc = c;
     renderPreview();
-  });
+  }, { adjHint: "adjustmentsHintMasjid" });
 
   // Iqama rules — each row shows what its rule gives today, so admins see the effect immediately.
   const iqamaList = h("div", { class: "list" });
@@ -375,7 +377,22 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
 
   const monthNames = Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat(ctx.locale, { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2001, i, 1))));
 
-  // A seasonal change: "From [day] [month], every year → rule".
+  // Periods are shown as ranges ("1 Apr – 31 Oct"), so it's clear which rule covers which part of the year.
+  const dayMonth = (mmdd) => {
+    const [m, d] = mmdd.split("-").map(Number);
+    return new Intl.DateTimeFormat(ctx.locale, { day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2001, m - 1, d)));
+  };
+  const dayBefore = (mmdd) => {
+    const [m, d] = mmdd.split("-").map(Number);
+    const x = new Date(Date.UTC(2001, m - 1, d - 1));
+    return `${String(x.getUTCMonth() + 1).padStart(2, "0")}-${String(x.getUTCDate()).padStart(2, "0")}`;
+  };
+  const until = (rule, i) => {
+    const next = rule.changes?.[i + 1];
+    return dayMonth(next ? dayBefore(next.from) : "12-31");
+  };
+
+  // A seasonal change: "From [day] [month] – [until], every year → rule".
   function changeRow(p, rule, c, i) {
     const setFrom = (m, d) => {
       const days = new Date(Date.UTC(2001, m, 0)).getUTCDate();
@@ -390,9 +407,9 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
       h(
         "div",
         { class: "iqama-change-head" },
-        h("span", { class: "iqama-change-from" }, t("fromLabel")),
-        select(cd, Array.from({ length: 31 }, (_, k) => ({ value: k + 1, label: String(k + 1) })), (v) => setFrom(cm, Number(v)), { class: "select select-compact", "aria-label": t("day") }),
-        select(cm, monthNames.map((n, k) => ({ value: k + 1, label: n })), (v) => setFrom(Number(v), cd), { class: "select select-compact", "aria-label": t("month") }),
+        select(cd, Array.from({ length: 31 }, (_, k) => ({ value: k + 1, label: String(k + 1) })), (v) => setFrom(cm, Number(v)), { class: "select select-compact", "aria-label": `${t("fromLabel")}: ${t("day")}` }),
+        select(cm, monthNames.map((n, k) => ({ value: k + 1, label: n })), (v) => setFrom(Number(v), cd), { class: "select select-compact select-month", "aria-label": `${t("fromLabel")}: ${t("month")}` }),
+        h("span", { class: "iqama-change-from iqama-until" }, `– ${until(rule, i)}`),
         h("button", { class: "icon-btn icon-btn-sm", type: "button", "aria-label": t("remove"), onclick: () => { rule.changes.splice(i, 1); if (!rule.changes.length) delete rule.changes; renderIqama(); renderPreview(); } }, icon("close"))
       ),
       ...Object.values(ruleSentence(p, c, { onKind: (v) => { convert(p, c, v); renderIqama(); renderPreview(); } })).filter(Boolean)
@@ -422,9 +439,10 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
         if (rule) {
           if (rule.changes?.length) {
             rule.changes.sort((a, b) => a.from.localeCompare(b.from));
-            body.unshift(h("div", { class: "iqama-change-from iqama-base-from" }, t("fromJan1")));
+            body.unshift(h("div", { class: "iqama-change-from iqama-base-from" }, `${dayMonth("01-01")} – ${dayMonth(dayBefore(rule.changes[0].from))}`));
           }
-          if (rule.mode === "fixed" && extra) body.push(extra);
+          // The base rule's own options (minimum gap or rounding) sit right under it, before any periods.
+          if (extra) body.push(rule.mode === "fixed" ? extra : h("div", { class: "iqama-foot" }, extra));
           (rule.changes || []).forEach((c, i) => body.push(changeRow(p, rule, c, i)));
           if ((rule.changes?.length || 0) < 12) {
             addBtn = (
@@ -449,8 +467,25 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
               )
             );
           }
-          // Rounding (for minute rules) and "add a change" share one quiet footer line.
-          body.push(h("div", { class: "iqama-foot" }, rule.mode !== "fixed" ? extra : null, addBtn));
+          // The common case in one tap: a summer rule from April, and back to this one from November.
+          const seasonsBtn = !rule.changes?.length
+            ? h(
+                "button",
+                {
+                  class: "btn btn-plain btn-sm iqama-add-change",
+                  type: "button",
+                  onclick: () => {
+                    const base = { ...rule };
+                    rule.changes = [{ ...base, from: "04-01" }, { ...base, from: "11-01" }];
+                    renderIqama();
+                    renderPreview();
+                  },
+                },
+                icon("sun"),
+                t("summerWinter")
+              )
+            : null;
+          if (addBtn || seasonsBtn) body.push(h("div", { class: "iqama-foot iqama-foot-add" }, addBtn, seasonsBtn));
         }
         return h("div", { class: "row iqama-row" }, h("div", { class: "iqama-top" }, h("span", { class: "iqama-prayer" }, t(p)), ruleResult[p]), ...body.filter(Boolean));
       })
@@ -485,6 +520,7 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
     confirmClose: { when: () => !saved && JSON.stringify(draft) !== initial },
     content: [
       preview,
+      existing?.fromLink ? h("p", { class: "editor-note" }, icon("info"), t("copyNote")) : null,
       h("h3", { class: "list-title" }, t("masjid")),
       h("div", { class: "form-card" }, h("label", { class: "field" }, h("span", {}, t("masjidName")), nameInput), h("label", { class: "field" }, h("span", {}, t("address")), subInput)),
       h("h3", { class: "list-title" }, t("location")),
@@ -497,16 +533,22 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
         searchResults,
         coordsBox
       ),
-      h("h3", { class: "list-title" }, t("calcForMasjid")),
-      calcBox.el,
-      h("p", { class: "list-foot" }, t("calcForMasjidHint")),
       h("h3", { class: "list-title" }, t("iqamaTimes")),
       iqamaList,
       h("p", { class: "list-foot" }, t("seasonalHint")),
       h("h3", { class: "list-title" }, t("jumuahTimes")),
       h("div", { class: "form-card" }, jumuahWrap),
+      h("p", { class: "list-foot" }, t("jumuahHint")),
       h("h3", { class: "list-title" }, t("note")),
       h("div", { class: "form-card" }, noteInput),
+      // Most masjids never touch this: the automatic method is right for their country.
+      h(
+        "details",
+        { class: "coords-details calc-details" },
+        h("summary", {}, t("calcForMasjid")),
+        h("p", { class: "list-foot calc-details-hint" }, t("calcForMasjidHint")),
+        calcBox.el
+      ),
       err,
     ],
     actions: [
@@ -532,8 +574,12 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
             const unchanged = existing && JSON.stringify(draft) === initial;
             place.u = unchanged && existing.u ? existing.u : Math.floor(Date.now() / 1000);
             saved = true;
-            if (!unchanged) ctx.addPlace(place, { activate: true });
-            else ctx.activate(place.id);
+            if (unchanged) ctx.activate(place.id);
+            else if (existing && !existing.fromLink) {
+              // The link *is* the data: anything shared before still shows the old times.
+              ctx.addPlace(place, { activate: true, silent: true });
+              toast(t("savedChanged"), { action: t("shareNewLink"), duration: 9000, onAction: () => openShareSheet(currentCtx(), place) });
+            } else ctx.addPlace(place, { activate: true });
             sheet.forceClose();
             // A brand-new masjid is meant to be shared; an edit just saves.
             if (!existing) setTimeout(() => openShareSheet(ctx, place), 260);
@@ -587,7 +633,7 @@ function weekPreview(ctx, place) {
             h("th", { scope: "row" }, i === 0 ? t("today") : formatDate(ymd, ctx.locale, { weekday: "short", day: "numeric" })),
             PRAYERS.map((p) => {
               const r = s.rows.find((x) => x.key === p || (p === "dhuhr" && x.key === "jumuah"));
-              return h("td", {}, short(r?.iqama?.at || null));
+              return h("td", {}, short(r?.iqama?.at || null), r?.key === "jumuah" ? h("small", { class: "week-k" }, t("khutbah")) : null);
             })
           );
         })
@@ -632,9 +678,9 @@ export async function openShareSheet(ctx, place) {
         "div",
         { class: "share-hero" },
         qrBox,
+        h("div", { class: "share-scan" }, t("scanToOpen")),
         h("div", { class: "share-name" }, place.name),
         place.sub ? h("div", { class: "share-sub" }, place.sub) : null,
-        h("div", { class: "share-scan" }, t("scanToOpen")),
         place.iqama ? h("p", { class: "share-allyear" }, icon("calendar"), t("shareAllYear")) : null
       ),
       h(
@@ -680,7 +726,9 @@ function printPoster(place, qr) {
     place.sub ? h("p", { class: "poster-sub" }, place.sub) : null,
     h("div", { class: "poster-qr", html: qr.createSvgTag({ cellSize: 8, margin: 4, scalable: true }) }),
     h("p", { class: "poster-cta" }, t("posterCta")),
-    h("p", { class: "poster-fine" }, t("posterFine"))
+    h("p", { class: "poster-fine" }, t("posterFine")),
+    // Which version of the timetable this QR carries; reprint after changing times.
+    place.u ? h("p", { class: "poster-fine" }, t("updatedOn", { d: new Date(place.u * 1000).toLocaleDateString(currentCtx().locale, { day: "numeric", month: "long", year: "numeric" }) })) : null
   );
   document.body.append(poster);
   document.body.classList.add("is-printing-poster");
@@ -750,14 +798,15 @@ export async function importSeed(ctx, text, { allowBackup = false, silent = fals
   if (existing && (existing.u || 0) > incoming.u) {
     ctx.activate(existing.id);
     if (!silent)
-      toast(t("olderLink", { d: new Date(existing.u * 1000).toLocaleDateString(ctx.locale) }), {
+      toast(t("olderLink", { d: new Date(existing.u * 1000).toLocaleString(ctx.locale, { dateStyle: "medium", timeStyle: "short" }) }), {
         action: t("useAnyway"),
         duration: 8000,
         onAction: () => ctx.addPlace({ ...incoming, u: nowS }, { activate: true }),
       });
     return true;
   }
-  const place = { ...incoming, id: incoming.id || newId() };
+  // Remember that this copy came from someone else's link (kept on this device only, never shared).
+  const place = { ...incoming, id: incoming.id || newId(), fromLink: existing ? Boolean(existing.fromLink) : true };
   if (existing && !silent) {
     const previous = structuredClone(existing);
     ctx.addPlace(place, { activate: true, silent: true });
@@ -796,7 +845,8 @@ function masjidCard(ctx, place) {
     h(
       "div",
       { class: "masjid-card-actions" },
-      h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openMasjidEditor(ctx, place) }, icon("edit"), t("edit")),
+      // A congregant's copy: editing is still possible from "…", but it isn't the main action.
+      place.fromLink ? null : h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openMasjidEditor(ctx, place) }, icon("edit"), t("edit")),
       h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openShareSheet(ctx, place) }, icon("share"), t("share")),
       ctx.openDisplay ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.openDisplay(place) }, icon("tv"), t("tvShort")) : null
     )

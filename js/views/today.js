@@ -203,14 +203,16 @@ export function TodayView(ctx) {
     const cur = s.current;
     const next = s.next;
     const ramadan = hijriParts(ymd, ctx.settings.hijriOffset)?.m === 9;
-    const iqAt = (r) => (r?.iqama ? ` · ${t("iqamaAt", { t: ctx.fmt(r.iqama.at) })}` : "");
+    // A Jumu'ah time is when the khutbah starts, and is called that everywhere.
+    const iqAt = (r) => (r?.iqama ? ` · ${r.key === "jumuah" ? `${t("khutbah")} ${ctx.fmt(r.iqama.at)}` : t("iqamaAt", { t: ctx.fmt(r.iqama.at) })}` : "");
     let target = next?.adhan;
     if (s.pendingIqama) {
       // On a masjid page, between adhan and iqama: count down to the congregation.
       target = s.pendingIqama;
-      eyebrow.textContent = t("iqamaStartsIn");
+      const jumuah = cur.key === "jumuah";
+      eyebrow.textContent = jumuah ? t("khutbahIn") : t("iqamaStartsIn");
       title.textContent = t(cur.key);
-      sub.textContent = `${t("adhan")} ${ctx.fmt(cur.adhan)} · ${t("iqama")} ${ctx.fmt(s.pendingIqama)}`;
+      sub.textContent = `${t("adhan")} ${ctx.fmt(cur.adhan)} · ${t(jumuah ? "khutbah" : "iqama")} ${ctx.fmt(s.pendingIqama)}`;
     } else if (next?.key === "sunrise") {
       // Sunrise isn't a prayer: what matters before it is how long Fajr lasts.
       eyebrow.textContent = t("endsIn");
@@ -247,7 +249,7 @@ export function TodayView(ctx) {
     const sched = scheduleFor(place, calc, ymd);
     const isToday = viewOffset === 0;
     dateTitle.textContent = isToday
-      ? `${t("today")} · ${formatDate(ymd, ctx.locale, { weekday: "long", day: "numeric", month: "long" })}`
+      ? `${place.tz !== ctx.deviceTz && ymdKey(ymd) !== ymdKey(todayYmd(ctx.deviceTz)) ? t("todayThere") : t("today")} · ${formatDate(ymd, ctx.locale, { weekday: "long", day: "numeric", month: "long" })}`
       : formatDate(ymd, ctx.locale, { weekday: "long", day: "numeric", month: "long", year: base.y === ymd.y ? undefined : "numeric" });
     dateHijri.textContent = isToday ? formatHijri(ymd, ctx.locale, ctx.settings.hijriOffset) : `${formatHijri(ymd, ctx.locale, ctx.settings.hijriOffset)} · ${t("backToToday")}`;
     dateBtn.disabled = isToday;
@@ -291,7 +293,7 @@ export function TodayView(ctx) {
       const nextC = colors.slice(i + 1).find(Boolean) || c;
       const style = c ? { "--node": c, "--node-next": nextC } : {};
       let subText = null;
-      if (r.jumuah?.length > 1) subText = `${t("jumuah")} · ${r.jumuah.slice(1).map((d) => ctx.fmt(d)).join(" · ")}`;
+      if (r.key === "jumuah") subText = [t("khutbah"), ...r.jumuah.slice(1).map((d) => t("alsoAt", { t: ctx.fmt(d) }))].join(" · ");
       else if (r.key === "dhuhr" && sched.isFriday) subText = t("jumuah");
       list.append(
         h(
@@ -328,7 +330,6 @@ export function TodayView(ctx) {
       ...[
         h("a", { href: "#/settings", class: "meta-link" }, t("methodNote", { m: mName, a: t(`${r.madhab}Short`) }) + (adjusted ? ` · ${t("adjusted")}` : "")),
         place.kind === "masjid" && place.u ? h("span", {}, t("updatedOn", { d: new Date(place.u * 1000).toLocaleDateString(ctx.locale, { day: "numeric", month: "short", year: "numeric" }) })) : null,
-        place.tz !== ctx.deviceTz ? h("span", { class: "tz-chip" }, icon("globe"), t("localTimeAt", { p: place.tz.split("/").pop().replace(/_/g, " "), t: ctx.fmt(new Date()) })) : null,
       ].filter(Boolean)
     );
   }

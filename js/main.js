@@ -299,6 +299,17 @@ function renderTabbar() {
   );
 }
 
+// Under the place name. In another time zone it also says what time it is there, right where the
+// eye lands, so a traveller never wonders which clock the prayer times are on.
+function topbarSub(place) {
+  if (app.locating) return t("locating");
+  const isGps = place.id === "gps";
+  const base = isGps ? t("located") : place.kind === "masjid" ? place.sub || t("masjid") : place.sub;
+  if (place.tz === deviceTimeZone()) return base;
+  const now = formatTime(new Date(), place.tz, { hour12: hour12(), locale: lang() });
+  return [t("localNow", { t: now }), base].filter(Boolean).join(" · ");
+}
+
 function renderTopbar() {
   const bar = $("#topbar");
   if (!bar) return;
@@ -308,7 +319,7 @@ function renderTopbar() {
   if (bar.hidden) return;
   const isGps = place.id === "gps";
   const label = place.name || t("myLocation");
-  const sub = app.locating ? t("locating") : isGps ? t("located") : place.kind === "masjid" ? place.sub || t("masjid") : place.sub;
+  const sub = topbarSub(place);
   const actions = plugins.flatMap((p) => p.topbarActions?.(makeCtx()) || []);
   bar.replaceChildren(
     h(
@@ -362,15 +373,17 @@ function renderOnboarding() {
     h(
       "div",
       { class: "onb-actions" },
+      // When location is blocked, searching is the way forward, so it becomes the main button.
+      denied ? h("button", { class: "btn btn-primary btn-large", type: "button", onclick: () => openPlacesSheet(makeCtx(), { focusSearch: true }) }, icon("search"), t("searchCity")) : null,
       !unsupported
         ? h(
             "button",
-            { class: "btn btn-primary btn-large", type: "button", disabled: app.locating, onclick: () => useGps({ interactive: true }) },
-            app.locating ? h("span", { class: "spinner spinner--light" }) : icon("location"),
+            { class: `btn ${denied ? "btn-tinted" : "btn-primary"} btn-large`, type: "button", disabled: app.locating, onclick: () => useGps({ interactive: true }) },
+            app.locating ? h("span", { class: `spinner ${denied ? "" : "spinner--light"}` }) : icon("location"),
             app.locating ? t("locating") : t("allowLocation")
           )
         : null,
-      h("button", { class: "btn btn-tinted btn-large", type: "button", onclick: () => openPlacesSheet(makeCtx(), { focusSearch: true }) }, icon("search"), t("searchCity")),
+      denied ? null : h("button", { class: "btn btn-tinted btn-large", type: "button", onclick: () => openPlacesSheet(makeCtx(), { focusSearch: true }) }, icon("search"), t("searchCity")),
       ...plugins.flatMap((p) => p.onboardingActions?.(makeCtx()) || [])
     ),
     h("p", { class: "onb-privacy" }, icon("lock"), t("privacyNote")),
@@ -415,6 +428,12 @@ function render() {
 // --- Boot --------------------------------------------------------------------------
 function tick() {
   app.view?.tick?.();
+  const place = activePlace();
+  const subEl = document.querySelector("#topbar .place-chip-sub");
+  if (place && subEl && place.tz !== deviceTimeZone()) {
+    const text = topbarSub(place);
+    if (subEl.textContent !== text) subEl.textContent = text;
+  }
   for (const p of plugins) p.tick?.();
 }
 

@@ -44,7 +44,7 @@ export function SkyChart(place) {
     </svg>`;
     // The day's highest sun, labelled with its real altitude.
     if (peak.alt > 0) {
-      el.append(h("span", { class: "sky-peak", style: { left: `${xOf(peak.ms)}%`, top: `${yOf(peak.alt)}%` } }, `${Math.round(peak.alt)}°`));
+      el.append(h("span", { class: "sky-peak", style: { left: `${xOf(peak.ms)}%`, top: `${yOf(peak.alt)}%` } }, t("peakAlt", { d: Math.round(peak.alt) })));
     }
     markers = [];
     for (const r of sched.rows) {

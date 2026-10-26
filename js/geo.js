@@ -119,7 +119,11 @@ async function searchAddresses(query, lang, { near = null, worship = false } = {
         .join(", ");
       const [lng, lat] = f.geometry.coordinates;
       // OSM's place_of_worship covers every faith; only names that say "mosque" get the mosque treatment.
-      const mosque = p.osm_value === "mosque" || (p.osm_value === "place_of_worship" && MOSQUE_NAME.test(name));
+      // A building or landmark named "… Camii" is a mosque too (often tagged as tourism/historic in OSM).
+      const mosque =
+        p.osm_value === "mosque" ||
+        (p.osm_value === "place_of_worship" && MOSQUE_NAME.test(name)) ||
+        (Boolean(p.name) && !["highway", "place", "boundary", "railway", "shop", "office"].includes(p.osm_key) && MOSQUE_NAME.test(p.name));
       return { name, sub: area, lat: round(lat, 5), lng: round(lng, 5), tz: null, cc: p.countrycode || null, type: mosque ? "mosque" : "address" };
     })
     .filter((x) => x.name);
@@ -142,14 +146,23 @@ export async function searchPlaces(q, lang = "en", near = null) {
   // "Fatih Camii": also ask for places of worship named "Fatih", which finds the mosque itself.
   const mosqueName = MOSQUE_WORD.test(query) ? query.replace(MOSQUE_WORD, " ").replace(/\s+/g, " ").trim() : "";
   MOSQUE_WORD.lastIndex = 0;
-  const [cities, addresses, mosques] = await Promise.allSettled([
-    searchCities(query, lang),
+  const cityP = searchCities(query, lang);
+  const [addresses, mosques] = await Promise.allSettled([
     query.length >= 3 ? searchAddresses(query, lang, { near }) : Promise.resolve([]),
     mosqueName.length >= 2 ? searchAddresses(mosqueName, lang, { near, worship: true }) : Promise.resolve([]),
   ]);
+  // Never wait long for one slow provider: once addresses are in, cities get a short grace period.
+  const haveAddresses = addresses.status === "fulfilled" && addresses.value.length > 0;
+  const [cities] = await Promise.allSettled([haveAddresses ? Promise.race([cityP, new Promise((r) => setTimeout(() => r([]), 1500))]) : cityP]);
   if (cities.status === "rejected" && addresses.status === "rejected") throw cities.reason;
   const c = cities.status === "fulfilled" ? cities.value : [];
-  const a = [...(mosques.status === "fulfilled" ? mosques.value.filter((m) => m.type === "mosque") : []), ...(addresses.status === "fulfilled" ? addresses.value : [])];
+  // Mosques: nearby ones first (within ~30 km, closest first), then the rest in relevance order.
+  const m = mosques.status === "fulfilled" ? mosques.value.filter((x) => x.type === "mosque") : [];
+  if (near) {
+    const d = (x) => distanceKm(near, x);
+    m.sort((x, y) => (d(x) < 30 ? d(x) : 1e6) - (d(y) < 30 ? d(y) : 1e6));
+  }
+  const a = [...m, ...(addresses.status === "fulfilled" ? addresses.value : [])];
   const looksLikeAddress = /\d/.test(query) || query.includes(",") || ADDRESS_WORD.test(query);
   const ordered = looksLikeAddress ? [...a, ...c] : [...c.filter((x) => x.exact), ...a.slice(0, 3), ...c.filter((x) => !x.exact), ...a.slice(3)];
   const out = [];
@@ -157,7 +170,9 @@ export async function searchPlaces(q, lang = "en", near = null) {
     // Same place twice, or many things registered at one address (shops, radio stations…): keep one.
     const dup = (y) =>
       (norm(x.name) === norm(y.name) && (distanceKm(x, y) < 0.3 || (x.sub && x.sub === y.sub))) ||
-      (x.type !== "city" && y.type !== "city" && x.sub && x.sub === y.sub && distanceKm(x, y) < 0.05);
+      (x.type !== "city" && y.type !== "city" && x.sub && x.sub === y.sub && distanceKm(x, y) < 0.05) ||
+      // One building, two names ("Blue Mosque" / "Sultanahmet Camii")
+      (x.type === "mosque" && y.type === "mosque" && distanceKm(x, y) < 0.15);
     if (out.some(dup)) continue;
     out.push(x);
     if (out.length >= 10) break;

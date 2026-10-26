@@ -241,7 +241,10 @@ function attachSwipeToClose(dlg, close) {
 
 // --- Toasts -------------------------------------------------------------
 let toastHost = null;
+let dismissCurrent = null;
 export function toast(message, { action, onAction, duration = 3800, tone = "" } = {}) {
+  // One at a time: a new message replaces the old one instead of stacking over the screen.
+  dismissCurrent?.();
   if (!toastHost) {
     toastHost = h("div", { class: "toast-host", role: "status", "aria-live": "polite" });
     if (typeof toastHost.showPopover === "function") toastHost.setAttribute("popover", "manual");
@@ -269,9 +272,11 @@ export function toast(message, { action, onAction, duration = 3800, tone = "" } 
   const timer = setTimeout(dismiss, duration);
   function dismiss() {
     clearTimeout(timer);
+    if (dismissCurrent === dismiss) dismissCurrent = null;
     node.classList.remove("is-in");
     setTimeout(() => node.remove(), 250);
   }
+  dismissCurrent = dismiss;
   return dismiss;
 }
 

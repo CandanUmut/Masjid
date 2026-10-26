@@ -26,7 +26,7 @@ export function QiblaView(ctx) {
   }
   // Cardinal letters stay upright (no rotated "E"/"W").
   const card = [["N", 100, 34], ["E", 166, 100], ["S", 100, 166], ["W", 34, 100]]
-    .map(([c, x, y]) => `<text x="${x}" y="${y}" class="${c === "N" ? "q-dir-n" : "q-dir"}" text-anchor="middle" dominant-baseline="central">${c}</text>`)
+    .map(([c, x, y]) => `<text x="${x}" y="${y}" class="${c === "N" ? "q-dir-n" : "q-dir"}" text-anchor="middle" dominant-baseline="central">${t(`dir${c}`)}</text>`)
     .join("");
   // Where the sun is right now: with it on the dial you can find the Qibla without any compass.
   const now = new Date();
