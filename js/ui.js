@@ -255,6 +255,50 @@ export function stepper(value, { min = -60, max = 60, step = 1, format = (v) => 
   );
 }
 
+// Minutes you can type *or* nudge: [−] [ 120 ] min [+], with a "2 h" hint for long values.
+export function minutesInput(value, { min = 0, max = 300, step = 5, onChange, label = "", unit = "min", hours = (h, m) => `${h} h${m ? ` ${m}` : ""}` }) {
+  let v = value;
+  const hint = h("span", { class: "minutes-hint" });
+  const input = h("input", {
+    class: "minutes-field",
+    type: "text",
+    inputmode: "numeric",
+    pattern: "[0-9]*",
+    value: String(v),
+    "aria-label": label,
+    onfocus: (e) => e.target.select(),
+    oninput: (e) => {
+      const n = parseInt(e.target.value.replace(/\D/g, ""), 10);
+      if (Number.isFinite(n)) commit(n, false);
+    },
+    onblur: () => (input.value = String(v)),
+    onkeydown: (e) => {
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        commit(v + (e.key === "ArrowUp" ? 1 : -1));
+      }
+    },
+  });
+  function showHint() {
+    hint.textContent = v >= 60 ? `= ${hours(Math.floor(v / 60), v % 60)}` : "";
+  }
+  function commit(n, syncField = true) {
+    v = Math.min(max, Math.max(min, Math.round(n)));
+    if (syncField) input.value = String(v);
+    showHint();
+    onChange(v);
+  }
+  showHint();
+  return h(
+    "div",
+    { class: "minutes-input", role: "group", "aria-label": label },
+    h("button", { type: "button", class: "stepper-btn", "aria-label": `${label} −`, ...repeatable(() => commit(Math.ceil(v / step) * step - step)) }, icon("minus")),
+    h("label", { class: "minutes-box" }, input, h("span", { class: "minutes-unit" }, unit)),
+    h("button", { type: "button", class: "stepper-btn", "aria-label": `${label} +`, ...repeatable(() => commit(Math.floor(v / step) * step + step)) }, icon("plus")),
+    hint
+  );
+}
+
 // Click once to step; press and hold to keep stepping (speeding up), like iOS steppers.
 function repeatable(fn) {
   let timer = null;

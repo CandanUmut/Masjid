@@ -84,3 +84,10 @@ test("seasonal iqama changes survive a seed round trip", async () => {
   // Junk dates are dropped, not trusted.
   assert.equal(unpackIqama("@19:30~1399@20:00").fajr.changes, undefined);
 });
+
+test("'before next prayer' rules and long offsets round-trip", () => {
+  const u = unpackIqama(packIqama({ fajr: { mode: "before", offset: 45, round: 0 }, dhuhr: { mode: "before", offset: 40, round: 5 }, asr: { mode: "offset", offset: 120, round: 0 } }));
+  assert.deepEqual(u.fajr, { mode: "before", offset: 45, round: 0 });
+  assert.deepEqual(u.dhuhr, { mode: "before", offset: 40, round: 5 });
+  assert.deepEqual(u.asr, { mode: "offset", offset: 120, round: 0 });
+});

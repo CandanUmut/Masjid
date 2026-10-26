@@ -191,7 +191,11 @@ export function activeRule(rule, ymd) {
   return active;
 }
 
-export function iqamaFor(prayer, adhan, ruleIn, ymd, tz) {
+// What "before the next prayer" means for each prayer: the moment its time ends.
+export const IQAMA_END = { fajr: "sunrise", dhuhr: "asr", asr: "maghrib", maghrib: "isha", isha: "midnight" };
+
+// `end` is when the prayer's time ends (needed for "before" rules).
+export function iqamaFor(prayer, adhan, ruleIn, ymd, tz, end = null) {
   const rule = activeRule(ruleIn, ymd);
   if (!rule || !adhan) return null;
   if (rule.mode === "fixed") {
@@ -203,13 +207,19 @@ export function iqamaFor(prayer, adhan, ruleIn, ymd, tz) {
     if (at.getTime() < earliest) return { at: new Date(earliest), clamped: true };
     return { at, clamped: false };
   }
-  const off = clampInt(rule.offset, 0, 180);
-  let ms = adhan.getTime() + off * 60000;
-  const step = [5, 10, 15].includes(Number(rule.round)) ? Number(rule.round) : 0;
-  if (step) {
-    const stepMs = step * 60000;
-    ms = Math.ceil(ms / stepMs) * stepMs;
+  const off = clampInt(rule.offset, 0, 300);
+  const step = [5, 10, 15].includes(Number(rule.round)) ? Number(rule.round) * 60000 : 0;
+  if (rule.mode === "before") {
+    // e.g. "40 min before Asr": counted back from the end of the prayer's time, rounded *down*
+    // so it never drifts later than asked. It can never be earlier than the adhan itself.
+    if (!end) return null;
+    let ms = end.getTime() - off * 60000;
+    if (step) ms = Math.floor(ms / step) * step;
+    if (ms < adhan.getTime()) return { at: new Date(adhan.getTime()), clamped: true };
+    return { at: new Date(ms), clamped: false };
   }
+  let ms = adhan.getTime() + off * 60000;
+  if (step) ms = Math.ceil(ms / step) * step;
   return { at: new Date(ms), clamped: false };
 }
 
@@ -229,7 +239,7 @@ export function scheduleFor(place, calc, ymd) {
         .map((hm) => zonedToInstant(ymd, hm.hh, hm.mm, place.tz));
       row.iqama = row.jumuah[0] ? { at: row.jumuah[0], clamped: false } : null;
     } else if (row.isPrayer && place.iqama) {
-      row.iqama = iqamaFor(key, adhan, place.iqama[key], ymd, place.tz);
+      row.iqama = iqamaFor(key, adhan, place.iqama[key], ymd, place.tz, day.times[IQAMA_END[key]]);
     }
     rows.push(row);
   }

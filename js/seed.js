@@ -12,19 +12,20 @@ const MADHAB = { auto: "a", shafi: "s", hanafi: "h" };
 const MADHAB_R = Object.fromEntries(Object.entries(MADHAB).map(([k, v]) => [v, k]));
 
 // --- iqama rules <-> "+10|+10r5|@13:30|" ---------------------------------------------
-// One rule: "+10", "+10r5" (offset, rounded up to 5) or "@20:15", "@20:15>10" (fixed, ≥10 min after adhan).
+// One rule: "+10", "+10r5" (after adhan, rounded up to 5), "-40", "-40r5" (before the next prayer, rounded
+// down) or "@20:15", "@20:15>10" (fixed, ≥10 min after adhan).
 // Seasonal changes follow as "~MMDD<rule>", e.g. "@19:30~0329@21:00~1025@19:30".
 function ruleStr(r) {
   if (!r) return "";
   if (r.mode === "fixed") return parseHHMM(r.time) ? `@${r.time}${r.min ? `>${Math.min(120, Math.max(0, Math.round(r.min)))}` : ""}` : "";
-  const off = Math.max(0, Math.min(180, Math.round(Number(r.offset) || 0)));
-  return `+${off}${r.round ? `r${r.round}` : ""}`;
+  const off = Math.max(0, Math.min(300, Math.round(Number(r.offset) || 0)));
+  return `${r.mode === "before" ? "-" : "+"}${off}${r.round ? `r${r.round}` : ""}`;
 }
 
 function parseRule(v) {
   let m;
   if ((m = /^@(\d{1,2}:\d{2})(?:>(\d{1,3}))?$/.exec(v)) && parseHHMM(m[1])) return { mode: "fixed", time: m[1], min: m[2] ? Math.min(120, Number(m[2])) : 0 };
-  if ((m = /^\+(\d{1,3})(?:r(5|10|15))?$/.exec(v))) return { mode: "offset", offset: Math.min(180, Number(m[1])), round: m[2] ? Number(m[2]) : 0 };
+  if ((m = /^([+-])(\d{1,3})(?:r(5|10|15))?$/.exec(v))) return { mode: m[1] === "-" ? "before" : "offset", offset: Math.min(300, Number(m[2])), round: m[3] ? Number(m[3]) : 0 };
   return null;
 }
 
