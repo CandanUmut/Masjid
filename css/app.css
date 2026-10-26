@@ -3428,40 +3428,27 @@ body.is-scrolled .topbar {
 }
 
 @media (max-width: 899px) {
-  /* Docked tab bar (iOS style) instead of a pill floating over content. */
+  /* Floating glass tab bar. It may float over content while scrolling, but Today measures itself
+     against the bar's top edge (TodayView.fit) so the prayer times are never underneath it. */
   .tabbar {
-    left: 0;
-    right: 0;
-    bottom: 0;
-    transform: none;
-    justify-content: space-around;
-    gap: 0;
-    padding: 6px 8px calc(var(--safe-bottom) + 4px);
-    border-radius: 0;
-    border: 0;
-    border-top: 0.5px solid var(--sep);
-    box-shadow: none;
+    bottom: calc(var(--safe-bottom) + 10px);
+    padding: 5px;
+    gap: 2px;
   }
   .tab {
-    flex: 1;
-    min-width: 0;
-    padding: 4px 0 2px;
-    border-radius: 10px;
+    min-width: 66px;
+    padding: 6px 10px 5px;
     font-size: 10.5px;
-    font-weight: 500;
-  }
-  .tab.is-active {
-    background: transparent;
   }
   .tab .icon {
-    width: 26px;
-    height: 26px;
+    width: 24px;
+    height: 24px;
   }
   .app {
-    padding-bottom: calc(var(--safe-bottom) + 76px);
+    padding-bottom: calc(var(--safe-bottom) + 92px);
   }
   .toast-host {
-    bottom: calc(var(--safe-bottom) + 72px);
+    bottom: calc(var(--safe-bottom) + 84px);
   }
 
   /* Compact top bar */
@@ -3755,10 +3742,14 @@ body.is-scrolled .topbar {
   inset: -4px;
 }
 
-/* Tab bar: solid enough that content never reads through it */
+/* Tab bar glass: frosted enough that text passing underneath never competes with the labels */
 @media (max-width: 899px) {
   .tabbar {
-    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    background: color-mix(in srgb, var(--surface) 72%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(28px);
+    backdrop-filter: saturate(180%) blur(28px);
+    border: 0.5px solid color-mix(in srgb, var(--label) 10%, transparent);
+    box-shadow: 0 10px 34px -8px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.06);
   }
 }
 
@@ -3847,5 +3838,23 @@ body.is-scrolled .topbar {
   }
   .view-today.fit-4 .timeline {
     padding-block: 0;
+  }
+}
+@media (max-width: 899px) {
+  .tabbar {
+    background: color-mix(in srgb, var(--surface) 86%, transparent);
+  }
+  /* Content softly fades out under the floating bar instead of colliding with its labels.
+     The fade only covers the strip the bar itself occupies, so it never dims a prayer row. */
+  body:not(.is-chromeless)::after {
+    content: "";
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(var(--safe-bottom) + 66px);
+    z-index: 25;
+    pointer-events: none;
+    background: linear-gradient(to bottom, color-mix(in srgb, var(--bg) 0%, transparent), var(--bg) 70%);
   }
 }
