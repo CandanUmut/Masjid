@@ -56,19 +56,42 @@ export async function reverseGeocode(lat, lng, lang = "en") {
   return out;
 }
 
+// City search. People type names in their own language ("Londra", "Kahire", "Nueva York"), so we ask in
+// the UI language, the device language and English, merge, and rank: exact name first, then by size.
 export async function searchPlaces(q, lang = "en") {
   const query = String(q || "").trim();
   if (query.length < 2) return [];
-  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=8&language=${encodeURIComponent(lang)}&format=json`;
-  const j = await fetchJson(url, 8000);
-  return (j.results || []).map((r) => ({
-    name: r.name,
-    sub: [r.admin1, r.country].filter(Boolean).join(", "),
-    lat: round(r.latitude, 5),
-    lng: round(r.longitude, 5),
-    tz: r.timezone || "UTC",
-    cc: r.country_code || null,
-  }));
+  const device = String(navigator.language || "en").slice(0, 2).toLowerCase();
+  const langs = [...new Set([lang, device, "en"])].slice(0, 3);
+  const responses = await Promise.allSettled(
+    langs.map((l) =>
+      fetchJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=10&language=${encodeURIComponent(l)}&format=json`, 8000)
+    )
+  );
+  if (responses.every((r) => r.status === "rejected")) throw responses[0].reason;
+  const norm = (x) => String(x || "").toLocaleLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/ı/g, "i");
+  const nq = norm(query);
+  const byId = new Map();
+  responses.forEach((r, i) => {
+    if (r.status !== "fulfilled") return;
+    for (const p of r.value.results || []) {
+      const prev = byId.get(p.id);
+      // Keep the name in the UI language when we have it (the first response).
+      if (!prev) byId.set(p.id, { p, exact: norm(p.name) === nq, prefix: norm(p.name).startsWith(nq), first: i });
+      else if (norm(p.name) === nq) prev.exact = true;
+    }
+  });
+  return [...byId.values()]
+    .sort((a, b) => b.exact - a.exact || b.prefix - a.prefix || (b.p.population || 0) - (a.p.population || 0))
+    .slice(0, 8)
+    .map(({ p: r }) => ({
+      name: r.name,
+      sub: [r.admin1, r.country].filter(Boolean).join(", "),
+      lat: round(r.latitude, 5),
+      lng: round(r.longitude, 5),
+      tz: r.timezone || "UTC",
+      cc: r.country_code || null,
+    }));
 }
 
 // IANA time zone for coordinates. Online: Open-Meteo (rounded position). Offline: a UTC offset from

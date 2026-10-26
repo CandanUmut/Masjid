@@ -1,4 +1,4 @@
-import { searchPlaces, timezoneFor, reverseGeocode } from "../geo.js";
+import { searchPlaces, timezoneFor, reverseGeocode, distanceKm } from "../geo.js";
 import { t, lang } from "../i18n.js";
 import { h, icon, openSheet, debounce, select } from "../ui.js";
 import { allTimeZones, todayYmd, formatTime } from "../time.js";
@@ -13,14 +13,15 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
     "aria-label": t("searchCity"),
     autocomplete: "off",
     enterkeyhint: "search",
-    autofocus: true,
   });
+  // Clear (×) button, like a native search field.
+  const clearBtn = h("button", { class: "search-clear", type: "button", hidden: true, "aria-label": t("clear"), onclick: () => { input.value = ""; clearBtn.hidden = true; run(); input.focus(); } }, icon("close"));
   const results = h("div", { class: "list search-results", hidden: true });
   const savedWrap = h("div");
   const sheet = openSheet({
     title: t("places"),
     content: [
-      h("div", { class: "search-field" }, icon("search"), input),
+      h("div", { class: "search-field" }, icon("search"), input, clearBtn),
       results,
       savedWrap,
     ],
@@ -37,7 +38,7 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
     }
     results.hidden = false;
     savedWrap.hidden = true;
-    results.replaceChildren(h("div", { class: "row row-muted" }, h("span", { class: "spinner" }), t("searchCity") + "…"));
+    results.replaceChildren(h("div", { class: "row row-muted" }, h("span", { class: "spinner" }), t("searching")));
     try {
       const found = await searchPlaces(q, lang());
       if (mine !== seq) return;
@@ -51,8 +52,9 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
               class: "row row-btn",
               type: "button",
               onclick: () => {
-                const place = { id: newId(), kind: "city", ...f };
-                ctx.addPlace(place, { activate: true });
+                const gps = ctx.state.gps;
+                if (gps && distanceKm(gps, f) < 10) ctx.activate("gps");
+                else ctx.addPlace({ id: newId(), kind: "city", ...f }, { activate: true });
                 sheet.close();
               },
             },
@@ -66,7 +68,18 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
       results.replaceChildren(h("div", { class: "row row-muted" }, t("searchOffline")));
     }
   }, 280);
-  input.addEventListener("input", run);
+  input.addEventListener("input", () => {
+    clearBtn.hidden = !input.value;
+    run();
+  });
+  // Enter picks the first match, like a native search field.
+  input.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const first = results.querySelector(".row-btn");
+    if (first) first.click();
+    else run();
+  });
 
   function renderSaved() {
     const st = ctx.state;

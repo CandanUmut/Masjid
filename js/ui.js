@@ -84,6 +84,22 @@ export function icon(name, cls = "") {
   return span;
 }
 
+// --- Keyboard awareness ----------------------------------------------------
+// On phones the on-screen keyboard covers the bottom of the layout viewport, where sheets live.
+// Track the visible area so sheets (and their search results) always sit above the keyboard.
+if (typeof window !== "undefined" && window.visualViewport) {
+  const vv = window.visualViewport;
+  const sync = () => {
+    const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    document.documentElement.style.setProperty("--kb", `${kb}px`);
+    document.documentElement.style.setProperty("--vvh", `${vv.height}px`);
+    document.documentElement.classList.toggle("has-keyboard", kb > 80);
+  };
+  vv.addEventListener("resize", sync);
+  vv.addEventListener("scroll", sync);
+  sync();
+}
+
 // --- Sheets -------------------------------------------------------------
 // A sheet is a native <dialog> styled as an iOS bottom sheet. Returns { el, close, body }.
 export function openSheet({ title, content, actions, className = "", onClose, beforeClose, wide = false } = {}) {

@@ -137,8 +137,8 @@ export function TodayView(ctx) {
   const root = h(
     "div",
     { class: "view view-today" },
-    h("div", { class: "today-hero-col" }, ...[hero, note].filter(Boolean)),
-    h("div", { class: "today-list-col" }, ...[timelineCard, masjidCard, meta].filter(Boolean))
+    h("div", { class: "today-hero-col" }, hero),
+    h("div", { class: "today-list-col" }, ...[timelineCard, note, masjidCard, meta].filter(Boolean))
   );
 
   let lastStatus = null;
@@ -147,6 +147,7 @@ export function TodayView(ctx) {
   function setOffset(n) {
     viewOffset = Math.max(-366, Math.min(366, n));
     renderList();
+    refit();
   }
 
   let sx = null;
@@ -292,19 +293,36 @@ export function TodayView(ctx) {
       const fill = mixRgb(c.top, c.horizon, 0.55);
       return { fill, ink: luminance(fill) > 0.42 ? "#10131f" : "#fff" };
     };
+    // After midnight but before Fajr, last night's Isha is still the current prayer: show it on top,
+    // markable, instead of leaving the screen with no current row.
+    if (isToday && status?.current?.day === -1 && status.current.isPrayer) {
+      rows.unshift({ ...status.current, carry: true });
+    }
     const colors = rows.map(paint);
     list.replaceChildren();
+    if (tracking && isToday && showHint()) {
+      list.append(
+        h(
+          "div",
+          { class: "tl-hint" },
+          icon("check"),
+          h("span", {}, t("trackerTip")),
+          h("button", { class: "icon-btn icon-btn-sm", type: "button", "aria-label": t("close"), onclick: hideHint }, icon("close"))
+        )
+      );
+    }
     if (hasIqama) {
       list.append(h("div", { class: "tl-head", "aria-hidden": "true" }, h("span"), h("span", { class: "tl-time" }, t("adhan")), h("span", { class: "tl-time" }, t("iqama"))));
     }
     rows.forEach((r, i) => {
-      const isCurrent = isToday && status?.current?.day === 0 && status.current.key === r.key && !r.extra;
+      const isCurrent = r.carry || (isToday && status?.current?.day === 0 && status.current.key === r.key && !r.extra);
+      const rowDay = r.carry ? ymdKey(addDays(ymd, -1)) : dayKey;
       const passed = (viewOffset < 0 || (isToday && r.adhan && r.adhan.getTime() <= now)) && !isCurrent;
       const future = viewOffset > 0 || (isToday && (!r.adhan || r.adhan.getTime() > now));
       const c = colors[i];
       const nextC = colors.slice(i + 1).find(Boolean) || c;
       const canTrack = tracking && r.isPrayer && !r.extra && !future;
-      const done = canTrack && isPrayed(dayKey, slot(r.key));
+      const done = canTrack && isPrayed(rowDay, slot(r.key));
       const missed = canTrack && passed && !done;
       const label = t(r.key);
       const style = c ? { "--node": c.fill, "--node-next": nextC.fill, "--node-ink": c.ink } : {};
@@ -320,7 +338,8 @@ export function TodayView(ctx) {
               onclick: (e) => {
                 const btn = e.currentTarget;
                 const on = !btn.classList.contains("is-done");
-                setPrayed(dayKey, slot(r.key), on);
+                setPrayed(rowDay, slot(r.key), on);
+                hideHint();
                 btn.classList.toggle("is-done", on);
                 btn.setAttribute("aria-pressed", String(on));
                 const row = btn.closest(".tl-row");
@@ -336,6 +355,7 @@ export function TodayView(ctx) {
 
       let subText = null;
       if (r.jumuah?.length > 1) subText = `${t("jumuah")} · ${r.jumuah.slice(1).map((d) => ctx.fmt(d)).join(" · ")}`;
+      else if (r.carry) subText = t("lastNight");
       else if (isCurrent && status?.next) subText = t("untilNext", { t: ctx.fmt(status.next.adhan) });
       else if (r.key === "dhuhr" && sched.isFriday) subText = t("jumuah");
 
@@ -353,7 +373,7 @@ export function TodayView(ctx) {
             "span",
             { class: "tl-name" },
             h("span", { class: "tl-title" }, h("span", { class: "tl-title-text" }, label), lang() !== "ar" && ARABIC[r.key] && !r.extra ? h("span", { class: "tl-ar", lang: "ar", dir: "rtl" }, ARABIC[r.key]) : null),
-            subText ? h("small", { class: "tl-sub" }, subText) : null
+            subText ? h("small", { class: `tl-sub ${isCurrent && !r.carry && !r.jumuah ? "tl-sub-until" : ""}` }, subText) : null
           ),
           h("span", { class: "tl-time tl-adhan" }, ctx.fmt(r.adhan)),
           hasIqama
@@ -379,6 +399,43 @@ export function TodayView(ctx) {
     );
   }
 
+  function showHint() {
+    try {
+      return !localStorage.getItem("masjid.hint.tracker");
+    } catch {
+      return false;
+    }
+  }
+  function hideHint() {
+    try {
+      localStorage.setItem("masjid.hint.tracker", "1");
+    } catch {
+      /* ignore */
+    }
+    list.querySelector(".tl-hint")?.remove();
+    fit();
+  }
+
+  // Phones: every prayer must be visible on first paint. Measure after layout and tighten step by
+  // step (compact sky → smaller rows → no sun chart) until the last row clears the tab bar.
+  const FIT = ["fit-1", "fit-2", "fit-3", "fit-4"];
+  function fit() {
+    root.classList.remove(...FIT);
+    if (!root.isConnected || innerWidth >= 900) return;
+    const bar = document.getElementById("tabbar");
+    const limit = (bar && !bar.hidden ? bar.getBoundingClientRect().top : innerHeight) + scrollY - 6;
+    const lastRow = () => [...list.querySelectorAll(".tl-row")].pop();
+    for (let i = 0; i <= FIT.length; i++) {
+      if (i) root.classList.add(FIT[i - 1]);
+      const last = lastRow();
+      if (!last || last.getBoundingClientRect().bottom + scrollY <= limit) return;
+    }
+  }
+  const refit = () => requestAnimationFrame(fit);
+  window.addEventListener("resize", refit);
+  window.visualViewport?.addEventListener("resize", refit);
+  document.fonts?.ready?.then(refit);
+
   function key(s) {
     return s ? `${s.current?.key}|${s.current?.day}|${s.next?.adhan?.getTime()}|${Boolean(s.pendingIqama)}` : "";
   }
@@ -386,6 +443,7 @@ export function TodayView(ctx) {
   renderHero();
   renderList();
   lastDayKey = ymdKey(todayYmd(place.tz));
+  setTimeout(refit, 0);
 
   return {
     el: root,
@@ -396,7 +454,12 @@ export function TodayView(ctx) {
       if (key(lastStatus) !== before || dayKey !== lastDayKey) {
         lastDayKey = dayKey;
         renderList();
+        refit();
       }
+    },
+    destroy() {
+      window.removeEventListener("resize", refit);
+      window.visualViewport?.removeEventListener("resize", refit);
     },
   };
 }
