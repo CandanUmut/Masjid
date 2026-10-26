@@ -425,7 +425,7 @@ export async function openShareSheet(ctx, place) {
 
   const canShare = typeof navigator.share === "function";
   const sheet = openSheet({
-    title: t("shareMasjid"),
+    title: place.kind === "masjid" ? t("shareMasjid") : t("share"),
     content: [
       h(
         "div",
