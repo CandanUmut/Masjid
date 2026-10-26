@@ -1,0 +1,12 @@
+{
+  "name": "masjid",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Self-contained prayer & iqama times web app. No build step, no backend.",
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node --test"
+  },
+  "license": "MIT"
+}
