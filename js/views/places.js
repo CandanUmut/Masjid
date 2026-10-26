@@ -18,10 +18,12 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
   const clearBtn = h("button", { class: "search-clear", type: "button", hidden: true, "aria-label": t("clear"), onclick: () => { input.value = ""; clearBtn.hidden = true; run(); input.focus(); } }, icon("close"));
   const results = h("div", { class: "list search-results", hidden: true });
   const savedWrap = h("div");
+  const searchIcon = icon("search");
+  const searchSpin = h("span", { class: "spinner search-spinner", hidden: true });
   const sheet = openSheet({
     title: t("places"),
     content: [
-      h("div", { class: "search-field" }, icon("search"), input, clearBtn),
+      h("div", { class: "search-field" }, searchIcon, searchSpin, input, clearBtn),
       results,
       savedWrap,
     ],
@@ -33,15 +35,26 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
     const mine = ++seq;
     if (q.length < 2) {
       results.hidden = true;
+      results.replaceChildren();
       savedWrap.hidden = false;
+      searchIcon.style.display = "";
+      searchSpin.hidden = true;
       return;
     }
     results.hidden = false;
     savedWrap.hidden = true;
-    results.replaceChildren(h("div", { class: "row row-muted" }, h("span", { class: "spinner" }), t("searching")));
+    // Keep the previous results (dimmed) while the next ones load, so nothing jumps around.
+    const loading = (on) => {
+      results.classList.toggle("is-loading", on);
+      searchIcon.style.display = on ? "none" : "";
+      searchSpin.hidden = !on;
+    };
+    if (!results.querySelector(".row-btn")) results.replaceChildren(h("div", { class: "row row-muted" }, t("searching")));
+    loading(true);
     try {
-      const found = await searchPlaces(q, lang());
+      const found = await searchPlaces(q, lang(), ctx.state.gps || ctx.place);
       if (mine !== seq) return;
+      loading(false);
       results.replaceChildren();
       if (!found.length) results.append(h("div", { class: "row row-muted" }, t("noResults")));
       for (const f of found) {
@@ -76,9 +89,12 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
       }
     } catch {
       if (mine !== seq) return;
+      loading(false);
       results.replaceChildren(h("div", { class: "row row-muted" }, t("searchOffline")));
     }
   }, 280);
+  // Like iOS: the sheet grows to full height once you start searching, and stays there.
+  input.addEventListener("focus", () => sheet.el.classList.add("sheet--search"));
   input.addEventListener("input", () => {
     clearBtn.hidden = !input.value;
     run();
@@ -115,7 +131,9 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
           h("span", { class: "row-sub" }, gps?.name ? [gps.name, gps.sub].filter(Boolean).join(", ") : t("useMyLocation")),
           gps ? glance(ctx, { ...gps, id: "gps" }) : null
         ),
-        st.activeId === "gps" ? icon("check", "row-check") : null
+        st.activeId === "gps" ? icon("check", "row-check") : null,
+        // Same column as the other rows' "…" button, so the check marks line up.
+        st.places.length ? h("span", { class: "row-more-space", "aria-hidden": "true" }) : null
       )
     );
     for (const p of st.places) {
@@ -154,14 +172,15 @@ export function openPlacesSheet(ctx, { focusSearch = false } = {}) {
       h("div", { class: "list" }, rows),
       h(
         "div",
-        { class: "sheet-actions" },
+        { class: "list list-actions" },
         ctx.extraPlaceActions ? ctx.extraPlaceActions(sheet) : null,
-        h("button", { class: "btn btn-plain", type: "button", onclick: () => coordsForm(ctx, sheet) }, icon("globe"), t("enterCoords"))
+        h("button", { class: "row row-btn", type: "button", onclick: () => coordsForm(ctx, sheet) }, icon("globe", "row-icon tone-accent"), h("span", { class: "row-title" }, t("enterCoords")))
       )
     );
   }
   renderSaved();
-  if (focusSearch) setTimeout(() => input.focus(), 250);
+  // With a keyboard and mouse, typing is the next thing; on phones, wait for a tap (no surprise keyboard).
+  if (focusSearch || matchMedia("(hover: hover) and (pointer: fine)").matches) setTimeout(() => input.focus(), 250);
   return sheet;
 }
 
@@ -173,8 +192,8 @@ function mosqueChoice(ctx, place, useHere) {
   };
   const sheet = openSheet({
     title: place.name,
+    subtitle: place.sub,
     content: [
-      place.sub ? h("p", { class: "list-foot" }, place.sub) : null,
       h(
         "div",
         { class: "list" },

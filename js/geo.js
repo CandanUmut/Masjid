@@ -99,9 +99,14 @@ async function searchCities(query, lang) {
 }
 
 // Streets, buildings and masjids (Photon, OpenStreetMap). No time zone in the answer: resolved on pick.
-async function searchAddresses(query, lang) {
+const MOSQUE_NAME = /mosque|masjid|mescid|cami|jami|moschee|mosquée|mezquita|moskee|musalla|islamic|مسجد|جامع|مصلى/i;
+
+// With `near` (rounded to ~10 km) nearby results come first; `worship` limits results to places of worship.
+async function searchAddresses(query, lang, { near = null, worship = false } = {}) {
   const l = ["en", "de", "fr"].includes(lang) ? `&lang=${lang}` : "";
-  const j = await fetchJson(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=8${l}`, 8000);
+  const bias = near ? `&lat=${near.lat.toFixed(1)}&lon=${near.lng.toFixed(1)}` : "";
+  const tag = worship ? "&osm_tag=amenity:place_of_worship" : "";
+  const j = await fetchJson(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=8${l}${bias}${tag}`, 8000);
   return (j.features || [])
     .filter((f) => f.geometry?.coordinates && !["bus_stop", "platform", "station"].includes(f.properties?.osm_value))
     .map((f) => {
@@ -113,24 +118,38 @@ async function searchAddresses(query, lang) {
         .filter(Boolean)
         .join(", ");
       const [lng, lat] = f.geometry.coordinates;
-      const worship = p.osm_value === "place_of_worship" || p.osm_value === "mosque";
-      return { name, sub: area, lat: round(lat, 5), lng: round(lng, 5), tz: null, cc: p.countrycode || null, type: worship ? "mosque" : "address" };
+      // OSM's place_of_worship covers every faith; only names that say "mosque" get the mosque treatment.
+      const mosque = p.osm_value === "mosque" || (p.osm_value === "place_of_worship" && MOSQUE_NAME.test(name));
+      return { name, sub: area, lat: round(lat, 5), lng: round(lng, 5), tz: null, cc: p.countrycode || null, type: mosque ? "mosque" : "address" };
     })
     .filter((x) => x.name);
 }
 
-// One search box for everything: cities first when the query is a city name, addresses and masjids
-// otherwise ("350 5th Ave", "East London Mosque"). Near-duplicates are dropped.
 // Words that mean "this is an address or a building", in the languages people search in.
 const ADDRESS_WORD = /(^|[\s,])(mosque|masjid|mescid|cami|camii|jami|jamia|islamic|street|st\.?|ave\.?|avenue|road|rd\.?|blvd|lane|drive|dr\.?|cad(desi)?\.?|cd\.?|sok(ak|ağı)?\.?|sk\.?|mah(alle(si)?)?\.?|bulvar[ıi]?|rue|strasse|straße|str\.?|calle|via|شارع|مسجد|جامع)(?=$|[\s,])/iu;
 
-export async function searchPlaces(q, lang = "en") {
+const MOSQUE_WORD = /(^|[\s,])(mosque|masjid|mescidi?|camii?|jami|jamia|مسجد|جامع)(?=$|[\s,])/giu;
+
+// One search box for everything: cities first when the query is a city name, addresses and masjids
+// otherwise ("350 5th Ave", "East London Mosque"). Near-duplicates are dropped. Results are cached
+// for the session, so typing back and forth doesn't repeat requests.
+const searchCache = new Map();
+export async function searchPlaces(q, lang = "en", near = null) {
   const query = String(q || "").trim();
   if (query.length < 2) return [];
-  const [cities, addresses] = await Promise.allSettled([searchCities(query, lang), query.length >= 3 ? searchAddresses(query, lang) : Promise.resolve([])]);
+  const cacheKey = `${lang}|${near ? `${near.lat.toFixed(1)},${near.lng.toFixed(1)}` : ""}|${norm(query)}`;
+  if (searchCache.has(cacheKey)) return searchCache.get(cacheKey);
+  // "Fatih Camii": also ask for places of worship named "Fatih", which finds the mosque itself.
+  const mosqueName = MOSQUE_WORD.test(query) ? query.replace(MOSQUE_WORD, " ").replace(/\s+/g, " ").trim() : "";
+  MOSQUE_WORD.lastIndex = 0;
+  const [cities, addresses, mosques] = await Promise.allSettled([
+    searchCities(query, lang),
+    query.length >= 3 ? searchAddresses(query, lang, { near }) : Promise.resolve([]),
+    mosqueName.length >= 2 ? searchAddresses(mosqueName, lang, { near, worship: true }) : Promise.resolve([]),
+  ]);
   if (cities.status === "rejected" && addresses.status === "rejected") throw cities.reason;
   const c = cities.status === "fulfilled" ? cities.value : [];
-  const a = addresses.status === "fulfilled" ? addresses.value : [];
+  const a = [...(mosques.status === "fulfilled" ? mosques.value.filter((m) => m.type === "mosque") : []), ...(addresses.status === "fulfilled" ? addresses.value : [])];
   const looksLikeAddress = /\d/.test(query) || query.includes(",") || ADDRESS_WORD.test(query);
   const ordered = looksLikeAddress ? [...a, ...c] : [...c.filter((x) => x.exact), ...a.slice(0, 3), ...c.filter((x) => !x.exact), ...a.slice(3)];
   const out = [];
@@ -143,6 +162,8 @@ export async function searchPlaces(q, lang = "en") {
     out.push(x);
     if (out.length >= 10) break;
   }
+  if (searchCache.size > 40) searchCache.delete(searchCache.keys().next().value);
+  searchCache.set(cacheKey, out);
   return out;
 }
 

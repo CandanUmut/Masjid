@@ -2,10 +2,10 @@
 // or #/tv/<seed> (a specific masjid — perfect as the start page of a kiosk browser).
 // Designed to be read from the back of a prayer hall: everything scales with the screen, nothing scrolls.
 import { statusAt, scheduleFor } from "../engine.js";
-import { todayYmd, formatDate, formatHijri, formatCountdown, partsInTz, timeParts } from "../time.js";
+import { todayYmd, formatDate, formatHijri, partsInTz, timeParts } from "../time.js";
 import { t } from "../i18n.js";
 import { h, icon } from "../ui.js";
-import { phaseOf, skyAt } from "./today.js";
+import { phaseOf, skyAt, durationNode } from "./today.js";
 import { SkyChart } from "./skychart.js";
 import { placeToSeed, seedUrl } from "../seed.js";
 import qrcode from "../vendor/qrcode.js";
@@ -27,7 +27,12 @@ export function TvView(ctx) {
   const controls = h(
     "div",
     { class: "tv-controls" },
-    h("button", { class: "icon-btn", type: "button", "aria-label": t("close"), onclick: () => { document.fullscreenElement && document.exitFullscreen?.(); ctx.go("today"); } }, icon("close")),
+    h("button", { class: "icon-btn", type: "button", "aria-label": t("close"), onclick: () => {
+          document.fullscreenElement && document.exitFullscreen?.();
+          // Replace the board's history entry, so Back doesn't reopen it.
+          history.replaceState(null, "", `${location.pathname}${location.search}#/today`);
+          ctx.showRoute("today");
+        } }, icon("close")),
     document.fullscreenEnabled
       ? h("button", { class: "icon-btn", type: "button", "aria-label": t("fullscreen"), title: t("fullscreen"), onclick: () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.()) }, icon("tv"))
       : null
@@ -76,6 +81,7 @@ export function TvView(ctx) {
   };
 
   let lastKey = "";
+  let lastSkyMinute = "";
   function render() {
     const now = new Date();
     const ymd = todayYmd(place.tz, now);
@@ -87,7 +93,9 @@ export function TvView(ctx) {
     chart.update(now, { ...s, ymd });
     const key = `${ymd.d}|${s.current?.key}|${s.next?.key}|${Boolean(s.pendingIqama)}`;
     root.dataset.phase = phaseOf(s.current?.key);
-    if (p.ss === 0 || !root.style.getPropertyValue("--sky-top")) {
+    const minuteKey = `${p.hh}:${p.mm}`;
+    if (minuteKey !== lastSkyMinute) {
+      lastSkyMinute = minuteKey;
       const sky = skyAt(place, now);
       root.style.setProperty("--sky-top", sky.top);
       root.style.setProperty("--sky-horizon", sky.horizon);
@@ -116,11 +124,11 @@ export function TvView(ctx) {
 
     // Countdown: always says what it counts to ("Iqama in", "Asr in"), never looks like a clock time.
     if (s.pendingIqama) {
-      nextBox.replaceChildren(h("span", { class: "tv-next-label" }, s.current.key === "jumuah" ? t("khutbahIn") : t("iqamaFor", { p: t(s.current.key) })), h("span", { class: "tv-next-count" }, formatCountdown(s.pendingIqama - now)));
+      nextBox.replaceChildren(h("span", { class: "tv-next-label" }, s.current.key === "jumuah" ? t("khutbahIn") : t("iqamaFor", { p: t(s.current.key) })), h("span", { class: "tv-next-count" }, durationNode(s.pendingIqama - now)));
       root.classList.add("is-iqama");
     } else if (s.next) {
       root.classList.remove("is-iqama");
-      nextBox.replaceChildren(h("span", { class: "tv-next-label" }, t("prayerIn", { p: t(s.next.key) })), h("span", { class: "tv-next-count" }, formatCountdown(s.next.adhan - now)));
+      nextBox.replaceChildren(h("span", { class: "tv-next-label" }, t("prayerIn", { p: t(s.next.key) })), h("span", { class: "tv-next-count" }, durationNode(s.next.adhan - now)));
     }
 
     // "Prayer in progress": from iqama until the congregation is done.

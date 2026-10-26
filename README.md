@@ -28,7 +28,7 @@ Everything is stored in your browser (`localStorage`). There are only a few opti
 | --- | --- | --- |
 | City search | [Open-Meteo geocoding](https://open-meteo.com/en/docs/geocoding-api) | When you type in the search box |
 | Place name for your GPS position | [BigDataCloud reverse geocoding](https://www.bigdatacloud.com/free-api/free-reverse-geocode-to-city-api) | When your location changes by more than about 3 km. Only a position rounded to about 1 km is sent, and results are cached |
-| Address and masjid search | [Photon](https://photon.komoot.io/) (OpenStreetMap data) | When you type in the search box; the time zone of a picked address is then looked up via Open-Meteo |
+| Address and masjid search | [Photon](https://photon.komoot.io/) (OpenStreetMap data) | When you type in the search box. To show nearby results first, your area is sent rounded to about 10 km |
 | Time zone for a picked address or typed coordinates | [Open-Meteo](https://open-meteo.com/) | Position rounded to about 1 km. Offline (or if the service is busy) a built-in zone table is used: exact in single-zone countries; elsewhere the app picks the nearest zone and, for typed coordinates, asks you to confirm |
 
 Prayer times never need the network.

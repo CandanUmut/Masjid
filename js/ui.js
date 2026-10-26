@@ -113,7 +113,7 @@ if (typeof window !== "undefined" && window.visualViewport) {
 // A sheet is a native <dialog> styled as an iOS bottom sheet. Returns { el, close, body }.
 // `confirmClose`: { when: () => boolean } — ask "Discard changes?" (as a sheet, not a browser dialog)
 // before closing by swipe, backdrop, Escape or the close button.
-export function openSheet({ title, content, actions, className = "", onClose, confirmClose, wide = false } = {}) {
+export function openSheet({ title, subtitle, content, actions, className = "", onClose, confirmClose, wide = false } = {}) {
   const body = h("div", { class: "sheet-body" }, content);
   const dlg = h(
     "dialog",
@@ -122,26 +122,31 @@ export function openSheet({ title, content, actions, className = "", onClose, co
     h(
       "header",
       { class: "sheet-head" },
-      h("h2", { class: "sheet-title" }, title || ""),
+      h("div", { class: "sheet-titles" }, h("h2", { class: "sheet-title" }, title || ""), subtitle ? h("p", { class: "sheet-subtitle" }, subtitle) : null),
       h("button", { class: "icon-btn sheet-close", type: "button", "aria-label": t("close"), onclick: () => close() }, icon("close"))
     ),
     body,
     actions ? h("footer", { class: "sheet-foot" }, actions) : null
   );
   let closed = false;
+  let ask = null;
   function close(force = false) {
     if (closed) return;
     if (!force && confirmClose?.when()) {
-      const ask = openSheet({
+      if (ask) return; // already asking
+      const me = (ask = openSheet({
+        onClose: () => {
+          if (ask === me) ask = null;
+        },
         title: t("discardChanges"),
         className: "sheet--confirm",
         content: h(
           "div",
           { class: "list" },
-          h("button", { class: "row row-btn tone-danger", type: "button", onclick: () => { ask.close(); close(true); } }, icon("trash", "row-icon"), h("span", { class: "row-title" }, t("discard"))),
-          h("button", { class: "row row-btn", type: "button", onclick: () => ask.close() }, icon("edit", "row-icon"), h("span", { class: "row-title" }, t("keepEditing")))
+          h("button", { class: "row row-btn tone-danger", type: "button", onclick: () => { me.close(); close(true); } }, icon("trash", "row-icon"), h("span", { class: "row-title" }, t("discard"))),
+          h("button", { class: "row row-btn", type: "button", onclick: () => me.close() }, icon("edit", "row-icon"), h("span", { class: "row-title" }, t("keepEditing")))
         ),
-      });
+      }));
       return;
     }
     closed = true;
@@ -162,12 +167,50 @@ export function openSheet({ title, content, actions, className = "", onClose, co
   dlg.addEventListener("click", (e) => {
     if (e.target === dlg) close(); // backdrop tap
   });
+  // The browser may close a dialog on its own (repeated Escape or Back skips the cancel event).
+  // Unsaved work is never lost that way: reopen and ask; otherwise just clean up.
+  dlg.addEventListener("close", () => {
+    if (closed) return;
+    if (confirmClose?.when()) {
+      dlg.showModal();
+      if (ask) {
+        const old = ask;
+        ask = null;
+        old.forceClose();
+      }
+      close();
+      return;
+    }
+    closed = true;
+    dlg.remove();
+    if (!document.querySelector("dialog.sheet[open]")) document.documentElement.classList.remove("has-sheet");
+    onClose?.();
+  });
   attachSwipeToClose(dlg, close);
   document.body.append(dlg);
   dlg.showModal();
   // The page behind a sheet stays put.
   document.documentElement.classList.add("has-sheet");
   return { el: dlg, body, close: () => close(false), forceClose: () => close(true) };
+}
+
+// An in-app replacement for confirm(): resolves true only when the action is chosen.
+export function confirmSheet({ title, message, confirmLabel, cancelLabel = t("cancel"), danger = false }) {
+  return new Promise((resolve) => {
+    let result = false;
+    const sheet = openSheet({
+      title,
+      subtitle: message,
+      className: "sheet--confirm",
+      onClose: () => resolve(result),
+      content: h(
+        "div",
+        { class: "list" },
+        h("button", { class: `row row-btn ${danger ? "tone-danger" : "tone-accent-text"}`, type: "button", onclick: () => { result = true; sheet.close(); } }, h("span", { class: "row-title" }, confirmLabel)),
+        h("button", { class: "row row-btn", type: "button", onclick: () => sheet.close() }, h("span", { class: "row-title" }, cancelLabel))
+      ),
+    });
+  });
 }
 
 function attachSwipeToClose(dlg, close) {

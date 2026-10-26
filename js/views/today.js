@@ -99,6 +99,8 @@ function stars(seed, n = 46) {
   return Array.from({ length: n }, () => ({ x: rnd() * 100, y: rnd() * 58, r: 0.4 + rnd() * 1.1, o: 0.35 + rnd() * 0.65 }));
 }
 
+const seenHeight = new Map(); // viewport width → smallest height seen, so fits survive toolbar changes
+
 export function TodayView(ctx) {
   const { place, calc } = ctx;
   let viewOffset = 0;
@@ -229,7 +231,9 @@ export function TodayView(ctx) {
                   ? t("sunRising", { t: ctx.fmt(duhaStart) })
                   : t("duhaNow")
                 : t("nextPrayer");
-      title.textContent = t(next.key);
+      // On Fridays Dhuhr is Jumu'ah, as the timeline below says.
+      const friday = next.key === "dhuhr" && (next.day === 1 ? s.tomorrow : s.today)?.isFriday;
+      title.textContent = t(friday ? "jumuah" : next.key);
       sub.textContent = `${t("adhan")} ${ctx.fmt(next.adhan)}${iqAt(next)}`;
     }
     count.replaceChildren(...durationNode(target ? target - now : 0));
@@ -340,8 +344,11 @@ export function TodayView(ctx) {
     root.classList.remove(...FIT, "is-squeezed");
     if (!root.isConnected || innerWidth >= 900) return;
     fitWidth = innerWidth;
+    // Fit for the smallest height seen at this width (browser toolbars shown), whatever it is right now.
+    const minH = Math.min(seenHeight.get(innerWidth) ?? innerHeight, innerHeight);
+    seenHeight.set(innerWidth, minH);
     const bar = document.getElementById("tabbar");
-    const limit = (bar && !bar.hidden ? bar.getBoundingClientRect().top : innerHeight) + scrollY - 6;
+    const limit = (bar && !bar.hidden ? bar.getBoundingClientRect().top : innerHeight) - (innerHeight - minH) + scrollY - 6;
     const overflow = () => {
       const last = [...list.querySelectorAll(".tl-row")].pop();
       return last ? last.getBoundingClientRect().bottom + scrollY - limit : 0;
@@ -366,7 +373,8 @@ export function TodayView(ctx) {
     if (over > 0) squeeze(over, Infinity);
   }
   const onResize = () => {
-    if (innerWidth !== fitWidth) requestAnimationFrame(fit);
+    if (innerWidth === fitWidth) seenHeight.set(innerWidth, Math.min(seenHeight.get(innerWidth) ?? innerHeight, innerHeight));
+    else requestAnimationFrame(fit);
   };
   window.addEventListener("resize", onResize);
 

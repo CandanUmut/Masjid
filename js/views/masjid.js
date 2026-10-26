@@ -3,7 +3,7 @@ import { PRAYERS, DEFAULT_CALC, resolveCalc, scheduleFor, normalizeCalc } from "
 import { placeToSeed, parseSeed, seedUrl } from "../seed.js";
 import { getPosition, reverseGeocode, searchPlaces, timezoneFor, completePlace } from "../geo.js";
 import { t, lang } from "../i18n.js";
-import { h, icon, openSheet, select, toast, copyText, debounce, minutesInput } from "../ui.js";
+import { h, icon, openSheet, select, toast, copyText, debounce, minutesInput, confirmSheet } from "../ui.js";
 import { allTimeZones, deviceTimeZone, todayYmd, formatTime, formatDate, timeParts, tzOffsetMinutes, addDays } from "../time.js";
 import { newId } from "../store.js";
 import { calcEditor } from "./calc-editor.js";
@@ -212,7 +212,7 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
         return;
       }
       try {
-        const found = await searchPlaces(q, lang());
+        const found = await searchPlaces(q, lang(), hasLoc() ? draft : ctx.state.gps);
         if (mine !== seq) return;
         searchResults.hidden = false;
         searchResults.replaceChildren(
@@ -280,7 +280,7 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
       const el = ruleResult[p];
       if (!el) continue;
       const row = sched.rows.find((r) => r.key === p || (p === "dhuhr" && r.key === "jumuah"));
-      el.textContent = row?.iqama ? `→ ${formatTime(row.iqama.at, draft.tz, { hour12: ctx.hour12, locale: ctx.locale })}` : "";
+      el.textContent = row?.iqama ? `${document.documentElement.dir === "rtl" ? "←" : "→"} ${formatTime(row.iqama.at, draft.tz, { hour12: ctx.hour12, locale: ctx.locale })}` : "";
       const bad = Boolean(row?.iqama?.clamped || row?.iqama?.late);
       el.classList.toggle("is-clamped", bad);
       // Problems are said in words, right under the rule — not hidden in a hover tooltip.
@@ -558,7 +558,8 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
   renderIqama();
   renderJumuah();
   renderPreview();
-  if (!existing) setTimeout(() => nameInput.focus(), 300);
+  // Only when there's a name to type: a prefilled form shouldn't open the keyboard over the preview.
+  if (!existing && !draft.name) setTimeout(() => nameInput.focus(), 300);
   return sheet;
 }
 
@@ -696,9 +697,13 @@ function printPoster(place, qr) {
 export function openSeedInput(ctx, { restore = false } = {}) {
   const input = h("textarea", { class: "input", rows: 3, placeholder: t(restore ? "restorePh" : "openSeedPh"), "aria-label": t(restore ? "importData" : "openSeed"), autocapitalize: "off", autocorrect: "off", spellcheck: false });
   const err = h("p", { class: "form-error", hidden: true });
+  // A backup saved as a file can be picked instead of pasted.
+  const filePick = restore
+    ? h("label", { class: "btn btn-plain file-pick" }, icon("download"), t("chooseFile"), h("input", { type: "file", accept: ".txt,text/plain", hidden: true, onchange: async (e) => { const f = e.target.files?.[0]; if (f) input.value = (await f.text()).trim(); } }))
+    : null;
   const sheet = openSheet({
     title: t(restore ? "importData" : "openSeed"),
-    content: [input, err],
+    content: [input, filePick, err],
     actions: h(
       "button",
       {
@@ -736,7 +741,7 @@ export async function importSeed(ctx, text, { allowBackup = false, silent = fals
       toast(t("backupNotFromLink"), { tone: "warn", duration: 6000 });
       return null; // refused (not invalid)
     }
-    if (!confirm(t("restoreConfirm", { n: parsed.places.length }))) return false;
+    if (!(await confirmSheet({ title: t("restoreTitle"), message: t("restoreConfirm", { n: parsed.places.length }), confirmLabel: t("restoreAction") }))) return null;
     return ctx.restoreBackup(parsed);
   }
   const nowS = Math.floor(Date.now() / 1000);
@@ -759,7 +764,21 @@ export async function importSeed(ctx, text, { allowBackup = false, silent = fals
     toast(t("updated", { p: place.name }), { action: t("undo"), duration: 8000, onAction: () => ctx.addPlace(previous, { activate: true, silent: true }) });
     return true;
   }
-  ctx.addPlace(place, { activate: true, silent });
+  if (silent) {
+    ctx.addPlace(place, { activate: true, silent: true });
+    return true;
+  }
+  // Opening a link saves the masjid; one tap undoes that if it wasn't wanted.
+  const before = ctx.state.activeId;
+  ctx.addPlace(place, { activate: true, silent: true });
+  toast(t("added", { p: place.name }), {
+    action: t("undo"),
+    duration: 8000,
+    onAction: () => {
+      ctx.removePlace(place.id, { silent: true });
+      if (before && before !== place.id) ctx.activate(before);
+    },
+  });
   return true;
 }
 
@@ -793,8 +812,8 @@ export const masjidPlugin = {
     masjidCard: (p) => masjidCard(currentCtx(), p),
     openSeed: () => openSeedInput(currentCtx()),
     extraPlaceActions: (sheet) => [
-      h("button", { class: "btn btn-plain", type: "button", onclick: () => { sheet.close(); openMasjidEditor(currentCtx()); } }, icon("mosque"), t("addMasjid")),
-      h("button", { class: "btn btn-plain", type: "button", onclick: () => { sheet.close(); openSeedInput(currentCtx()); } }, icon("link"), t("openSeed")),
+      h("button", { class: "row row-btn", type: "button", onclick: () => { sheet.close(); openMasjidEditor(currentCtx()); } }, icon("mosque", "row-icon tone-accent"), h("span", { class: "row-title" }, t("addMasjid"))),
+      h("button", { class: "row row-btn", type: "button", onclick: () => { sheet.close(); openSeedInput(currentCtx()); } }, icon("link", "row-icon tone-accent"), h("span", { class: "row-title" }, t("openSeed"))),
     ],
   }),
   topbarActions: (ctx) =>

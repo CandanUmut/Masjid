@@ -123,7 +123,7 @@ function addPlace(place, { activate: act = false, silent = false } = {}) {
   if (!silent) toast(t(existed ? "updated" : "added", { p: place.name }));
 }
 
-function removePlace(id) {
+function removePlace(id, { silent = false } = {}) {
   const idx = state.places.findIndex((p) => p.id === id);
   if (idx < 0) return;
   const removed = state.places[idx];
@@ -132,7 +132,7 @@ function removePlace(id) {
     s.places.splice(idx, 1);
     if (wasActive) s.activeId = s.places[0]?.id || "gps";
   });
-  toast(t("removed", { p: removed.name }), {
+  if (!silent) toast(t("removed", { p: removed.name }), {
     action: t("undo"),
     onAction: () =>
       update((s) => {
@@ -163,7 +163,7 @@ async function useGps({ interactive = false } = {}) {
     app.lastGpsAt = Date.now();
     const prev = state.gps;
     const moved = prev ? distanceKm(prev, pos) : Infinity;
-    const keepName = prev && moved < 3;
+    const keepName = Boolean(prev && moved < 3 && prev.name); // no name yet: look it up again
     app.locating = false;
     update((s) => {
       s.gps = { ...pos, name: keepName ? prev.name : "", sub: keepName ? prev.sub : "", cc: keepName ? prev.cc : null, at: Date.now() };
@@ -429,8 +429,10 @@ export function start() {
     setInterval(tick, 1000);
   }, 1000 - (Date.now() % 1000));
   document.addEventListener("visibilitychange", () => {
+    // Coming back to the app: bring times up to date (the view handles a new day itself), but never
+    // rebuild the screen — that would lose the day being viewed and re-measure mid-scroll.
     if (document.visibilityState === "visible") {
-      render();
+      tick();
       maybeRefreshGps();
     }
   });

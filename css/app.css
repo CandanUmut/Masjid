@@ -475,6 +475,10 @@ a {
     background: var(--fill);
   }
 }
+.row-more-space {
+  flex: none;
+  width: 40px;
+}
 .row-more {
   margin-inline-end: 10px;
   background: transparent;
@@ -805,6 +809,19 @@ a {
   flex: none;
   touch-action: none;
 }
+.sheet-head:has(.sheet-subtitle) {
+  align-items: flex-start;
+}
+.sheet-titles {
+  flex: 1;
+  min-width: 0;
+}
+.sheet-subtitle {
+  margin: 4px 0 0;
+  font-size: 15px;
+  color: var(--label-2);
+  text-wrap: pretty;
+}
 .sheet-title {
   flex: 1;
   margin: 0;
@@ -840,6 +857,13 @@ a {
   justify-content: center;
   gap: 4px;
   margin-top: 12px;
+}
+.list.list-actions {
+  margin-top: 16px;
+}
+.list-actions .row-title,
+.tone-accent-text .row-title {
+  color: var(--accent);
 }
 
 /* ---------- Forms ---------- */
@@ -1087,15 +1111,16 @@ textarea.input {
   border: 0;
   background: transparent;
   overflow: visible;
-  top: auto;
   right: auto;
+  bottom: auto;
   color: inherit;
 }
 .toast-host {
   position: fixed;
   z-index: 100;
   left: 50%;
-  top: calc(var(--safe-top) + 10px);
+  /* Under the top bar, so the place name and its buttons stay visible */
+  top: calc(var(--topbar-h, 0px) + 8px);
   bottom: auto;
   transform: translateX(-50%);
   display: grid;
@@ -1118,6 +1143,10 @@ textarea.input {
   opacity: 0;
   transform: translateY(-14px) scale(0.98);
   transition: opacity 0.25s, transform 0.3s var(--ease);
+}
+body.is-chromeless .toast-host,
+body.no-tabbar .toast-host {
+  top: calc(var(--safe-top) + 10px);
 }
 .toast.is-in {
   opacity: 1;
@@ -1509,9 +1538,7 @@ body.is-offline .app::before {
   margin: 0;
   color: var(--label-2);
   font-size: 15px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-wrap: balance;
 }
 .month-actions {
   display: flex;
@@ -1878,6 +1905,9 @@ body.is-chromeless .app {
   opacity: 0.85;
 }
 .tv-next-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.18em;
   font-family: var(--font-rounded);
   font-size: 1.7em;
   font-weight: 700;
@@ -3435,9 +3465,14 @@ body.is-scrolled .topbar {
   gap: 8px;
 }
 .iqama-sentence .select-rule {
-  flex: 1 1 150px;
+  flex: 1 1 120px;
   min-width: 0;
   max-width: 100%;
+}
+/* Time and rule stay side by side, also in the narrower seasonal-change cards */
+.iqama-sentence .input-time {
+  flex: 0 1 132px;
+  min-width: 104px;
 }
 
 /* =================================================================================
@@ -3454,6 +3489,18 @@ body.is-scrolled .topbar {
   .sheet {
     bottom: 0;
   }
+}
+.sheet.sheet--search {
+  height: min(92dvh, calc(var(--vvh, 100dvh) - 12px));
+}
+.search-results.is-loading {
+  opacity: 0.45;
+  transition: opacity 0.2s;
+}
+.search-spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
 }
 
 /* A plain search field: no native inset/rounded/cancel chrome fighting our own. */
