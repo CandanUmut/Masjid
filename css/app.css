@@ -3075,3 +3075,151 @@ body.is-scrolled .topbar {
     display: none;
   }
 }
+.iqama-change {
+  display: grid;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border-inline-start: 3px solid var(--accent);
+}
+.iqama-change-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.iqama-change-head .segmented {
+  margin-inline-start: auto;
+}
+.iqama-change-from {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--label-2);
+}
+.iqama-base-from {
+  margin-bottom: -2px;
+}
+.iqama-add-change {
+  justify-self: start;
+  align-self: flex-start;
+  padding-inline: 2px;
+}
+.masjid-cta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  align-items: center;
+  padding: 16px;
+}
+.masjid-cta-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(160deg, #233a7d, #6b5fb5 55%, #f0a3a0);
+}
+.masjid-cta-icon .icon {
+  width: 24px;
+  height: 24px;
+}
+.masjid-cta-text {
+  display: grid;
+  gap: 2px;
+}
+.masjid-cta-text strong {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+}
+.masjid-cta-text span {
+  font-size: 14px;
+  color: var(--label-2);
+}
+.masjid-cta-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.your-masjids {
+  padding-top: 8px;
+}
+.your-masjids-title {
+  padding: 6px 16px 2px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--label-2);
+}
+.your-masjid {
+  min-height: 60px;
+}
+.row-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--label-3);
+}
+.share-allyear {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 34ch;
+  margin: 12px auto 0;
+  font-size: 14px;
+  color: var(--label-2);
+  text-align: start;
+}
+.share-allyear .icon {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+  margin-top: 1px;
+}
+.week-preview {
+  padding: 8px 6px 6px;
+  overflow-x: auto;
+}
+.week-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.week-table th,
+.week-table td {
+  padding: 6px 4px;
+  text-align: center;
+  white-space: nowrap;
+}
+.week-table thead th {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--label-2);
+}
+.week-table tbody th {
+  text-align: start;
+  padding-inline-start: 10px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--label-2);
+}
+.week-table td {
+  font-weight: 600;
+}
+.week-table tbody tr + tr > * {
+  border-top: 0.5px solid var(--sep);
+}
+.week-table tr.is-friday {
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+}
+.share-actions {
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+}

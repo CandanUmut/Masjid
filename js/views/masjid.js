@@ -4,7 +4,7 @@ import { placeToSeed, parseSeed, seedUrl } from "../seed.js";
 import { getPosition, reverseGeocode, searchPlaces, timezoneFor } from "../geo.js";
 import { t, lang } from "../i18n.js";
 import { h, icon, openSheet, segmented, stepper, select, toast, copyText, debounce } from "../ui.js";
-import { allTimeZones, deviceTimeZone, todayYmd, formatTime, timeParts, tzOffsetMinutes } from "../time.js";
+import { allTimeZones, deviceTimeZone, todayYmd, formatTime, formatDate, timeParts, tzOffsetMinutes, addDays } from "../time.js";
 import { newId } from "../store.js";
 import { calcEditor } from "./calc-editor.js";
 import { skyAt } from "./today.js";
@@ -263,54 +263,142 @@ export function openMasjidEditor(ctx, existing = null) {
       el.title = row?.iqama?.clamped ? t("clampedNote") : "";
     }
   }
+  // Controls for one rule (the base rule or a seasonal change): minutes after adhan, or a fixed time.
+  function ruleControls(rule, label) {
+    const box = h("div", { class: "iqama-detail" });
+    if (rule.mode === "offset") {
+      box.append(
+        stepper(rule.offset, {
+          min: 0,
+          max: 90,
+          format: (v) => `+${v} ${t("min")}`,
+          label: `${label} ${t("offset")}`,
+          onChange: (v) => { rule.offset = v; renderPreview(); },
+        }),
+        select(
+          rule.round || 0,
+          [
+            { value: 0, label: t("noRound") },
+            { value: 5, label: `${t("roundTo")} 5` },
+            { value: 10, label: `${t("roundTo")} 10` },
+            { value: 15, label: `${t("roundTo")} 15` },
+          ],
+          (v) => { rule.round = Number(v); renderPreview(); },
+          { class: "select select-compact", "aria-label": t("roundTo") }
+        )
+      );
+    } else {
+      box.append(
+        h("input", {
+          class: "input input-time",
+          type: "time",
+          value: rule.time,
+          "aria-label": `${label} ${t("fixed")}`,
+          oninput: (e) => { rule.time = e.target.value; renderPreview(); },
+        }),
+        h("span", { class: "iqama-min-label" }, t("atLeast")),
+        stepper(rule.min || 0, {
+          min: 0,
+          max: 60,
+          step: 5,
+          format: (v) => `+${v} ${t("min")}`,
+          label: t("atLeast"),
+          onChange: (v) => { rule.min = v; renderPreview(); },
+        })
+      );
+    }
+    return box;
+  }
+
+  // Today's computed iqama for a prayer, as "HH:MM" — a sensible starting point for a fixed time.
+  function todaysIqama(p) {
+    if (!hasLoc()) return "13:30";
+    const row = scheduleFor(draft, draft.calc, todayYmd(draft.tz)).rows.find((r) => r.key === p || (p === "dhuhr" && r.key === "jumuah"));
+    const at = row?.iqama?.at || row?.adhan;
+    return at ? formatTime(at, draft.tz, { hour12: false, locale: "en-GB" }) : "13:30";
+  }
+
+  const monthNames = Array.from({ length: 12 }, (_, i) => new Intl.DateTimeFormat(ctx.locale, { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2001, i, 1))));
+  const mdLabel = (md) => `${Number(md.slice(3))} ${monthNames[Number(md.slice(0, 2)) - 1]}`;
+
+  // A seasonal change: "From [day] [month], every year → rule".
+  function changeRow(p, rule, c, i) {
+    const setFrom = (m, d) => {
+      const days = new Date(Date.UTC(2001, m, 0)).getUTCDate();
+      c.from = `${String(m).padStart(2, "0")}-${String(Math.min(d, days)).padStart(2, "0")}`;
+      renderIqama();
+      renderPreview();
+    };
+    const [cm, cd] = c.from.split("-").map(Number);
+    return h(
+      "div",
+      { class: "iqama-change" },
+      h(
+        "div",
+        { class: "iqama-change-head" },
+        h("span", { class: "iqama-change-from" }, t("fromLabel")),
+        select(cd, Array.from({ length: 31 }, (_, k) => ({ value: k + 1, label: String(k + 1) })), (v) => setFrom(cm, Number(v)), { class: "select select-compact", "aria-label": t("day") }),
+        select(cm, monthNames.map((n, k) => ({ value: k + 1, label: n })), (v) => setFrom(Number(v), cd), { class: "select select-compact", "aria-label": t("month") }),
+        segmented(
+          c.mode,
+          [
+            { value: "offset", label: t("offset") },
+            { value: "fixed", label: t("fixed") },
+          ],
+          (v) => {
+            const from = c.from;
+            Object.keys(c).forEach((k) => delete c[k]);
+            Object.assign(c, v === "offset" ? { ...DEFAULT_IQAMA[p] } : { mode: "fixed", time: todaysIqama(p), min: 5 }, { from });
+            renderIqama();
+            renderPreview();
+          },
+          t(p)
+        ),
+        h("button", { class: "icon-btn icon-btn-sm", type: "button", "aria-label": t("remove"), onclick: () => { rule.changes.splice(i, 1); if (!rule.changes.length) delete rule.changes; renderIqama(); renderPreview(); } }, icon("close"))
+      ),
+      ruleControls(c, `${t(p)} ${mdLabel(c.from)}`)
+    );
+  }
+
   function renderIqama() {
     iqamaList.replaceChildren(
       ...PRAYERS.map((p) => {
         const rule = draft.iqama[p];
         const mode = rule ? rule.mode : "off";
-        const detail = h("div", { class: "iqama-detail" });
-        if (mode === "offset") {
-          detail.append(
-            stepper(rule.offset, {
-              min: 0,
-              max: 90,
-              format: (v) => `+${v} ${t("min")}`,
-              label: `${t(p)} ${t("offset")}`,
-              onChange: (v) => { rule.offset = v; renderPreview(); },
-            }),
-            select(
-              rule.round || 0,
-              [
-                { value: 0, label: t("noRound") },
-                { value: 5, label: `${t("roundTo")} 5` },
-                { value: 10, label: `${t("roundTo")} 10` },
-                { value: 15, label: `${t("roundTo")} 15` },
-              ],
-              (v) => { rule.round = Number(v); renderPreview(); },
-              { class: "select select-compact", "aria-label": t("roundTo") }
-            )
-          );
-        } else if (mode === "fixed") {
-          detail.append(
-            h("input", {
-              class: "input input-time",
-              type: "time",
-              value: rule.time,
-              "aria-label": `${t(p)} ${t("fixed")}`,
-              oninput: (e) => { rule.time = e.target.value; renderPreview(); },
-            }),
-            h("span", { class: "iqama-min-label" }, t("atLeast")),
-            stepper(rule.min || 0, {
-              min: 0,
-              max: 60,
-              step: 5,
-              format: (v) => `+${v} ${t("min")}`,
-              label: t("atLeast"),
-              onChange: (v) => { rule.min = v; renderPreview(); },
-            })
-          );
-        }
         ruleResult[p] = h("span", { class: "iqama-result", "aria-live": "polite" });
+        const body = [];
+        if (rule) {
+          if (rule.changes?.length) {
+            rule.changes.sort((a, b) => a.from.localeCompare(b.from));
+            body.push(h("div", { class: "iqama-change-from iqama-base-from" }, t("fromJan1")));
+          }
+          body.push(ruleControls(rule, t(p)));
+          (rule.changes || []).forEach((c, i) => body.push(changeRow(p, rule, c, i)));
+          if ((rule.changes?.length || 0) < 12) {
+            body.push(
+              h(
+                "button",
+                {
+                  class: "btn btn-plain btn-sm iqama-add-change",
+                  type: "button",
+                  onclick: () => {
+                    // Default: a change on the first of next month, same kind of rule.
+                    const now = todayYmd(draft.tz);
+                    const m = (now.m % 12) + 1;
+                    const from = `${String(m).padStart(2, "0")}-01`;
+                    const base = { ...rule };
+                    delete base.changes;
+                    rule.changes = [...(rule.changes || []), { ...base, from }];
+                    renderIqama();
+                    renderPreview();
+                  },
+                },
+                icon("calendar"),
+                t("addSeasonal")
+              )
+            );
+          }
+        }
         return h(
           "div",
           { class: "row iqama-row" },
@@ -326,25 +414,18 @@ export function openMasjidEditor(ctx, existing = null) {
                 { value: "fixed", label: t("fixed") },
               ],
               (v) => {
+                const changes = draft.iqama[p]?.changes;
                 if (v === "off") draft.iqama[p] = null;
-                else if (v === "offset") draft.iqama[p] = { ...(DEFAULT_IQAMA[p]) };
-                else {
-                  // Seed the fixed time from today's computed iqama so it's a sensible starting point.
-                  let time = "13:30";
-                  if (hasLoc()) {
-                    const row = scheduleFor(draft, draft.calc, todayYmd(draft.tz)).rows.find((r) => r.key === p || (p === "dhuhr" && r.key === "jumuah"));
-                    const at = row?.iqama?.at || row?.adhan;
-                    if (at) time = formatTime(at, draft.tz, { hour12: false, locale: "en-GB" });
-                  }
-                  draft.iqama[p] = { mode: "fixed", time, min: 5 };
-                }
+                else if (v === "offset") draft.iqama[p] = { ...DEFAULT_IQAMA[p] };
+                else draft.iqama[p] = { mode: "fixed", time: todaysIqama(p), min: 5 };
+                if (draft.iqama[p] && changes) draft.iqama[p].changes = changes;
                 renderIqama();
                 renderPreview();
               },
               t(p)
             )
           ),
-          mode !== "off" ? detail : null
+          ...body
         );
       })
     );
@@ -395,6 +476,7 @@ export function openMasjidEditor(ctx, existing = null) {
       h("p", { class: "list-foot" }, t("calcForMasjidHint")),
       h("h3", { class: "list-title" }, t("iqamaTimes")),
       iqamaList,
+      h("p", { class: "list-foot" }, t("seasonalHint")),
       h("h3", { class: "list-title" }, t("jumuahTimes")),
       h("div", { class: "form-card" }, jumuahWrap),
       h("h3", { class: "list-title" }, t("note")),
@@ -451,6 +533,39 @@ export function openMasjidEditor(ctx, existing = null) {
   return sheet;
 }
 
+// The next seven days of iqama times — what everyone who opens the link will see.
+function weekPreview(ctx, place) {
+  const base = todayYmd(place.tz);
+  const short = (d) => (d ? timeParts(d, place.tz, { hour12: ctx.hour12, locale: ctx.locale }).main : "—");
+  const days = Array.from({ length: 7 }, (_, i) => addDays(base, i));
+  return h(
+    "div",
+    { class: "card week-preview" },
+    h("div", { class: "your-masjids-title" }, t("next7days")),
+    h(
+      "table",
+      { class: "week-table" },
+      h("thead", {}, h("tr", {}, h("th"), PRAYERS.map((p) => h("th", { scope: "col" }, t(p))))),
+      h(
+        "tbody",
+        {},
+        days.map((ymd, i) => {
+          const s = scheduleFor(place, place.calc, ymd);
+          return h(
+            "tr",
+            { class: s.isFriday ? "is-friday" : "" },
+            h("th", { scope: "row" }, i === 0 ? t("today") : formatDate(ymd, ctx.locale, { weekday: "short", day: "numeric" })),
+            PRAYERS.map((p) => {
+              const r = s.rows.find((x) => x.key === p || (p === "dhuhr" && x.key === "jumuah"));
+              return h("td", {}, short(r?.iqama?.at || null));
+            })
+          );
+        })
+      )
+    )
+  );
+}
+
 // --- Share --------------------------------------------------------------------------------
 export async function openShareSheet(ctx, place) {
   const seed = await placeToSeed(place);
@@ -489,7 +604,8 @@ export async function openShareSheet(ctx, place) {
         qrBox,
         h("div", { class: "share-name" }, place.name),
         place.sub ? h("div", { class: "share-sub" }, place.sub) : null,
-        h("div", { class: "share-scan" }, t("scanToOpen"))
+        h("div", { class: "share-scan" }, t("scanToOpen")),
+        place.iqama ? h("p", { class: "share-allyear" }, icon("calendar"), t("shareAllYear")) : null
       ),
       h(
         "div",
@@ -510,6 +626,7 @@ export async function openShareSheet(ctx, place) {
         place.kind === "masjid" ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => printPoster(place, qr) }, icon("print"), t("poster")) : null,
         ctx.openDisplay ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => { sheet.close(); ctx.openDisplay(place, seed); } }, icon("tv"), t("tvMode")) : null
       ),
+      place.iqama ? weekPreview(ctx, place) : null,
       h(
         "details",
         { class: "seed-details" },
@@ -622,6 +739,8 @@ export const masjidPlugin = {
   ctx: () => ({
     shareMasjid: (p) => openShareSheet(currentCtx(), p),
     editMasjid: (p) => openMasjidEditor(currentCtx(), p),
+    createMasjid: () => openMasjidEditor(currentCtx()),
+    openSeed: () => openSeedInput(currentCtx()),
     extraPlaceActions: (sheet) => [
       h("button", { class: "btn btn-plain", type: "button", onclick: () => { sheet.close(); openMasjidEditor(currentCtx()); } }, icon("mosque"), t("addMasjid")),
       h("button", { class: "btn btn-plain", type: "button", onclick: () => { sheet.close(); openSeedInput(currentCtx()); } }, icon("link"), t("openSeed")),

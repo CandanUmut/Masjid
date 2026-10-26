@@ -118,3 +118,16 @@ test("addDays crosses month and year boundaries", () => {
   assert.deepEqual(addDays({ y: 2026, m: 12, d: 31 }, 1), { y: 2027, m: 1, d: 1 });
   assert.deepEqual(addDays({ y: 2028, m: 3, d: 1 }, -1), { y: 2028, m: 2, d: 29 });
 });
+
+test("seasonal iqama: the latest change on or before the date applies, every year", async () => {
+  const { activeRule } = await import("../js/engine.js");
+  const rule = { mode: "fixed", time: "19:30", changes: [{ from: "03-29", mode: "fixed", time: "21:00" }, { from: "10-25", mode: "fixed", time: "19:30" }] };
+  assert.equal(activeRule(rule, { y: 2027, m: 1, d: 10 }).time, "19:30");
+  assert.equal(activeRule(rule, { y: 2027, m: 3, d: 29 }).time, "21:00");
+  assert.equal(activeRule(rule, { y: 2027, m: 7, d: 1 }).time, "21:00");
+  assert.equal(activeRule(rule, { y: 2027, m: 10, d: 25 }).time, "19:30");
+  const tz = "Europe/Istanbul";
+  const ymdSummer = { y: 2027, m: 6, d: 15 };
+  const adhan = zonedToInstant(ymdSummer, 20, 30, tz);
+  assert.equal(formatHHMM(iqamaFor("isha", adhan, rule, ymdSummer, tz).at, tz), "21:00");
+});

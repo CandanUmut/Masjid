@@ -65,3 +65,22 @@ test("iqama packing ignores invalid rules", () => {
   assert.equal(u.asr, null);
   assert.deepEqual(u.isha, { mode: "fixed", time: "19:30", min: 0 });
 });
+
+test("seasonal iqama changes survive a seed round trip", async () => {
+  const m = {
+    ...masjid,
+    iqama: {
+      ...masjid.iqama,
+      isha: { mode: "fixed", time: "19:30", min: 5, changes: [{ from: "10-25", mode: "fixed", time: "19:30", min: 5 }, { from: "03-29", mode: "fixed", time: "21:00", min: 5 }] },
+    },
+  };
+  const { place } = await parseSeed(await placeToSeed(m));
+  assert.deepEqual(place.iqama.isha.changes, [
+    { from: "03-29", mode: "fixed", time: "21:00", min: 5 },
+    { from: "10-25", mode: "fixed", time: "19:30", min: 5 },
+  ]);
+  // Old seeds (no changes) still parse exactly as before.
+  assert.equal(unpackIqama("+10|+5").fajr.changes, undefined);
+  // Junk dates are dropped, not trusted.
+  assert.equal(unpackIqama("@19:30~1399@20:00").fajr.changes, undefined);
+});

@@ -178,7 +178,21 @@ export function computeDay(place, calcIn, ymd) {
 // Rule per prayer: { mode: "offset", offset: 10, round: 0|5|10|15 }
 //              or { mode: "fixed", time: "20:15", min: 10 } — a fixed time, but never earlier than
 //                 `min` minutes after the adhan (fixed times drift against the seasons otherwise).
-export function iqamaFor(prayer, adhan, rule, ymd, tz) {
+// Masjids often change iqama during the year (e.g. Isha 19:30 in winter, 21:45 in summer).
+// A rule may carry `changes: [{ from: "MM-DD", ...rule }]` that apply every year from that date;
+// the base rule applies from 1 January until the first change.
+export function activeRule(rule, ymd) {
+  if (!rule?.changes?.length) return rule;
+  const md = `${String(ymd.m).padStart(2, "0")}-${String(ymd.d).padStart(2, "0")}`;
+  let active = rule;
+  for (const c of [...rule.changes].sort((a, b) => a.from.localeCompare(b.from))) {
+    if (c.from <= md) active = c;
+  }
+  return active;
+}
+
+export function iqamaFor(prayer, adhan, ruleIn, ymd, tz) {
+  const rule = activeRule(ruleIn, ymd);
   if (!rule || !adhan) return null;
   if (rule.mode === "fixed") {
     const hm = parseHHMM(rule.time);

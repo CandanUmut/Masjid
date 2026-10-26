@@ -1,6 +1,6 @@
 // Today: a live sky drawn from the real sun, and the day's prayers as a timeline coloured by that sky.
 import { statusAt, scheduleFor, METHODS } from "../engine.js";
-import { addDays, formatDate, formatHijri, hijriParts, todayYmd, ymdKey } from "../time.js";
+import { addDays, formatDate, formatHijri, formatTime, hijriParts, todayYmd, ymdKey } from "../time.js";
 import { sunAltitude, skyColors, moonPhase, moonPath, luminance, mixRgb } from "../astro.js";
 import { isPrayed, setPrayed } from "../tracker.js";
 import { t, lang } from "../i18n.js";
@@ -36,6 +36,64 @@ export function durationNode(ms) {
   return [unit(ss, "uS")];
 }
 
+// Next iqama at a masjid (pending one first, then the next prayer that has one).
+export function nextIqama(m, now = new Date()) {
+  const s = statusAt(m, m.calc, todayYmd(m.tz, now), now);
+  if (s.pendingIqama) return { key: s.current.key, at: s.pendingIqama };
+  for (const r of [...s.today.rows, ...s.tomorrow.rows]) {
+    if (r.iqama && r.iqama.at > now) return { key: r.key, at: r.iqama.at };
+  }
+  return null;
+}
+
+// On your own location: your masjids' next iqama at a glance — or an invitation to add one.
+function yourMasjids(ctx) {
+  const masjids = ctx.state.places.filter((p) => p.kind === "masjid");
+  if (!masjids.length) {
+    return h(
+      "div",
+      { class: "card masjid-cta" },
+      h("div", { class: "masjid-cta-icon", "aria-hidden": "true" }, icon("mosque")),
+      h("div", { class: "masjid-cta-text" }, h("strong", {}, t("ctaTitle")), h("span", {}, t("ctaBody"))),
+      h(
+        "div",
+        { class: "masjid-cta-actions" },
+        ctx.createMasjid ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.createMasjid() }, icon("plus"), t("ctaAdd")) : null,
+        ctx.openSeed ? h("button", { class: "btn btn-plain btn-sm", type: "button", onclick: () => ctx.openSeed() }, icon("link"), t("ctaOpen")) : null
+      )
+    );
+  }
+  const now = new Date();
+  return h(
+    "div",
+    { class: "card your-masjids" },
+    h("div", { class: "your-masjids-title" }, t("yourMasjids")),
+    ...masjids.slice(0, 4).map((m) => {
+      const n = nextIqama(m, now);
+      const fmt = (d) => formatTime(d, m.tz, { hour12: ctx.hour12, locale: ctx.locale });
+      return h(
+        "button",
+        { class: "row row-btn your-masjid", type: "button", onclick: () => ctx.activate(m.id) },
+        icon("mosque", "row-icon"),
+        h(
+          "span",
+          { class: "row-main" },
+          h("span", { class: "row-title" }, m.name),
+          n ? h("span", { class: "row-glance" }, `${t(n.key)} · ${t("iqama")} ${fmt(n.at)}`, h("span", { class: "row-glance-in" }, ` · ${t("inDur", { t: humanDuration(n.at - now) })}`)) : null
+        ),
+        icon("chevronRight", "row-chevron flip-rtl")
+      );
+    })
+  );
+}
+
+function humanDuration(ms) {
+  const mins = Math.max(1, Math.round(ms / 60000));
+  const hh = Math.floor(mins / 60);
+  const mm = mins % 60;
+  return hh ? `${hh} ${t("hShort")} ${mm} ${t("min")}` : `${mm} ${t("min")}`;
+}
+
 // Stable pseudo-random stars for a given day.
 function stars(seed, n = 46) {
   let s = seed % 2147483647 || 1;
@@ -59,6 +117,7 @@ export function TodayView(ctx) {
   const hero = h("section", { class: "sky" }, starLayer, moon, h("div", { class: "sky-text" }, eyebrow, title, count, sub), chart.el);
 
   const note = place.note ? h("div", { class: "note-card" }, icon("info"), h("p", {}, place.note)) : null;
+  const masjidCard = place.kind === "masjid" ? null : yourMasjids(ctx);
 
   // ---------- Timeline ----------
   const dateTitle = h("span", { class: "date-title" });
@@ -79,7 +138,7 @@ export function TodayView(ctx) {
     "div",
     { class: "view view-today" },
     h("div", { class: "today-hero-col" }, ...[hero, note].filter(Boolean)),
-    h("div", { class: "today-list-col" }, timelineCard, meta)
+    h("div", { class: "today-list-col" }, ...[timelineCard, masjidCard, meta].filter(Boolean))
   );
 
   let lastStatus = null;
