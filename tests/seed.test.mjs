@@ -1,0 +1,67 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { placeToSeed, parseSeed, extractSeed, packIqama, unpackIqama } from "../js/seed.js";
+
+const masjid = {
+  id: "abc123xyz0",
+  kind: "masjid",
+  name: "Süleymaniye Camii — مسجد",
+  sub: "Fatih, İstanbul",
+  lat: 41.016111,
+  lng: 28.963889,
+  tz: "Europe/Istanbul",
+  cc: "TR",
+  calc: { method: "Turkey", madhab: "shafi", highLat: "auto", adj: { fajr: 0, sunrise: 0, dhuhr: 2, asr: 0, maghrib: 1, isha: 0 } },
+  iqama: {
+    fajr: { mode: "offset", offset: 30, round: 0 },
+    dhuhr: { mode: "fixed", time: "13:15" },
+    asr: { mode: "offset", offset: 10, round: 5 },
+    maghrib: null,
+    isha: { mode: "offset", offset: 10, round: 0 },
+  },
+  jumuah: ["13:00", "14:15"],
+  note: "Teravih 21:30 🌙",
+  u: 1793000000,
+};
+
+test("masjid survives a seed round trip", async () => {
+  const seed = await placeToSeed(masjid);
+  assert.match(seed, /^[mM][A-Za-z0-9_-]+$/);
+  assert.ok(seed.length < 400, `seed too long: ${seed.length}`);
+  const { kind, place } = await parseSeed(seed);
+  assert.equal(kind, "place");
+  assert.equal(place.name, masjid.name);
+  assert.equal(place.note, masjid.note);
+  assert.equal(place.calc.method, "Turkey");
+  assert.equal(place.calc.adj.dhuhr, 2);
+  assert.deepEqual(place.jumuah, masjid.jumuah);
+  assert.deepEqual(place.iqama.dhuhr, { mode: "fixed", time: "13:15" });
+  assert.deepEqual(place.iqama.asr, { mode: "offset", offset: 10, round: 5 });
+  assert.equal(place.iqama.maghrib, null);
+  assert.equal(place.u, masjid.u);
+});
+
+test("seeds are found inside links", async () => {
+  const seed = await placeToSeed(masjid);
+  assert.equal(extractSeed(`https://example.github.io/Masjid/#/m/${seed}`), seed);
+  assert.equal(extractSeed(seed), seed);
+  assert.equal(extractSeed("hello world"), null);
+});
+
+test("garbage and tampered seeds are rejected", async () => {
+  await assert.rejects(parseSeed("not a seed"));
+  await assert.rejects(parseSeed("mAAAAAAAAAAAAAAAAAAAA"));
+  const bad = "M" + Buffer.from(JSON.stringify([1, "m", "x", "n", "", 999, 0, "Europe/Istanbul"])).toString("base64url");
+  await assert.rejects(parseSeed(bad));
+  const badTz = "M" + Buffer.from(JSON.stringify([1, "m", "x", "n", "", 1, 1, "Mars/Base"])).toString("base64url");
+  await assert.rejects(parseSeed(badTz));
+});
+
+test("iqama packing ignores invalid rules", () => {
+  assert.equal(packIqama(null), "");
+  const u = unpackIqama("+10|@25:00|+5r7|junk|@19:30");
+  assert.deepEqual(u.fajr, { mode: "offset", offset: 10, round: 0 });
+  assert.equal(u.dhuhr, null);
+  assert.equal(u.asr, null);
+  assert.deepEqual(u.isha, { mode: "fixed", time: "19:30" });
+});

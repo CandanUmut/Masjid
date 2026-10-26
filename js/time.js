@@ -177,3 +177,22 @@ export function formatCountdown(ms) {
   const mmss = `${String(m).padStart(h ? 2 : 1, "0")}:${String(s).padStart(2, "0")}`;
   return h ? `${h}:${mmss}` : mmss;
 }
+
+// Time split into the clock part and the AM/PM marker (locale aware), e.g. { main: "5:55", period: "AM" }.
+export function timeParts(date, tz, { hour12 = false, locale = "en" } = {}) {
+  if (!(date instanceof Date) || isNaN(date)) return { main: "—", period: "" };
+  const parts = dtf(locale, {
+    timeZone: tz,
+    hour: hour12 ? "numeric" : "2-digit",
+    minute: "2-digit",
+    hour12,
+    ...(hour12 ? {} : { hourCycle: "h23" }),
+  }).formatToParts(date);
+  const period = parts.find((p) => p.type === "dayPeriod")?.value || "";
+  const main = parts
+    .filter((p) => p.type !== "dayPeriod")
+    .map((p) => p.value)
+    .join("")
+    .trim();
+  return { main, period };
+}

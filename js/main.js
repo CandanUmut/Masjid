@@ -74,6 +74,7 @@ export function makeCtx() {
     removePlace,
     useGps,
     go,
+    showRoute,
     setPhase,
     gpsOrCityPlace: () => place || { lat: 0, lng: 0, tz: deviceTimeZone() },
     openPlaces: (opts) => openPlacesSheet(makeCtx(), opts),
@@ -215,6 +216,12 @@ function parseHash() {
   return { name: name || "today", arg: rest.join("/") };
 }
 
+// Show a route without touching the URL (used when the URL carries data, e.g. #/tv/<seed>).
+function showRoute(name) {
+  app.route = routes()[name] ? name : "today";
+  render();
+}
+
 function go(name) {
   if (location.hash !== `#/${name}`) location.hash = `#/${name}`;
   else render();
@@ -316,15 +323,18 @@ function render() {
   const r = routes();
   const def = r[app.route] || r.today;
   document.body.dataset.route = app.route;
+  document.body.classList.toggle("is-chromeless", Boolean(def.chromeless));
   const ctx = makeCtx();
   renderTopbar();
   renderTabbar();
   if (def.needsPlace && !ctx.place) {
+    app.view?.destroy?.();
     app.view = null;
     main.replaceChildren(renderOnboarding());
     setPhase("dawn");
     return;
   }
+  app.view?.destroy?.();
   const v = def.view(ctx);
   app.view = v;
   main.replaceChildren(v.el);
@@ -334,6 +344,7 @@ function render() {
 // --- Boot --------------------------------------------------------------------------
 function tick() {
   app.view?.tick?.();
+  for (const p of plugins) p.tick?.();
 }
 
 export function start() {
@@ -360,7 +371,8 @@ export function start() {
   if (!navigator.onLine) document.body.classList.add("is-offline");
 
   // Auto-locate: on first open ask right away (that's what the app is for); later refresh silently.
-  if (state.activeId === "gps") {
+  const openingSeed = /^#\/?m\//.test(location.hash);
+  if (state.activeId === "gps" && !openingSeed) {
     geoPermission().then((perm) => {
       if (perm === "granted" || (!state.gps && perm !== "denied" && !state.onboarded)) useGps();
       else if (perm === "denied" && !state.gps) {

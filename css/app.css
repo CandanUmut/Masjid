@@ -1320,3 +1320,745 @@ body.is-offline .app::before {
     padding-top: calc(var(--safe-top) + 20px);
   }
 }
+
+/* ---------- Masjid editor & sharing ---------- */
+.sheet--tall {
+  height: min(94dvh, 900px);
+}
+.form-card {
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.form-card .field:last-child {
+  margin-bottom: 0;
+}
+.form-card .input {
+  background: var(--surface-2);
+  box-shadow: none;
+}
+.form-card .input:focus {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.form-card .search-field {
+  margin: 10px 0 0;
+}
+.form-card .search-results {
+  margin: 8px 0 0;
+  box-shadow: none;
+  background: var(--surface-2);
+}
+.loc-row {
+  padding: 0 0 10px;
+  min-height: 0;
+}
+.loc-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.btn-row .btn {
+  flex: 1;
+}
+.btn-sm {
+  min-height: 36px;
+  padding: 6px 14px;
+  font-size: 15px;
+  border-radius: 12px;
+}
+.btn-grow {
+  flex: 1;
+}
+.icon-btn-sm {
+  width: 30px;
+  height: 30px;
+  color: var(--label-2);
+}
+.icon-btn-sm .icon {
+  width: 14px;
+  height: 14px;
+}
+.coords-details {
+  margin-top: 12px;
+}
+.coords-details summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 500;
+  padding: 4px 0 10px;
+}
+.coords-details .select {
+  background-color: var(--surface-2);
+  box-shadow: none;
+}
+
+.preview-card {
+  margin-top: 4px;
+  padding: 14px 14px 12px;
+  border-radius: var(--radius);
+  color: #fff;
+  background: linear-gradient(160deg, #1d2556, #4a3b8f 60%, #7a5aa8);
+  box-shadow: 0 14px 40px -18px rgba(74, 59, 143, 0.7);
+}
+.preview-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+}
+.preview-name {
+  text-transform: none;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-top: 10px;
+  text-align: center;
+}
+.preview-cell {
+  display: grid;
+  gap: 2px;
+  padding: 8px 2px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+.preview-p {
+  font-size: 12px;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preview-a {
+  font-size: 13px;
+  opacity: 0.85;
+}
+.preview-i {
+  font-size: 16px;
+  font-weight: 700;
+}
+.preview-i.is-clamped {
+  color: #ffd27a;
+}
+.preview-empty {
+  margin: 4px 0;
+  font-size: 15px;
+}
+
+.iqama-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.iqama-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.iqama-top .row-label {
+  font-weight: 500;
+}
+.iqama-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.select-compact {
+  width: auto;
+  min-height: 34px;
+  padding-block: 4px;
+  font-size: 15px;
+  background-color: var(--fill);
+  box-shadow: none;
+}
+.input-time {
+  width: auto;
+  min-width: 120px;
+  min-height: 36px;
+  padding: 4px 10px;
+  font-variant-numeric: tabular-nums;
+  background: var(--fill);
+  box-shadow: none;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.chip-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 12px;
+  background: var(--fill);
+}
+.chip-time .input-time {
+  background: transparent;
+  min-width: 104px;
+}
+
+.share-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 8px 0 4px;
+}
+.qr-box {
+  width: min(64vw, 240px);
+  aspect-ratio: 1;
+  padding: 10px;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: var(--shadow-1), 0 0 0 0.5px var(--sep);
+}
+.qr-box svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.qr-box svg path,
+.qr-box svg rect[fill="black"] {
+  fill: #000;
+}
+.share-name {
+  margin-top: 14px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.share-sub {
+  color: var(--label-2);
+  font-size: 15px;
+}
+.share-scan {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--label-3);
+}
+.share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.share-actions .btn-primary {
+  min-height: 36px;
+  padding: 6px 16px;
+  font-size: 15px;
+  border-radius: 12px;
+}
+.seed-code {
+  display: block;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  word-break: break-all;
+  user-select: all;
+  max-height: 120px;
+  overflow: auto;
+}
+.sheet-body > .input {
+  background: var(--surface);
+}
+.preview-a,
+.preview-i {
+  white-space: nowrap;
+  line-height: 1.1;
+}
+.preview-period {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- Month ---------- */
+.month-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 4px;
+}
+.month-title {
+  flex: 1;
+  text-align: center;
+  min-width: 0;
+}
+.month-title h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.month-title p {
+  margin: 0;
+  color: var(--label-2);
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.month-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+.month-card {
+  overflow-x: auto;
+}
+.month-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+}
+.month-table thead th {
+  position: sticky;
+  top: 0;
+  padding: 10px 4px 8px;
+  background: var(--surface);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--label-2);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 0.5px solid var(--sep);
+}
+.month-table td,
+.month-table tbody th {
+  padding: 7px 4px;
+  text-align: center;
+  border-bottom: 0.5px solid var(--sep);
+  white-space: nowrap;
+}
+.month-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.m-day {
+  text-align: start !important;
+  padding-inline-start: 12px !important;
+  font-weight: 600;
+}
+.m-d {
+  display: inline-block;
+  min-width: 1.6em;
+}
+.m-w {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--label-2);
+}
+.m-h {
+  display: block;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--label-3);
+}
+.m-sun {
+  color: var(--label-2);
+}
+.m-iq {
+  display: block;
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.month-table tr.is-friday {
+  background: color-mix(in srgb, var(--green) 7%, transparent);
+}
+.month-table tr.is-today {
+  background: var(--accent-tint);
+}
+.month-table tr.is-today > * {
+  font-weight: 700;
+}
+.month-table tr.is-today .m-d {
+  color: var(--accent);
+}
+
+/* ---------- Qibla ---------- */
+.q-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 34px 20px 24px;
+  text-align: center;
+}
+.q-top-mark {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  width: 4px;
+  height: 18px;
+  margin-left: -2px;
+  border-radius: 4px;
+  background: var(--label);
+}
+.q-dial {
+  width: min(78vw, 300px);
+  aspect-ratio: 1;
+  transition: transform 0.2s linear;
+}
+.q-dial svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.q-ring {
+  fill: var(--surface-2);
+  stroke: var(--sep);
+}
+.tick {
+  stroke: var(--label-3);
+  stroke-width: 1;
+}
+.tick-major {
+  stroke: var(--label);
+  stroke-width: 2;
+}
+.q-dir,
+.q-dir-n {
+  font: 600 13px var(--font);
+  fill: var(--label-2);
+}
+.q-dir-n {
+  fill: var(--red);
+}
+.q-needle-head {
+  fill: var(--green);
+}
+.q-hub {
+  fill: var(--label);
+}
+.q-kaaba {
+  fill: #1c1c1e;
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+.q-kaaba-band {
+  fill: #d4af37;
+}
+.q-status {
+  min-height: 24px;
+  margin-top: 14px;
+  color: var(--green);
+  font-weight: 600;
+}
+.q-deg {
+  font-family: var(--font-rounded);
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.q-sub {
+  color: var(--label-2);
+  font-size: 15px;
+}
+.q-actions {
+  margin-top: 18px;
+}
+.view-qibla.is-facing .q-ring {
+  fill: color-mix(in srgb, var(--green) 16%, var(--surface-2));
+}
+.q-hint {
+  text-align: center;
+}
+
+/* ---------- Display (TV) mode ---------- */
+body.is-chromeless .app {
+  max-width: none;
+  padding: 0;
+}
+.tv {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2.4vh;
+  min-height: 100dvh;
+  padding: 4vh 4vw;
+  color: #fff;
+  background: linear-gradient(160deg, #0d1330, #1d2556 55%, #37307a);
+  transition: background 1.5s;
+}
+.tv[data-phase="dawn"] {
+  background: linear-gradient(160deg, #1b2a5e, #4f4699 60%, #a3708f);
+}
+.tv[data-phase="morning"],
+.tv[data-phase="day"] {
+  background: linear-gradient(160deg, #0f4c9c, #1a73e8 60%, #3d9bf5);
+}
+.tv[data-phase="afternoon"] {
+  background: linear-gradient(160deg, #1d4f9a, #a8683a 80%, #c98a4d);
+}
+.tv[data-phase="sunset"] {
+  background: linear-gradient(160deg, #2a1f5c, #8e3b62 60%, #c46a4a);
+}
+.tv-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 4vw;
+}
+.tv-title h1 {
+  margin: 0;
+  font-size: clamp(28px, 4.6vw, 80px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.tv-title p {
+  margin: 0.4vh 0 0;
+  font-size: clamp(16px, 1.8vw, 32px);
+  opacity: 0.75;
+}
+.tv-time {
+  text-align: end;
+}
+.tv-clock-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  direction: ltr;
+}
+.tv-clock {
+  font-family: var(--font-rounded);
+  font-size: clamp(48px, 9vw, 180px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+.tv-clock small {
+  font-size: 0.32em;
+  margin-inline-start: 0.2em;
+  opacity: 0.8;
+}
+.tv-secs {
+  font-family: var(--font-rounded);
+  font-size: clamp(20px, 3vw, 60px);
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
+}
+.tv-date {
+  font-size: clamp(14px, 1.7vw, 30px);
+  opacity: 0.85;
+}
+.tv-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1.2vw;
+  flex: 1;
+  align-items: stretch;
+}
+.tv-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.6vh;
+  padding: 2.4vh 1vw;
+  border-radius: clamp(14px, 1.8vw, 36px);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.tv-cell.is-sun {
+  opacity: 0.7;
+}
+.tv-cell.is-current {
+  background: rgba(255, 255, 255, 0.92);
+  color: #111;
+}
+.tv-cell.is-next {
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35) inset;
+}
+.tv-p {
+  font-size: clamp(16px, 2.4vw, 46px);
+  font-weight: 600;
+}
+.tv-a {
+  font-size: clamp(18px, 3vw, 60px);
+  font-weight: 500;
+  opacity: 0.85;
+}
+.tv-i {
+  font-size: clamp(22px, 4vw, 84px);
+  font-weight: 700;
+  min-height: 1em;
+}
+.tv-cell.is-current .tv-i {
+  color: #0a66d6;
+}
+.tv-j {
+  font-size: clamp(12px, 1.4vw, 26px);
+  opacity: 0.8;
+}
+.tv-next {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 2vw;
+  font-size: clamp(18px, 2.6vw, 52px);
+}
+.tv-next-label {
+  opacity: 0.8;
+}
+.tv-next-count {
+  font-family: var(--font-rounded);
+  font-size: 1.6em;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+}
+.tv.is-iqama .tv-next-count {
+  color: #ffd27a;
+}
+.tv-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1vw;
+  padding: 1.4vh 2vw;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: clamp(14px, 1.8vw, 34px);
+  text-align: center;
+}
+.tv-note .icon {
+  width: 1.2em;
+  height: 1.2em;
+}
+.tv-controls {
+  position: fixed;
+  top: 12px;
+  inset-inline-start: 12px;
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.tv:hover .tv-controls,
+.tv-controls:focus-within {
+  opacity: 1;
+}
+.tv-controls .icon-btn {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+@media (max-width: 760px) {
+  .tv-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .tv-head {
+    flex-direction: column;
+  }
+  .tv-time {
+    text-align: start;
+  }
+  .tv-clock-row {
+    justify-content: flex-start;
+  }
+  .tv-controls {
+    opacity: 1;
+    inset-inline-start: auto;
+    inset-inline-end: 12px;
+  }
+}
+
+/* ---------- Print (monthly timetable on paper) ---------- */
+@media print {
+  :root {
+    --bg: #fff;
+    --surface: #fff;
+    --label: #000;
+    --label-2: #444;
+    --sep: #bbb;
+  }
+  body {
+    background: #fff;
+  }
+  .topbar,
+  .tabbar,
+  .no-print,
+  .toast-host,
+  .month-head .icon-btn {
+    display: none !important;
+  }
+  .app {
+    max-width: none;
+    padding: 0;
+  }
+  .card {
+    box-shadow: none;
+    border: 1px solid #bbb;
+  }
+  .month-table {
+    font-size: 11px;
+  }
+  .month-table td,
+  .month-table tbody th {
+    padding: 3px;
+  }
+}
+.tv-label {
+  margin-top: 0.8vh;
+  font-size: clamp(10px, 0.95vw, 18px);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.6;
+}
+.tv-a,
+.tv-i {
+  white-space: nowrap;
+  line-height: 1.05;
+}
+.tv-period {
+  font-size: 0.42em;
+  margin-inline-start: 0.15em;
+  opacity: 0.8;
+}
+.tv-cell.is-current .tv-label {
+  opacity: 0.55;
+}
