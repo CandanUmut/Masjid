@@ -259,6 +259,7 @@ export function placeOptions(ctx, place, { closeParent, onRemoved } = {}) {
       isMasjid && ctx.editMasjid ? item("edit", place.fromLink ? t("editCopy") : t("editMasjid"), () => ctx.editMasjid(place)) : null,
       !isMasjid ? item("edit", t("rename"), () => renamePlace(ctx, place)) : null,
       ctx.shareMasjid ? item("share", t("share"), () => ctx.shareMasjid(place)) : null,
+      ctx.openCalendar ? item("calendar", t("exportCal"), () => ctx.openCalendar(place)) : null,
       isMasjid && ctx.openDisplay ? item("tv", t("tvMode"), () => ctx.openDisplay(place)) : null,
       item("trash", isMasjid ? t("removeMasjid") : t("remove"), () => { ctx.removePlace(place.id); onRemoved?.(); }, { cls: "tone-danger", keepParent: true })
     ),

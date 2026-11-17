@@ -1,5 +1,6 @@
 // Persistent app state in localStorage. Small, versioned, and tolerant of corrupt data.
 import { DEFAULT_CALC, normalizeCalc } from "./engine.js";
+import { DEFAULT_CAL, DEFAULT_REMIND, normalizeCal, normalizeRemind } from "./ics.js";
 
 const KEY = "masjid.state.v1";
 
@@ -10,7 +11,9 @@ export const DEFAULT_SETTINGS = {
   extras: { imsak: false, sunrise: true, duha: false, midnight: false, lastThird: false },
   hijriOffset: 0,
   calc: { ...DEFAULT_CALC },
-  notify: { enabled: false, before: 0, iqama: false },
+  notify: { enabled: false }, // in-app notifications (only while the app is open)
+  remind: structuredClone(DEFAULT_REMIND), // which prayers, adhan/iqama, and alerts: shared by notifications and calendar
+  cal: structuredClone(DEFAULT_CAL), // calendar export options
 };
 
 function fresh() {
@@ -37,7 +40,10 @@ export function load() {
     ...s.settings,
     ...(raw.settings || {}),
     extras: { ...s.settings.extras, ...(raw.settings?.extras || {}) },
-    notify: { ...s.settings.notify, ...(raw.settings?.notify || {}) },
+    notify: { enabled: Boolean(raw.settings?.notify?.enabled) },
+    // Older versions kept { before, iqama } under notify; carry those choices over once.
+    remind: normalizeRemind(raw.settings?.remind, raw.settings?.notify?.enabled ? raw.settings.notify : null),
+    cal: normalizeCal(raw.settings?.cal),
     calc: normalizeCalc(raw.settings?.calc),
   };
   s.places = Array.isArray(raw.places) ? raw.places.filter(isPlace) : [];

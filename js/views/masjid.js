@@ -881,6 +881,8 @@ function masjidCard(ctx, place) {
       // What congregants need most: how to get there.
       h("a", { class: "btn btn-primary btn-sm", href: directionsUrl(place), target: "_blank", rel: "noopener" }, icon("directions"), t("directions")),
       h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openShareSheet(ctx, place) }, icon("share"), t("share")),
+      // Iqama reminders that work with the app closed: what most congregants actually want.
+      ctx.openCalendar ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.openCalendar(place) }, icon("calendar"), t("calShort")) : null,
       ctx.openDisplay ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.openDisplay(place) }, icon("tv"), t("tvShort")) : null,
       // A congregant's copy: editing is still possible from "…", but it isn't a main action.
       place.fromLink ? null : h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openMasjidEditor(ctx, place) }, icon("edit"), t("edit"))

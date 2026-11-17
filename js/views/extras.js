@@ -1,8 +1,9 @@
 // Phase-3 features wired in as a plugin: Month, Qibla, Display mode, reminders, install/offline, backup.
-import { scheduleFor } from "../engine.js";
-import { addDays, todayYmd } from "../time.js";
+import { formatDate, todayYmd } from "../time.js";
+import { reminderEvents as calendarEvents, alertsFor, PRAYER_KEYS, normalizeRemind, normalizeCal } from "../ics.js";
+import { openCalendarSheet, calendarEndingSoon, remindSummary } from "./calendar.js";
 import { t } from "../i18n.js";
-import { h, icon, openSheet, select, toggle, toast, copyText, confirmSheet } from "../ui.js";
+import { h, icon, openSheet, toggle, toast, copyText, confirmSheet } from "../ui.js";
 import { normalizeCalc } from "../engine.js";
 import { backupToSeed, placeToSeed } from "../seed.js";
 import { DEFAULT_SETTINGS } from "../store.js";
@@ -19,7 +20,8 @@ export function setExtrasCtx(fn) {
 
 // --- Reminders ---------------------------------------------------------------------------
 // Browsers can't schedule notifications for a closed web app, so we check every second while
-// the app is open (or installed and alive) and fire when an event time is reached.
+// the app is open (or installed and alive) and fire when an alert time is reached. The calendar
+// file is the dependable way; both follow the same choices (Settings → Reminders).
 const FIRED_KEY = "masjid.fired.v1";
 let fired = new Set();
 try {
@@ -28,19 +30,16 @@ try {
   /* ignore */
 }
 
-function reminderEvents(ctx) {
-  const n = ctx.settings.notify;
+function reminderAlerts(ctx) {
   const place = ctx.place;
-  const base = todayYmd(place.tz);
+  const prefs = ctx.settings.remind;
+  const evs = calendarEvents(place, ctx.calc, prefs, { from: todayYmd(place.tz), days: 2, label: (k, v) => t(k, v), hijriOffset: ctx.settings.hijriOffset });
   const out = [];
-  for (const ymd of [base, addDays(base, 1)]) {
-    const s = scheduleFor(place, ctx.calc, ymd);
-    for (const r of s.rows) {
-      if (!r.isPrayer || !r.adhan) continue;
-      const id = `${place.id}|${ymd.y}-${ymd.m}-${ymd.d}|${r.key}`;
-      out.push({ id: `${id}|at`, at: r.adhan.getTime(), title: t("notifyAtTime", { p: t(r.key) }), body: `${place.name} · ${ctx.fmt(r.adhan)}${r.iqama ? ` · ${t("iqamaAt", { t: ctx.fmt(r.iqama.at) })}` : ""}` });
-      if (n.before > 0) out.push({ id: `${id}|pre`, at: r.adhan.getTime() - n.before * 60000, title: t("notifyBeforeText", { p: t(r.key), m: n.before }), body: `${place.name} · ${ctx.fmt(r.adhan)}` });
-      if (n.iqama && r.iqama) out.push({ id: `${id}|iq`, at: r.iqama.at.getTime() - 5 * 60000, title: t("iqamaIn", { t: `5 ${t("min")}` }), body: `${t(r.key)} · ${place.name} · ${ctx.fmt(r.iqama.at)}` });
+  for (const ev of evs) {
+    const body = [place.name, ctx.fmt(ev.start), ev.iqamaAt ? t("iqamaAt", { t: ctx.fmt(ev.iqamaAt) }) : null].filter(Boolean).join(" · ");
+    for (const m of alertsFor(prefs, ev.kind)) {
+      const title = m ? t("notifyIn", { p: ev.title, m }) : ev.kind === "adhan" && PRAYER_KEYS.includes(ev.key) ? t("notifyAtTime", { p: t(ev.key) }) : ev.title;
+      out.push({ id: `${place.id}|${ev.uid}|${m}`, at: ev.start.getTime() - m * 60000, title, body });
     }
   }
   return out;
@@ -64,10 +63,12 @@ async function notify(ev) {
 let cache = { key: "", events: [] };
 function checkReminders() {
   const ctx = getCtx?.();
-  if (!ctx?.place || !ctx.settings.notify.enabled) return;
+  if (!ctx?.place) return;
+  nudgeCalendar(ctx);
+  if (!ctx.settings.notify.enabled) return;
   if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-  const key = `${ctx.place.id}|${JSON.stringify(todayYmd(ctx.place.tz))}|${JSON.stringify(ctx.settings.notify)}|${ctx.locale}`;
-  if (cache.key !== key) cache = { key, events: reminderEvents(ctx) };
+  const key = `${ctx.place.id}|${JSON.stringify(todayYmd(ctx.place.tz))}|${JSON.stringify(ctx.settings.remind)}|${ctx.locale}`;
+  if (cache.key !== key) cache = { key, events: reminderAlerts(ctx) };
   const now = Date.now();
   for (const ev of cache.events) {
     if (now >= ev.at && now - ev.at < 3 * 60000 && !fired.has(ev.id)) {
@@ -80,6 +81,23 @@ function checkReminders() {
       notify(ev);
     }
   }
+}
+
+// Prayer times added to the calendar are about to run out: offer to add the next ones, once per session.
+let nudged = false;
+function nudgeCalendar(ctx) {
+  if (nudged || document.visibilityState !== "visible" || document.querySelector("dialog[open]")) return;
+  if (location.hash.startsWith("#/tv")) return;
+  nudged = true;
+  const end = calendarEndingSoon(ctx.settings, ctx.place);
+  if (!end) return;
+  setTimeout(() => {
+    toast(t("calExpiring", { d: formatDate(end, ctx.locale, { day: "numeric", month: "long" }) }), {
+      action: t("calAddMore"),
+      duration: 9000,
+      onAction: () => openCalendarSheet(getCtx(), {}),
+    });
+  }, 2500);
 }
 
 // --- PWA: service worker, updates and install ----------------------------------------------------
@@ -120,38 +138,47 @@ function settingsSections(ctx) {
   const n = ctx.settings.notify;
   const supported = typeof Notification !== "undefined";
   const blocked = supported && Notification.permission === "denied";
-  const notifyList = h(
-    "div",
-    { class: "list" },
-    row(
-      t("notifyEnable"),
-      toggle(n.enabled && supported && !blocked, async (v) => {
-        if (v && supported && Notification.permission !== "granted") {
-          const res = await Notification.requestPermission().catch(() => "denied");
-          if (res !== "granted") {
-            toast(t("notifyDenied"), { tone: "warn" });
-            ctx.update((s) => (s.settings.notify.enabled = false));
-            return;
-          }
-        }
-        ctx.update((s) => (s.settings.notify.enabled = v));
-      }, t("notifyEnable"))
-    ),
-    h("div", { class: n.enabled ? "" : "is-disabled", inert: !n.enabled }, row(
-      t("notifyBefore"),
-      select(
-        n.before,
-        [0, 5, 10, 15, 20, 30].map((m) => ({ value: m, label: m ? `${m} ${t("min")}` : t("off") })),
-        (v) => ctx.update((s) => (s.settings.notify.before = Number(v)), { render: false }),
-        { "aria-label": t("notifyBefore") }
-      )
-    ),
-    row(t("notifyIqama"), toggle(n.iqama, (v) => ctx.update((s) => (s.settings.notify.iqama = v), { render: false }), t("notifyIqama"))))
-  );
+  const place = ctx.place;
   const sections = [
     h("h3", { class: "list-title" }, t("notifications")),
-    notifyList,
-    h("p", { class: "list-foot" }, !supported || blocked ? t("notifyDenied") + " " : "", t("notifyHint"), " ", h("a", { href: "#/month" }, t("exportCal"))),
+    // The dependable way first: calendar alerts work with the app closed.
+    h(
+      "div",
+      { class: "list" },
+      place
+        ? h(
+            "button",
+            { class: "row row-btn", type: "button", onclick: () => openCalendarSheet(ctx, {}) },
+            icon("calendar", "row-icon tone-accent"),
+            h("span", { class: "row-main" }, h("span", { class: "row-title" }, t("exportCal")), h("span", { class: "row-sub wrap" }, t("calRowSub"))),
+            icon("chevronRight", "row-chevron flip-rtl")
+          )
+        : null,
+      place
+        ? h(
+            "button",
+            { class: "row row-btn", type: "button", onclick: () => openCalendarSheet(ctx, { mode: "notify", onClose: () => ctx.update(() => {}) }) },
+            icon("bell", "row-icon"),
+            h("span", { class: "row-main" }, h("span", { class: "row-title" }, t("remindPick")), h("span", { class: "row-sub wrap" }, remindSummary(ctx.settings.remind, place))),
+            icon("chevronRight", "row-chevron flip-rtl")
+          )
+        : null,
+      row(
+        t("notifyEnable"),
+        toggle(n.enabled && supported && !blocked, async (v) => {
+          if (v && supported && Notification.permission !== "granted") {
+            const res = await Notification.requestPermission().catch(() => "denied");
+            if (res !== "granted") {
+              toast(t("notifyDenied"), { tone: "warn" });
+              ctx.update((s) => (s.settings.notify.enabled = false));
+              return;
+            }
+          }
+          ctx.update((s) => (s.settings.notify.enabled = v), { render: false });
+        }, t("notifyEnable"))
+      )
+    ),
+    h("p", { class: "list-foot" }, !supported || blocked ? t("notifyDenied") + " " : "", t("notifyHint")),
   ];
 
   const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
@@ -267,7 +294,9 @@ function restoreBackup(parsed) {
       ...structuredClone(DEFAULT_SETTINGS),
       ...st,
       extras: { ...DEFAULT_SETTINGS.extras, ...(st.extras || {}) },
-      notify: { ...DEFAULT_SETTINGS.notify, ...(st.notify || {}), enabled: false },
+      notify: { enabled: false },
+      remind: normalizeRemind(st.remind, st.notify?.enabled ? st.notify : null),
+      cal: normalizeCal(st.cal),
       calc: normalizeCalc(st.calc),
     };
     for (const p of parsed.places) {
@@ -294,6 +323,7 @@ export const extrasPlugin = {
   ctx: () => ({
     settingsExtras: () => settingsSections(getCtx()),
     restoreBackup,
+    openCalendar: (place, opts = {}) => openCalendarSheet(getCtx(), { place, ...opts }),
     openDisplay: async (place) => {
       // Always the seed URL, so the board can be bookmarked as a screen's start page.
       location.hash = `#/tv/${await placeToSeed(place)}`;

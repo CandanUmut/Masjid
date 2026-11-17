@@ -1,5 +1,5 @@
 import { scheduleFor, METHODS } from "../engine.js";
-import { todayYmd, daysInMonth, formatDate, formatHijriMonth, hijriParts, sameYmd, partsInTz, timeParts, ymdKey } from "../time.js";
+import { todayYmd, daysInMonth, formatDate, formatHijriMonth, hijriParts, sameYmd, timeParts } from "../time.js";
 import { t } from "../i18n.js";
 import { h, icon } from "../ui.js";
 import { skyAt } from "./today.js";
@@ -91,7 +91,7 @@ export function MonthView(ctx) {
         "div",
         { class: "month-actions no-print" },
         h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => window.print() }, icon("print"), t("print")),
-        h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => downloadIcs(ctx, ym) }, icon("calendar"), t("exportCal"))
+        h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.openCalendar?.(place, { ym }) }, icon("calendar"), t("exportCal"))
       ),
       h(
         "p",
@@ -152,96 +152,4 @@ export function MonthView(ctx) {
 
   render();
   return { el: root };
-}
-
-// --- Calendar export (.ics) with an alert at each prayer --------------------------------------
-function icsDate(d) {
-  return d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-}
-function icsText(s) {
-  return String(s).replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\n/g, "\\n");
-}
-
-export function buildIcs(place, calc, ym, label = (k) => k, { fromDay = 1 } = {}) {
-  const lines = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "PRODID:-//Ufuq//Prayer Times//EN",
-    "CALSCALE:GREGORIAN",
-    "METHOD:PUBLISH",
-    `X-WR-CALNAME:${icsText(`${place.name} — ${label("monthTitle")}`)}`,
-  ];
-  const stamp = icsDate(new Date());
-  const n = daysInMonth(ym.y, ym.m);
-  for (let d = fromDay; d <= n; d++) {
-    const ymd = { y: ym.y, m: ym.m, d };
-    const s = scheduleFor(place, calc, ymd);
-    for (const r of s.rows) {
-      if (!r.isPrayer || !r.adhan) continue;
-      const end = r.iqama?.at && r.iqama.at > r.adhan ? new Date(r.iqama.at.getTime() + 10 * 60000) : new Date(r.adhan.getTime() + 15 * 60000);
-      const iq = r.iqama ? `${label("iqama")}: ${partsHHMM(r.iqama.at, place.tz)}` : "";
-      lines.push(
-        "BEGIN:VEVENT",
-        `UID:${place.id || "here"}-${ymdKey(ymd)}-${r.key}@ufuq`,
-        `DTSTAMP:${stamp}`,
-        `DTSTART:${icsDate(r.adhan)}`,
-        `DTEND:${icsDate(end)}`,
-        `SUMMARY:${icsText(`${label(r.key)}${iq ? ` · ${iq}` : ""}`)}`,
-        `LOCATION:${icsText(place.name)}`,
-        "TRANSP:TRANSPARENT",
-        "BEGIN:VALARM",
-        "ACTION:DISPLAY",
-        `DESCRIPTION:${icsText(label(r.key))}`,
-        "TRIGGER:PT0M",
-        "END:VALARM",
-        "END:VEVENT"
-      );
-    }
-  }
-  lines.push("END:VCALENDAR");
-  // RFC 5545 wants CRLF and lines ≤ 75 octets; fold long lines.
-  return lines.map(fold).join("\r\n") + "\r\n";
-}
-
-function fold(line) {
-  const bytes = new TextEncoder().encode(line);
-  if (bytes.length <= 75) return line;
-  const out = [];
-  let cur = "";
-  let len = 0;
-  for (const ch of line) {
-    const l = new TextEncoder().encode(ch).length;
-    if (len + l > (out.length ? 74 : 75)) {
-      out.push(cur);
-      cur = "";
-      len = 0;
-    }
-    cur += ch;
-    len += l;
-  }
-  out.push(cur);
-  return out.join("\r\n ");
-}
-
-function partsHHMM(d, tz) {
-  const p = partsInTz(d, tz);
-  return `${String(p.hh).padStart(2, "0")}:${String(p.mm).padStart(2, "0")}`;
-}
-
-function downloadIcs(ctx, ym) {
-  // This month: from today on (past alarms are just noise in a calendar).
-  const today = todayYmd(ctx.place.tz);
-  const fromDay = today.y === ym.y && today.m === ym.m ? today.d : 1;
-  const ics = buildIcs(ctx.place, ctx.calc, ym, (k) => t(k), { fromDay });
-  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-  const a = h("a", {
-    href: URL.createObjectURL(blob),
-    download: `${(ctx.place.name || "prayer-times").replace(/[^\p{L}\p{N}]+/gu, "-")}-${ym.y}-${String(ym.m).padStart(2, "0")}.ics`,
-  });
-  document.body.append(a);
-  a.click();
-  setTimeout(() => {
-    URL.revokeObjectURL(a.href);
-    a.remove();
-  }, 1000);
 }
