@@ -44,7 +44,9 @@ export const DEFAULT_CAL = {
   busy: false, // show prayer time as busy (so meetings aren't booked over it)
   length: 15, // minutes blocked for a prayer
   renew: true, // a last event that reminds you to add the next batch
-  exports: {}, // placeId -> "YYYY-MM-DD": the last day already added to the calendar
+  // What this device has added to a calendar, per place (see placeKey):
+  // { from, to, sig, last: { from, to } } — the span covered, the choices it was made with, and the latest file.
+  exports: {},
 };
 
 const pickAlert = (v, dflt) => (ALERT_CHOICES.includes(Number(v)) ? Number(v) : dflt);
@@ -81,12 +83,75 @@ export function normalizeCal(raw) {
   out.busy = Boolean(raw.busy);
   if (LENGTH_CHOICES.includes(Number(raw.length))) out.length = Number(raw.length);
   out.renew = raw.renew !== false;
+  const day = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
   if (raw.exports && typeof raw.exports === "object") {
-    for (const [id, until] of Object.entries(raw.exports)) {
-      if (typeof id === "string" && /^\d{4}-\d{2}-\d{2}$/.test(until)) out.exports[id] = until;
+    for (const [id, e] of Object.entries(raw.exports)) {
+      if (!e || !day(e.from) || !day(e.to) || e.from > e.to) continue;
+      const last = e.last && day(e.last.from) && day(e.last.to) ? { from: e.last.from, to: e.last.to } : { from: e.from, to: e.to };
+      out.exports[id] = { from: e.from, to: e.to, sig: String(e.sig || ""), last };
     }
   }
   return out;
+}
+
+// Small, stable string hash (FNV-1a) for keys and fingerprints.
+export function hash(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+// Which calendar a place's events belong to. "My location" moves with you, so it is keyed by
+// where it was (to about 1 km): times added at home are never mistaken for times somewhere else.
+export function placeKey(place) {
+  if (place.id && place.id !== "gps") return place.id;
+  if (!Number.isFinite(place.lat) || !Number.isFinite(place.lng)) return "here";
+  return `here-${hash(`${place.lat.toFixed(2)},${place.lng.toFixed(2)},${place.tz}`)}`;
+}
+
+// Everything that changes what a file contains. Same fingerprint = same events for the same days.
+export function exportSig(place, calc, prefs, cal) {
+  const p = place;
+  return hash(JSON.stringify([prefs, cal.busy, cal.length, p.lat?.toFixed(3), p.lng?.toFixed(3), p.tz, calc, p.iqama || null, p.jumuah || null]));
+}
+
+// Record a download of [from, to] (ymd keys). Joins the span already covered when it touches it,
+// and never moves backwards; a different fingerprint starts over.
+export function recordExport(prev, from, to, sig) {
+  if (prev && prev.sig === sig && from <= nextDay(prev.to) && to >= prevDay(prev.from)) {
+    return { from: from < prev.from ? from : prev.from, to: to > prev.to ? to : prev.to, sig, last: { from, to } };
+  }
+  return { from, to, sig, last: { from, to } };
+}
+const parse = (k) => {
+  const [y, m, d] = k.split("-").map(Number);
+  return { y, m, d };
+};
+const nextDay = (k) => ymdKey(addDays(parse(k), 1));
+const prevDay = (k) => ymdKey(addDays(parse(k), -1));
+const diffDays = (a, b) => Math.round((Date.UTC(b.y, b.m - 1, b.d) - Date.UTC(a.y, a.m - 1, a.d)) / 864e5);
+
+// What to put in the next file, given what is already in the calendar.
+// Returns { from, days, covered, changed, rec }:
+//  - covered: every day asked for is already there (with the same choices)
+//  - changed: the calendar holds times made with different choices (or older masjid times)
+// With `skip`, days already in the calendar are left out (only the start or the end can move).
+export function planExport({ from, days }, rec, sig, skip = true) {
+  const want = { from: ymdKey(from), to: ymdKey(addDays(from, days - 1)) };
+  if (!rec || days <= 0 || rec.to < want.from || rec.from > want.to) return { from, days, covered: false, changed: false, rec: null };
+  if (rec.sig !== sig) return { from, days, covered: false, changed: true, rec };
+  if (!skip) return { from, days, covered: false, changed: false, rec };
+  if (rec.from <= want.from && rec.to >= want.to) return { from, days: 0, covered: true, changed: false, rec };
+  if (rec.from <= want.from) {
+    // The start is already there: carry on after the calendar's last day.
+    const start = parse(nextDay(rec.to));
+    return { from: start, days: diffDays(start, parse(want.to)) + 1, covered: false, changed: false, rec };
+  }
+  // The calendar starts later (say, next month was added first): fill the gap up to it.
+  return { from, days: diffDays(from, parse(prevDay(rec.from))) + 1, covered: false, changed: false, rec };
 }
 
 export const placeHasIqama = (place) => Boolean(place?.iqama && PRAYER_KEYS.some((k) => place.iqama[k]));
@@ -213,7 +278,7 @@ const before = (m) => (m ? `-PT${m}M` : "PT0M");
 export function buildIcs(place, calc, prefs, opts) {
   const { label = (k) => k, url = "", fmt = (d) => hhmm(d, place.tz), fmtDate = ymdKey, renew = true, stamp = new Date() } = opts;
   const events = reminderEvents(place, calc, prefs, opts);
-  const id = place.id || "here";
+  const id = placeKey(place);
   const dtstamp = icsDate(stamp);
   const lines = [
     "BEGIN:VCALENDAR",
@@ -243,7 +308,6 @@ export function buildIcs(place, calc, prefs, opts) {
       `DESCRIPTION:${icsText(details.join("\n"))}`,
       where ? `LOCATION:${icsText(where)}` : null,
       geo ? `GEO:${geo.lat.toFixed(6)};${geo.lng.toFixed(6)}` : null,
-      url ? `URL:${url}` : null,
       `TRANSP:${ev.busy ? "OPAQUE" : "TRANSPARENT"}`,
       "CATEGORIES:" + icsText(label("calName"))
     );

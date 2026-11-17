@@ -1,8 +1,8 @@
 // Phase-3 features wired in as a plugin: Month, Qibla, Display mode, reminders, install/offline, backup.
 import { formatDate, todayYmd } from "../time.js";
 import { reminderEvents as calendarEvents, alertsFor, PRAYER_KEYS, normalizeRemind, normalizeCal } from "../ics.js";
-import { openCalendarSheet, calendarEndingSoon, remindSummary } from "./calendar.js";
-import { t } from "../i18n.js";
+import { openCalendarSheet, calendarEnding, remindSummary } from "./calendar.js";
+import { t, tn } from "../i18n.js";
 import { h, icon, openSheet, toggle, toast, copyText, confirmSheet } from "../ui.js";
 import { normalizeCalc } from "../engine.js";
 import { backupToSeed, placeToSeed } from "../seed.js";
@@ -38,7 +38,7 @@ function reminderAlerts(ctx) {
   for (const ev of evs) {
     const body = [place.name, ctx.fmt(ev.start), ev.iqamaAt ? t("iqamaAt", { t: ctx.fmt(ev.iqamaAt) }) : null].filter(Boolean).join(" · ");
     for (const m of alertsFor(prefs, ev.kind)) {
-      const title = m ? t("notifyIn", { p: ev.title, m }) : ev.kind === "adhan" && PRAYER_KEYS.includes(ev.key) ? t("notifyAtTime", { p: t(ev.key) }) : ev.title;
+      const title = m ? tn("notifyIn", m, { p: ev.title, m }) : ev.kind === "adhan" && PRAYER_KEYS.includes(ev.key) ? t("notifyAtTime", { p: t(ev.key) }) : ev.title;
       out.push({ id: `${place.id}|${ev.uid}|${m}`, at: ev.start.getTime() - m * 60000, title, body });
     }
   }
@@ -83,16 +83,16 @@ function checkReminders() {
   }
 }
 
-// Prayer times added to the calendar are about to run out: offer to add the next ones, once per session.
+// Prayer times added to the calendar run out soon (or just did): offer to add the next ones, once per session.
 let nudged = false;
 function nudgeCalendar(ctx) {
   if (nudged || document.visibilityState !== "visible" || document.querySelector("dialog[open]")) return;
   if (location.hash.startsWith("#/tv")) return;
   nudged = true;
-  const end = calendarEndingSoon(ctx.settings, ctx.place);
+  const end = calendarEnding(ctx.settings, ctx.place);
   if (!end) return;
   setTimeout(() => {
-    toast(t("calExpiring", { d: formatDate(end, ctx.locale, { day: "numeric", month: "long" }) }), {
+    toast(t(end.ended ? "calExpired" : "calExpiring", { d: formatDate(end.until, ctx.locale, { day: "numeric", month: "long" }) }), {
       action: t("calAddMore"),
       duration: 9000,
       onAction: () => openCalendarSheet(getCtx(), {}),
@@ -296,7 +296,8 @@ function restoreBackup(parsed) {
       extras: { ...DEFAULT_SETTINGS.extras, ...(st.extras || {}) },
       notify: { enabled: false },
       remind: normalizeRemind(st.remind, st.notify?.enabled ? st.notify : null),
-      cal: normalizeCal(st.cal),
+      // What this device added to its calendar isn't known on another device: start fresh there.
+      cal: { ...normalizeCal(st.cal), exports: structuredClone(s.settings.cal?.exports || {}) },
       calc: normalizeCalc(st.calc),
     };
     for (const p of parsed.places) {

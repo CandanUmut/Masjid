@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildIcs, reminderEvents, normalizeRemind, normalizeCal, rangeDays, alertsFor, fold, DEFAULT_REMIND } from "../js/ics.js";
-import { STRINGS } from "../js/i18n.js";
+import { buildIcs, reminderEvents, normalizeRemind, normalizeCal, rangeDays, alertsFor, fold, DEFAULT_REMIND, DEFAULT_CAL, placeKey, exportSig, planExport, recordExport } from "../js/ics.js";
+import { STRINGS, tn } from "../js/i18n.js";
 import { hijriParts, formatHHMM, weekdayOf } from "../js/time.js";
 
 const labelIn = (lang) => (k, vars) => {
@@ -200,7 +200,7 @@ test("Turkish titles name the prayer, not the time", () => {
 });
 
 test("every new string exists in every language", () => {
-  const keys = Object.keys(STRINGS.en).filter((k) => /^(cal|alert|range|start|how|plat|ev|renew|remind|notifyIn|nPrayers|fajrPrayer)/.test(k));
+  const keys = Object.keys(STRINGS.en).filter((k) => /^(cal|alert|range|how|plat|ev|renew|remind|notifyIn|nPrayers|fajrPrayer)/.test(k) && !/_(one|two|few|many)$/.test(k));
   assert.ok(keys.length > 50);
   for (const lang of ["tr", "ar"]) for (const k of keys) assert.ok(STRINGS[lang][k], `${lang}.${k} missing`);
 });
@@ -228,11 +228,11 @@ test("settings: old reminder choices carry over, junk is ignored", () => {
   assert.equal(junk.iqamaAlert, 15);
   assert.deepEqual(junk.pick.fajr, { adhan: false, iqama: true });
   assert.deepEqual(junk.pick.asr, DEFAULT_REMIND.pick.asr);
-  const cal = normalizeCal({ range: "999", length: 3, renew: false, exports: { m1: "2026-12-16", bad: "soon" } });
+  const cal = normalizeCal({ range: "999", length: 3, renew: false, exports: { m1: { from: "2026-11-17", to: "2026-12-16", sig: "x" }, old: "2026-12-16", bad: { from: "2026-12-16", to: "2026-11-01" } } });
   assert.equal(cal.range, "30");
   assert.equal(cal.length, 15);
   assert.equal(cal.renew, false);
-  assert.deepEqual(cal.exports, { m1: "2026-12-16" });
+  assert.deepEqual(cal.exports, { m1: { from: "2026-11-17", to: "2026-12-16", sig: "x", last: { from: "2026-11-17", to: "2026-12-16" } } });
 });
 
 test("folding never splits a character", () => {
@@ -240,4 +240,89 @@ test("folding never splits a character", () => {
   const folded = fold(line);
   for (const part of folded.split("\r\n")) assert.ok(new TextEncoder().encode(part).length <= 75);
   assert.equal(folded.replace(/\r\n /g, ""), line);
+});
+
+// --- What's already in the calendar ---------------------------------------------------------
+const d = (k) => {
+  const [y, m, dd] = k.split("-").map(Number);
+  return { y, m, d: dd };
+};
+const span = (p) => p.days > 0 ? [`${p.from.y}-${String(p.from.m).padStart(2, "0")}-${String(p.from.d).padStart(2, "0")}`, p.days] : [null, 0];
+
+test("next file continues where the calendar ends; no duplicates", () => {
+  const rec = recordExport(null, "2026-11-17", "2026-12-16", "s");
+  // Next 30 days, asked again a week later: only the new days.
+  assert.deepEqual(span(planExport({ from: d("2026-11-24"), days: 30 }, rec, "s")), ["2026-12-17", 7]);
+  // All of it is there already.
+  const p = planExport({ from: d("2026-11-20"), days: 10 }, rec, "s");
+  assert.equal(p.covered, true);
+  // Asked to add them again anyway.
+  assert.deepEqual(span(planExport({ from: d("2026-11-24"), days: 30 }, rec, "s", false)), ["2026-11-24", 30]);
+});
+
+test("a future month added first: the gap before it is filled, nothing claimed that wasn't added", () => {
+  const feb = recordExport(null, "2027-02-01", "2027-02-28", "s");
+  const p = planExport({ from: d("2026-11-18"), days: 30 }, feb, "s");
+  assert.equal(p.covered, false);
+  assert.deepEqual(span(p), ["2026-11-18", 30]); // no overlap with February: all of it
+  const p2 = planExport({ from: d("2026-11-18"), days: 90 }, feb, "s");
+  assert.deepEqual(span(p2), ["2026-11-18", 75]); // up to 31 January only
+  // Recording the gap joins the two spans.
+  assert.deepEqual(recordExport(feb, "2026-11-18", "2027-01-31", "s"), { from: "2026-11-18", to: "2027-02-28", sig: "s", last: { from: "2026-11-18", to: "2027-01-31" } });
+  // A separate span (with a gap between) replaces the record rather than pretending to cover the gap.
+  assert.deepEqual(recordExport(feb, "2026-11-18", "2026-12-17", "s"), { from: "2026-11-18", to: "2026-12-17", sig: "s", last: { from: "2026-11-18", to: "2026-12-17" } });
+});
+
+test("the record never moves backwards", () => {
+  const rec = recordExport(null, "2026-11-17", "2027-02-28", "s");
+  assert.deepEqual(recordExport(rec, "2026-11-17", "2026-11-30", "s"), { from: "2026-11-17", to: "2027-02-28", sig: "s", last: { from: "2026-11-17", to: "2026-11-30" } });
+});
+
+test("changed choices or masjid times are not called 'already added'", () => {
+  const p = prefs();
+  const sig1 = exportSig(masjid, calc, p, DEFAULT_CAL);
+  const rec = recordExport(null, "2026-11-17", "2026-12-16", sig1);
+  p.pick.sunrise.adhan = true;
+  const sig2 = exportSig(masjid, calc, p, DEFAULT_CAL);
+  assert.notEqual(sig1, sig2);
+  const plan = planExport({ from: d("2026-11-18"), days: 30 }, rec, sig2);
+  assert.equal(plan.changed, true);
+  assert.equal(plan.covered, false);
+  assert.deepEqual(span(plan), ["2026-11-18", 30]);
+  // The masjid publishes new iqama times: also a change.
+  const updated = { ...masjid, iqama: { ...masjid.iqama, isha: { mode: "fixed", time: "20:00", min: 10 } } };
+  assert.notEqual(exportSig(updated, calc, prefs(), DEFAULT_CAL), exportSig(masjid, calc, prefs(), DEFAULT_CAL));
+});
+
+test("'My location' is keyed by where it was, so travelling never reuses old times or UIDs", () => {
+  const ny = home;
+  const ist = { ...home, lat: 41.0082, lng: 28.9784, tz: "Europe/Istanbul" };
+  assert.notEqual(placeKey(ny), placeKey(ist));
+  assert.equal(placeKey(ny), placeKey({ ...ny, lat: ny.lat + 0.001 })); // same neighbourhood: same calendar
+  assert.equal(placeKey(masjid), "m1");
+  const uid = unfold(buildIcs(ist, calc, prefs(), { from: tue, days: 1, label, renew: false }).text).match(/^UID:(.+)$/m)[1];
+  assert.ok(uid.startsWith(placeKey(ist)), uid);
+  assert.ok(!/gps/.test(uid));
+});
+
+test("the masjid link is in the description once, not repeated in every event's URL", () => {
+  const url = "https://example.org/#/m/" + "x".repeat(200);
+  const { text } = buildIcs(masjid, calc, prefs(), { from: tue, days: 30, label, url });
+  const evs = events(text);
+  assert.ok(evs.filter((e) => /^URL:/m.test(e)).length === 1); // only the renewal reminder
+  assert.ok(evs.every((e) => e.includes(url)));
+});
+
+test("plurals: Arabic minutes and prayers", () => {
+  const ar = (key, n) => {
+    const cat = new Intl.PluralRules("ar").select(n);
+    return (STRINGS.ar[`${key}_${cat}`] ?? STRINGS.ar[key]).replaceAll("{m}", n).replaceAll("{n}", n);
+  };
+  assert.equal(ar("alertBefore", 5), "قبل 5 دقائق");
+  assert.equal(ar("alertBefore", 15), "قبل 15 دقيقة");
+  assert.equal(ar("nPrayers", 1), "صلاة واحدة");
+  assert.equal(ar("nPrayers", 2), "صلاتان");
+  assert.equal(ar("nPrayers", 5), "5 صلوات");
+  assert.equal(tn("nPrayers", 1), "1 prayer"); // English (the default language in tests)
+  assert.equal(tn("nPrayers", 4), "4 prayers");
 });

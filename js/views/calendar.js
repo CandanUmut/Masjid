@@ -1,10 +1,13 @@
 // "Add to calendar": choose which prayers (adhan and/or iqama), how you're alerted and how far ahead,
 // then download a calendar file. Calendar alerts keep working when this app is closed, which is
 // the only reliable way for a web app to remind anyone. The same choices drive in-app notifications.
-import { ALERT_CHOICES, LENGTH_CHOICES, REMIND_ROWS, PRAYER_KEYS, buildIcs, placeHasIqama, placeHasJumuah, rangeDays, reminderEvents, normalizeRemind, normalizeCal } from "../ics.js";
-import { addDays, formatDate, formatTime, timeParts, todayYmd, ymdKey } from "../time.js";
-import { t } from "../i18n.js";
-import { h, icon, openSheet, select, toggle, segmented, toast } from "../ui.js";
+import {
+  ALERT_CHOICES, LENGTH_CHOICES, REMIND_ROWS, PRAYER_KEYS, buildIcs, placeHasIqama, placeHasJumuah, rangeDays,
+  reminderEvents, normalizeRemind, normalizeCal, placeKey, exportSig, planExport, recordExport,
+} from "../ics.js";
+import { addDays, formatDate, formatTime, parseHHMM, todayYmd, ymdKey } from "../time.js";
+import { t, tn } from "../i18n.js";
+import { h, icon, openSheet, select, toggle, segmented } from "../ui.js";
 import { row } from "./calc-editor.js";
 
 const parseYmd = (s) => {
@@ -13,7 +16,7 @@ const parseYmd = (s) => {
 };
 
 export function alertLabel(m) {
-  return m < 0 ? t("alertNone") : m === 0 ? t("alertAt") : t("alertBefore", { m });
+  return m < 0 ? t("alertNone") : m === 0 ? t("alertAt") : tn("alertBefore", m, { m });
 }
 
 export function platformOf() {
@@ -29,133 +32,178 @@ function placeChoices(ctx, current) {
   return [current, ...ctx.state.places].filter((p) => p && !seen.has(p.id) && seen.add(p.id));
 }
 
-// A one-line summary of the choices, e.g. "5 prayers · iqama · alert 10 min before iqama".
+// The cells of one column of the grid: the five prayers, plus Jumu'ah where it sits in that column.
+function columnCells(place, field) {
+  const cells = PRAYER_KEYS.map((key) => ({ key, field }));
+  if (placeHasJumuah(place) && (field === "iqama") === placeHasIqama(place)) cells.push({ key: "jumuah", field: "adhan" });
+  return cells;
+}
+
+// A one-line summary of the choices, e.g. "5 prayers · Iqama: 10 min before".
 export function remindSummary(prefs, place) {
-  const n = PRAYER_KEYS.filter((k) => prefs.pick[k].adhan || (placeHasIqama(place) && prefs.pick[k].iqama)).length;
-  const parts = [t("nPrayers", { n })];
-  const anyAdhan = PRAYER_KEYS.some((k) => prefs.pick[k].adhan);
-  const anyIqama = placeHasIqama(place) && PRAYER_KEYS.some((k) => prefs.pick[k].iqama);
-  if (anyAdhan) parts.push(`${t("adhan")}: ${alertLabel(prefs.adhanAlert).toLocaleLowerCase()}`);
-  if (anyIqama) parts.push(`${t("iqama")}: ${alertLabel(prefs.iqamaAlert).toLocaleLowerCase()}`);
+  const iq = placeHasIqama(place);
+  let n = PRAYER_KEYS.filter((k) => prefs.pick[k].adhan || (iq && prefs.pick[k].iqama)).length;
+  if (placeHasJumuah(place) && prefs.pick.jumuah.adhan && !prefs.pick.dhuhr.adhan && !(iq && prefs.pick.dhuhr.iqama)) n++;
+  const parts = [tn("nPrayers", n, { n })];
+  if (PRAYER_KEYS.some((k) => prefs.pick[k].adhan)) parts.push(`${t("adhan")}: ${alertLabel(prefs.adhanAlert)}`);
+  if (iq && PRAYER_KEYS.some((k) => prefs.pick[k].iqama)) parts.push(`${t("iqama")}: ${alertLabel(prefs.iqamaAlert)}`);
   return parts.join(" · ");
 }
 
 // mode: "calendar" (choose + download) or "notify" (choose what in-app notifications cover).
-export function openCalendarSheet(ctx, { place: placeIn, ym = null, mode = "calendar", onClose } = {}) {
+export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode = "calendar", onClose } = {}) {
   let place = placeIn || ctx.place;
   if (!place) return null;
   const prefs = normalizeRemind(ctx.settings.remind);
   const cal = normalizeCal(ctx.settings.cal);
   const isCal = mode === "calendar";
   let platform = platformOf();
-  let startAfter = true; // continue after what's already in the calendar (no duplicates)
+  let skip = true; // leave out days already in the calendar (no duplicates)
+  // Opened from the Month tab: start with the month on screen (without changing the saved default).
+  let range = ymIn ? "month" : cal.range;
   let justSaved = false;
 
-  const save = () => ctx.update((s) => {
-    s.settings.remind = structuredClone(prefs);
-    s.settings.cal = structuredClone(cal);
-  }, { render: false });
+  const save = () =>
+    ctx.update((s) => {
+      s.settings.remind = structuredClone(prefs);
+      s.settings.cal = structuredClone(cal);
+    }, { render: false });
 
   const calcOf = (p) => p.calc || ctx.settings.calc;
   const fmt = (d) => formatTime(d, place.tz, { hour12: ctx.hour12, locale: ctx.locale });
-  const short = (d) => timeParts(d, place.tz, { hour12: ctx.hour12, locale: ctx.locale }).main;
   const dateLabel = (ymd) => formatDate(ymd, ctx.locale, { day: "numeric", month: "long" });
+  // A month in the past (Month tab) has nothing left to add: use this month instead.
+  const ymFor = (today) => (ymIn && ymIn.y * 12 + ymIn.m >= today.y * 12 + today.m ? ymIn : null);
+  const key = () => placeKey(place);
+  const sig = () => exportSig(place, calcOf(place), prefs, cal);
 
-  // The span this download covers, picking up after the last download for this place if asked.
-  function span() {
+  // What the next file holds, given what this device already added to the calendar.
+  function plan() {
     const today = todayYmd(place.tz);
-    let { from, days } = rangeDays(cal.range, today, ym);
-    const last = addDays(from, days - 1);
-    // Only matters when this range overlaps what was already added.
-    const prev = isCal && cal.exports[place.id] >= ymdKey(from) ? cal.exports[place.id] : null;
-    if (prev && startAfter) {
-      const next = addDays(parseYmd(prev), 1);
-      // Same end date as asked for; only the start moves (0 days: it's all in the calendar already).
-      days = Math.max(0, Math.round((Date.UTC(last.y, last.m - 1, last.d) - Date.UTC(next.y, next.m - 1, next.d)) / 864e5) + 1);
-      from = next;
-    }
-    return { from, days, today, prev };
+    const ym = ymFor(today);
+    const asked = rangeDays(range, today, ym);
+    return { ...planExport(asked, cal.exports[key()], sig(), skip), asked, today, ym };
   }
 
   const body = h("div", { class: "cal-sheet" });
   const foot = isCal ? h("div", { class: "cal-foot" }) : null;
+  // Controls carry a stable key, so keyboard and screen-reader focus survives each re-render.
+  const k = (el, id) => {
+    (el.matches("input, select, button") ? el : el.querySelector("input, select, button")).dataset.k = id;
+    return el;
+  };
 
   function grid() {
     const hasIqama = placeHasIqama(place);
     const hasJumuah = placeHasJumuah(place);
-    const jumuahTimes = hasJumuah ? place.jumuah.join(" · ") : "";
+    const clock = (s) => {
+      const hm = parseHHMM(s);
+      return hm ? formatTime(new Date(Date.UTC(2000, 0, 1, hm.hh, hm.mm)), "UTC", { hour12: ctx.hour12, locale: ctx.locale }) : s;
+    };
     const rows = REMIND_ROWS.filter((r) => !r.jumuah || hasJumuah);
     const check = (key, field, label) =>
-      h(
-        "label",
-        { class: "rg-check" },
-        h("input", {
-          type: "checkbox",
-          checked: Boolean(prefs.pick[key][field]),
-          "aria-label": label,
-          onchange: (e) => {
-            prefs.pick[key][field] = e.target.checked;
-            changed();
-          },
-        }),
-        h("span", { class: "rg-box", "aria-hidden": "true" }, icon("check"))
+      k(
+        h(
+          "label",
+          { class: "rg-check" },
+          h("input", {
+            type: "checkbox",
+            checked: Boolean(prefs.pick[key][field]),
+            "aria-label": label,
+            onchange: (e) => {
+              prefs.pick[key][field] = e.target.checked;
+              changed();
+            },
+          }),
+          h("span", { class: "rg-box", "aria-hidden": "true" }, icon("check"))
+        ),
+        `${key}:${field}`
       );
     // Tapping a column title turns that column on for every prayer (or off, if it's all on).
     const colBtn = (field, label) => {
-      const all = PRAYER_KEYS.every((k) => prefs.pick[k][field]);
-      return h(
-        "button",
-        {
-          class: `rg-col ${all ? "is-all" : ""}`,
-          type: "button",
-          "aria-label": t("calToggleCol", { c: label }),
-          onclick: () => {
-            for (const k of PRAYER_KEYS) prefs.pick[k][field] = !all;
-            changed();
+      const cells = columnCells(place, field);
+      const all = cells.every((c) => prefs.pick[c.key][c.field]);
+      return k(
+        h(
+          "button",
+          {
+            class: `rg-col ${all ? "is-all" : ""}`,
+            type: "button",
+            "aria-pressed": String(all),
+            "aria-label": t("calToggleCol", { c: label }),
+            onclick: () => {
+              for (const c of cells) prefs.pick[c.key][c.field] = !all;
+              changed();
+            },
           },
-        },
-        label
+          label
+        ),
+        `col:${field}`
       );
     };
-    const sub = { sunrise: t("calSunriseSub"), lastThird: t("calLastThirdSub"), jumuah: t("calKhutbahSub", { t: jumuahTimes }) };
-    const name = (k) => (k === "lastThird" ? t("evLastThird") : t(k));
+    const sub = { sunrise: t("calSunriseSub"), lastThird: t("calLastThirdSub"), jumuah: hasJumuah ? t("calKhutbahSub", { t: place.jumuah.map(clock).join(" · ") }) : "" };
+    const name = (key) => (key === "lastThird" ? t("evLastThird") : t(key));
     return h(
       "div",
-      { class: `list remind-grid ${hasIqama ? "has-iqama" : ""}`, role: "group", "aria-label": t("calWhat") },
+      { class: `list remind-grid ${hasIqama ? "has-iqama" : ""}`, role: "group", "aria-label": t(isCal ? "calWhat" : "calWhatNotify") },
       h("div", { class: "rg-row rg-headrow" }, h("span", { class: "rg-name rg-hint" }, t("calTapCol")), colBtn("adhan", t("adhan")), hasIqama ? colBtn("iqama", t("iqama")) : null),
       rows.map((r) => {
         const label = name(r.key);
         // Jumu'ah is a congregation time: it sits in the iqama column when there is one.
         const jumuahInIqama = r.jumuah && hasIqama;
+        const empty = () => h("span", { class: "rg-empty", "aria-hidden": "true" });
         return h(
           "div",
           { class: `rg-row ${r.extra ? "is-extra" : ""}` },
           h("span", { class: "rg-name" }, h("span", { class: "rg-title" }, label), sub[r.key] ? h("span", { class: "rg-sub" }, sub[r.key]) : null),
-          jumuahInIqama ? h("span", { class: "rg-empty" }) : check(r.key, "adhan", `${label} · ${r.jumuah ? t("khutbah") : t("adhan")}`),
-          hasIqama ? (jumuahInIqama ? check(r.key, "adhan", `${label} · ${t("khutbah")}`) : r.iqama ? check(r.key, "iqama", `${label} · ${t("iqama")}`) : h("span", { class: "rg-empty" })) : null
+          jumuahInIqama ? empty() : check(r.key, "adhan", `${label} · ${r.jumuah ? t("khutbah") : t("adhan")}`),
+          hasIqama ? (jumuahInIqama ? check(r.key, "adhan", `${label} · ${t("khutbah")}`) : r.iqama ? check(r.key, "iqama", `${label} · ${t("iqama")}`) : empty()) : null
         );
       })
     );
   }
 
+  // A select on two lines (label above, value below): fits long labels and values on small phones.
+  const selectRow = (label, value, options, onPick, id) =>
+    row(label, k(select(value, options, onPick, { "aria-label": label }), id), true);
+
   function alertRows() {
     const hasIqama = placeHasIqama(place);
-    const wantsIqamaKind = (hasIqama && PRAYER_KEYS.some((k) => prefs.pick[k].iqama)) || (placeHasJumuah(place) && prefs.pick.jumuah.adhan);
+    const iqamaKind = (hasIqama && PRAYER_KEYS.some((k) => prefs.pick[k].iqama)) || (placeHasJumuah(place) && prefs.pick.jumuah.adhan);
     const opts = ALERT_CHOICES.map((m) => ({ value: m, label: alertLabel(m) }));
-    const sel = (field, label) => row(label, select(prefs[field], opts, (v) => { prefs[field] = Number(v); changed(); }, { "aria-label": label }));
-    return { main: [sel("adhanAlert", t("alertAdhan")), wantsIqamaKind ? sel("iqamaAlert", hasIqama ? t("alertIqama") : t("alertKhutbah")) : null], second: [sel("adhanAlert2", t("alertAdhan2")), wantsIqamaKind ? sel("iqamaAlert2", hasIqama ? t("alertIqama2") : t("alertKhutbah2")) : null] };
+    const sel = (field, label) => selectRow(label, prefs[field], opts, (v) => { prefs[field] = Number(v); changed(); }, field);
+    const anyAdhan = PRAYER_KEYS.some((k) => prefs.pick[k].adhan) || prefs.pick.sunrise.adhan || prefs.pick.lastThird.adhan || (!hasIqama && prefs.pick.jumuah.adhan && placeHasJumuah(place));
+    return {
+      main: [anyAdhan ? sel("adhanAlert", t("alertAdhan")) : null, iqamaKind ? sel("iqamaAlert", hasIqama ? t("alertIqama") : t("alertKhutbah")) : null],
+      second: [anyAdhan ? sel("adhanAlert2", t("alertAdhan2")) : null, iqamaKind ? sel("iqamaAlert2", hasIqama ? t("alertIqama2") : t("alertKhutbah2")) : null],
+    };
   }
 
-  function rangeRow(sp) {
-    const monthName = formatDate({ ...(ym || sp.today), d: 1 }, ctx.locale, { month: "long" });
-    const viewingThis = !ym || (ym.y === sp.today.y && ym.m === sp.today.m);
+  function rangeList(pl) {
+    const monthName = formatDate({ ...(pl.ym || pl.today), d: 1 }, ctx.locale, { month: "long" });
     const opts = [
-      { value: "month", label: viewingThis ? t("rangeMonth", { m: monthName }) : formatDate({ ...ym, d: 1 }, ctx.locale, { month: "long", year: "numeric" }) },
+      { value: "month", label: pl.ym && (pl.ym.y !== pl.today.y || pl.ym.m !== pl.today.m) ? formatDate({ ...pl.ym, d: 1 }, ctx.locale, { month: "long", year: "numeric" }) : t("rangeMonth", { m: monthName }) },
       { value: "30", label: t("range30") },
       { value: "90", label: t("range90") },
       { value: "365", label: t("range365") },
     ];
-    return row(t("calRange"), select(cal.range, opts, (v) => { cal.range = v; changed(); }, { "aria-label": t("calRange") }));
+    const rows = [selectRow(t("calRange"), range, opts, (v) => { range = cal.range = v; changed(); }, "range")];
+    // Some of these days are already in the calendar (with the same choices): leave them out?
+    if (pl.rec && !pl.changed) {
+      rows.push(
+        selectRow(
+          t("calHave", { a: dateLabel(parseYmd(pl.rec.from)), b: dateLabel(parseYmd(pl.rec.to)) }),
+          skip ? "skip" : "again",
+          [
+            { value: "skip", label: t("calSkip") },
+            { value: "again", label: t("calAgain") },
+          ],
+          (v) => { skip = v === "skip"; changed(); },
+          "skip"
+        )
+      );
+    }
+    return rows;
   }
 
   function help() {
@@ -165,7 +213,7 @@ export function openCalendarSheet(ctx, { place: placeIn, ym = null, mode = "cale
       google: ["howGoogle1", "howGoogle2", "howGoogle3", "howGoogle4"],
       computer: ["howComputer1", "howComputer2", "howComputer3"],
     };
-    const list = h("ol", { class: "cal-steps" }, steps[platform].map((k) => h("li", {}, t(k))));
+    const list = h("ol", { class: "cal-steps" }, steps[platform].map((s) => h("li", {}, t(s))));
     return h(
       "details",
       { class: "cal-help", open: justSaved },
@@ -180,7 +228,7 @@ export function openCalendarSheet(ctx, { place: placeIn, ym = null, mode = "cale
         ],
         (v) => {
           platform = v;
-          list.replaceChildren(...steps[v].map((k) => h("li", {}, t(k))));
+          list.replaceChildren(...steps[v].map((s) => h("li", {}, t(s))));
         },
         t("calHowTitle")
       ),
@@ -189,7 +237,7 @@ export function openCalendarSheet(ctx, { place: placeIn, ym = null, mode = "cale
   }
 
   function render() {
-    const sp = span();
+    const pl = isCal ? plan() : null;
     const a = alertRows();
     const places = placeChoices(ctx, place);
     const parts = [];
@@ -198,52 +246,36 @@ export function openCalendarSheet(ctx, { place: placeIn, ym = null, mode = "cale
         h(
           "div",
           { class: "list" },
-          row(
-            t("calFor"),
-            select(place.id, places.map((p) => ({ value: p.id, label: p.name })), (v) => {
-              place = places.find((p) => p.id === v) || place;
-              loadSeedLink(place);
-              changed();
-            }, { "aria-label": t("calFor") }),
-            true
-          )
+          selectRow(t("calFor"), place.id, places.map((p) => ({ value: p.id, label: p.name })), (v) => {
+            place = places.find((p) => p.id === v) || place;
+            loadSeedLink(place);
+            skip = true;
+            changed();
+          }, "place")
         )
       );
     }
     parts.push(h("h3", { class: "list-title" }, t(isCal ? "calWhat" : "calWhatNotify")), grid());
-    parts.push(h("h3", { class: "list-title" }, t("calAlerts")), h("div", { class: "list" }, a.main));
+    if (a.main.some(Boolean)) parts.push(h("h3", { class: "list-title" }, t("calAlerts")), h("div", { class: "list" }, a.main));
     if (isCal) {
-      const rangeList = [rangeRow(sp)];
-      if (sp.prev) {
-        rangeList.push(
-          row(
-            t("calStart"),
-            select(startAfter ? "after" : "today", [
-              { value: "after", label: t("startAfter", { d: dateLabel(parseYmd(sp.prev)) }) },
-              { value: "today", label: t("startToday") },
-            ], (v) => { startAfter = v === "after"; changed(); }, { "aria-label": t("calStart") }),
-            true
-          )
-        );
-      }
-      parts.push(h("div", { class: "list cal-range" }, rangeList));
-      if (sp.prev && !startAfter) parts.push(h("p", { class: "list-foot" }, t("calDupHint")));
+      parts.push(h("div", { class: "list cal-range" }, rangeList(pl)));
+      if (pl.changed) parts.push(h("p", { class: "list-foot cal-warn" }, icon("info"), t("calChanged", { d: dateLabel(parseYmd(pl.rec.to)) })));
+      else if (pl.rec && !skip) parts.push(h("p", { class: "list-foot cal-warn" }, icon("info"), t("calDupHint")));
     }
     parts.push(
       h(
         "details",
         { class: "cal-more" },
         h("summary", {}, t("calMore")),
-        h("div", { class: "list" }, a.second),
-        h("p", { class: "list-foot" }, t("alert2Hint")),
+        a.second.some(Boolean) ? [h("div", { class: "list" }, a.second), h("p", { class: "list-foot" }, t("alert2Hint"))] : null,
         isCal
           ? [
               h(
                 "div",
                 { class: "list" },
-                row(t("calBusy"), toggle(cal.busy, (v) => { cal.busy = v; changed(); }, t("calBusy"))),
-                cal.busy ? row(t("calLength"), select(cal.length, LENGTH_CHOICES.map((m) => ({ value: m, label: `${m} ${t("min")}` })), (v) => { cal.length = Number(v); changed(); }, { "aria-label": t("calLength") })) : null,
-                row(t("calRenew"), toggle(cal.renew, (v) => { cal.renew = v; changed(); }, t("calRenew")))
+                row(t("calBusy"), k(toggle(cal.busy, (v) => { cal.busy = v; changed(); }, t("calBusy")), "busy")),
+                cal.busy ? selectRow(t("calLength"), cal.length, LENGTH_CHOICES.map((m) => ({ value: m, label: `${m} ${t("min")}` })), (v) => { cal.length = Number(v); changed(); }, "length") : null,
+                row(t("calRenew"), k(toggle(cal.renew, (v) => { cal.renew = v; changed(); }, t("calRenew")), "renew"))
               ),
               h("p", { class: "list-foot" }, t("calBusyHint"), " ", t("calRenewHint")),
             ]
@@ -251,48 +283,62 @@ export function openCalendarSheet(ctx, { place: placeIn, ym = null, mode = "cale
       )
     );
     if (isCal) {
-      if (place.kind !== "masjid") parts.push(h("p", { class: "list-foot cal-travel" }, icon("pin"), t("calTravel", { p: place.name })));
+      if (place.kind !== "masjid") parts.push(h("p", { class: "list-foot cal-note" }, icon("pin"), t("calTravel", { p: place.name })));
+      parts.push(h("p", { class: "list-foot cal-note" }, icon("calendar"), t("calTip")));
       parts.push(help());
     } else {
       parts.push(h("p", { class: "list-foot" }, t("notifyHint")));
     }
-    // Keep the open/closed state of the collapsible sections across re-renders.
+    // Keep collapsible sections open/closed and the focused control focused across re-renders.
     const wasOpen = [...body.querySelectorAll("details")].map((d) => d.open);
+    const focusKey = document.activeElement?.closest?.(".cal-sheet") ? document.activeElement.dataset.k : null;
     body.replaceChildren(...parts);
     if (wasOpen.length) body.querySelectorAll("details").forEach((d, i) => (d.open = wasOpen[i] || d.open));
-    if (isCal) renderFoot(sp);
+    if (focusKey) body.querySelector(`[data-k="${focusKey}"]`)?.focus({ preventScroll: true });
+    if (isCal) renderFoot(pl);
   }
 
-  function events(sp) {
-    return reminderEvents(place, calcOf(place), prefs, { from: sp.from, days: sp.days, label: (k, v) => t(k, v), hijriOffset: ctx.settings.hijriOffset, now: new Date(), busy: cal.busy, length: cal.length });
-  }
+  const events = (from, days) =>
+    reminderEvents(place, calcOf(place), prefs, { from, days, label: (key, v) => t(key, v), hijriOffset: ctx.settings.hijriOffset, now: new Date(), busy: cal.busy, length: cal.length });
 
-  function renderFoot(sp) {
-    const evs = sp.days > 0 ? events(sp) : [];
+  function renderFoot(pl) {
+    const evs = pl.days > 0 ? events(pl.from, pl.days) : [];
     const n = evs.length;
-    const last = addDays(sp.from, sp.days - 1);
-    // Everything in this range is already in the calendar (often: just downloaded). Not an error:
-    // say so calmly, and still offer the file again in case it never got opened.
-    const covered = !sp.days && sp.prev;
-    const summary = n
-      ? h("p", { class: "cal-summary" }, t("calSummary", { n: n.toLocaleString(ctx.locale), d: dateLabel(last) }), h("span", { class: "cal-first" }, ` · ${t("calFirst", { e: evs[0].title, t: fmt(evs[0].start) })}`))
-      : covered
-        ? h("p", { class: `cal-summary ${justSaved ? "is-done" : ""}` }, justSaved ? icon("check") : null, t(justSaved ? "calSavedUntil" : "calAlready", { d: dateLabel(parseYmd(sp.prev)) }))
-        : h("p", { class: "cal-summary is-empty" }, t("calNone"));
-    const again = () => {
-      startAfter = false;
-      download(span(), false);
-    };
+    const last = addDays(pl.from, pl.days - 1);
+    const picked = Object.values(prefs.pick).some((p) => p.adhan || p.iqama);
+    let summary;
+    if (n) {
+      const perDay = Math.max(1, Math.round(n / pl.days));
+      summary = h(
+        "p",
+        { class: "cal-summary" },
+        t("calSummary", { d: dateLabel(last), per: tn("calPerDay", perDay, { k: perDay }) }),
+        h("span", { class: "cal-first" }, ` · ${t("calFirst", { e: evs[0].title, t: fmt(evs[0].start) })}`),
+        n > 1500 ? h("span", { class: "cal-big" }, ` ${t("calBig")}`) : null
+      );
+    } else if (pl.covered) {
+      // Not an error: often the file was just made. Say so calmly, and still offer it again.
+      summary = h("p", { class: `cal-summary ${justSaved ? "is-done" : ""}` }, justSaved ? icon("check") : null, t(justSaved ? "calSavedUntil" : "calAlready", { d: dateLabel(parseYmd(pl.rec.to)) }));
+    } else {
+      summary = h("p", { class: "cal-summary is-empty" }, t(picked ? "calEmptyRange" : "calNone"));
+    }
     const canShare = typeof navigator.canShare === "function" && typeof File === "function" && navigator.canShare({ files: [new File([""], "x.ics", { type: "text/calendar" })] });
+    const again = () => {
+      // Exactly the latest file again (from today on): never more than was in it.
+      const today = ymdKey(todayYmd(place.tz));
+      const from = parseYmd(pl.rec.last.from > today ? pl.rec.last.from : today);
+      const to = parseYmd(pl.rec.last.to);
+      download(from, Math.round((Date.UTC(to.y, to.m - 1, to.d) - Date.UTC(from.y, from.m - 1, from.d)) / 864e5) + 1, false);
+    };
     foot.replaceChildren(
       summary,
       h(
         "div",
         { class: "cal-foot-btns" },
-        covered
+        pl.covered
           ? h("button", { class: "btn btn-tinted btn-block", type: "button", onclick: again }, icon("download"), t("calDownloadAgain"))
-          : h("button", { class: "btn btn-primary btn-block", type: "button", disabled: !n, onclick: () => download(sp, false) }, icon("download"), t("calDownload")),
-        canShare && !covered ? h("button", { class: "btn btn-tinted cal-share", type: "button", disabled: !n, "aria-label": t("calShare"), title: t("calShare"), onclick: () => download(sp, true) }, icon("share")) : null
+          : h("button", { class: "btn btn-primary btn-block", type: "button", disabled: !n, onclick: () => download(pl.from, pl.days, false) }, icon("download"), t("calDownload")),
+        canShare && !pl.covered ? h("button", { class: "btn btn-tinted cal-share", type: "button", disabled: !n, "aria-label": t("calShare"), title: t("calShare"), onclick: () => download(pl.from, pl.days, true) }, icon("share")) : null
       )
     );
   }
@@ -307,11 +353,12 @@ export function openCalendarSheet(ctx, { place: placeIn, ym = null, mode = "cale
   loadSeedLink(place);
   const appLink = () => seedLinks.get(place.id) || `${location.origin}${location.pathname}`;
 
-  async function download(sp, share) {
+  async function download(from, days, share) {
+    if (days <= 0) return;
     const ics = buildIcs(place, calcOf(place), prefs, {
-      from: sp.from,
-      days: sp.days,
-      label: (k, v) => t(k, v),
+      from,
+      days,
+      label: (key, v) => t(key, v),
       hijriOffset: ctx.settings.hijriOffset,
       now: new Date(),
       busy: cal.busy,
@@ -321,9 +368,9 @@ export function openCalendarSheet(ctx, { place: placeIn, ym = null, mode = "cale
       fmt,
       fmtDate: dateLabel,
     });
-    const last = addDays(sp.from, sp.days - 1);
+    const last = addDays(from, days - 1);
     const safe = (place.name || "prayer-times").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "");
-    const fileName = `${safe}-${ymdKey(sp.from)}-${ymdKey(last)}.ics`;
+    const fileName = `${safe}-${ymdKey(from)}-${ymdKey(last)}.ics`;
     const file = new File([ics.text], fileName, { type: "text/calendar" });
     if (share) {
       try {
@@ -340,13 +387,11 @@ export function openCalendarSheet(ctx, { place: placeIn, ym = null, mode = "cale
         a.remove();
       }, 1500);
     }
-    // Remember how far this place's calendar now reaches: the next download carries on from there.
-    const prev = cal.exports[place.id];
-    if (!prev || prev < ymdKey(last) || !startAfter) cal.exports[place.id] = ymdKey(last);
-    startAfter = true;
+    // Remember what this place's calendar now holds, so the next file adds only what's missing.
+    cal.exports[key()] = recordExport(cal.exports[key()], ymdKey(from), ymdKey(last), sig());
+    skip = true;
     justSaved = true;
     save();
-    toast(t("calReady", { n: ics.count.toLocaleString(ctx.locale) }), { duration: 6000 });
     render();
     requestAnimationFrame(() => body.querySelector(".cal-help")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
   }
@@ -369,11 +414,14 @@ export function openCalendarSheet(ctx, { place: placeIn, ym = null, mode = "cale
   return sheet;
 }
 
-// Prayer times in the calendar about to run out for this place? Returns the last day, or null.
-export function calendarEndingSoon(settings, place, now = new Date()) {
-  const until = settings.cal?.exports?.[place?.id];
-  if (!until) return null;
+// The prayer times this device added to the calendar run out soon (within 3 days) or ran out
+// recently (up to 60 days ago). Returns { until, ended } or null.
+export function calendarEnding(settings, place, now = new Date()) {
+  if (!place) return null;
+  const rec = settings.cal?.exports?.[placeKey(place)];
+  if (!rec) return null;
   const today = todayYmd(place.tz, now);
-  const soon = ymdKey(addDays(today, 3));
-  return until >= ymdKey(today) && until <= soon ? parseYmd(until) : null;
+  const t0 = ymdKey(today);
+  if (rec.to < ymdKey(addDays(today, -60)) || rec.to > ymdKey(addDays(today, 3))) return null;
+  return { until: parseYmd(rec.to), ended: rec.to < t0 };
 }
