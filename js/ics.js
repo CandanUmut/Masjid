@@ -1,19 +1,22 @@
 // Reminder choices and calendar export. Pure (no DOM), so it runs in tests and is shared by the
 // calendar file and the in-app notifications: one set of choices drives both.
-import { scheduleFor, computeDay } from "./engine.js";
+import { scheduleFor, computeDay, taraweehFor, specialEvents, isRamadan } from "./engine.js";
 import { addDays, hijriParts, partsInTz, ymdKey } from "./time.js";
 
 // Everything a person can be reminded of, in the order of the day.
-// `iqama: true` rows offer an iqama event when the place has iqama times.
+// `iqama: true` rows offer an iqama event when the place has iqama times. `congregation` rows
+// (Jumu'ah, Taraweeh, the masjid's events) have one time only; they sit in the iqama column.
 export const REMIND_ROWS = [
   { key: "fajr", iqama: true },
   { key: "sunrise", iqama: false, extra: true },
   { key: "dhuhr", iqama: true },
-  { key: "jumuah", iqama: false, jumuah: true },
+  { key: "jumuah", iqama: false, congregation: true },
   { key: "asr", iqama: true },
   { key: "maghrib", iqama: true },
   { key: "isha", iqama: true },
+  { key: "taraweeh", iqama: false, congregation: true },
   { key: "lastThird", iqama: false, extra: true },
+  { key: "events", iqama: false, congregation: true },
 ];
 export const PRAYER_KEYS = ["fajr", "dhuhr", "asr", "maghrib", "isha"];
 
@@ -32,6 +35,8 @@ export const DEFAULT_REMIND = {
     maghrib: { adhan: true, iqama: true },
     isha: { adhan: true, iqama: true },
     lastThird: { adhan: false },
+    taraweeh: { adhan: true },
+    events: { adhan: true },
   },
   adhanAlert: 0,
   adhanAlert2: -1,
@@ -115,7 +120,7 @@ export function placeKey(place) {
 // Everything that changes what a file contains. Same fingerprint = same events for the same days.
 export function exportSig(place, calc, prefs, cal) {
   const p = place;
-  return hash(JSON.stringify([prefs, cal.busy, cal.length, p.lat?.toFixed(3), p.lng?.toFixed(3), p.tz, calc, p.iqama || null, p.jumuah || null]));
+  return hash(JSON.stringify([prefs, cal.busy, cal.length, p.lat?.toFixed(3), p.lng?.toFixed(3), p.tz, calc, p.iqama || null, p.jumuah || null, p.taraweeh || null, p.events || null]));
 }
 
 // Record a download of [from, to] (ymd keys). Joins the span already covered when it touches it,
@@ -156,6 +161,15 @@ export function planExport({ from, days }, rec, sig, skip = true) {
 
 export const placeHasIqama = (place) => Boolean(place?.iqama && PRAYER_KEYS.some((k) => place.iqama[k]));
 export const placeHasJumuah = (place) => Boolean(place?.jumuah?.length);
+export const placeHasTaraweeh = (place) => Boolean(place?.taraweeh);
+export const placeHasEvents = (place) => Boolean(place?.events?.length);
+// Whether a row of the grid applies to this place at all.
+export function rowApplies(row, place) {
+  if (row.key === "jumuah") return placeHasJumuah(place);
+  if (row.key === "taraweeh") return placeHasTaraweeh(place);
+  if (row.key === "events") return placeHasEvents(place);
+  return true;
+}
 
 // The alert offsets for one kind of event, earliest first, no duplicates.
 export function alertsFor(prefs, kind) {
@@ -244,14 +258,58 @@ export function reminderEvents(place, calc, prefs, { from, days, label = (k) => 
         });
       }
     }
+    // Taraweeh is prayed on the nights *before* each fast: from the evening before the 1st of Ramadan,
+    // and not on the eve of Eid.
+    if (pick.taraweeh?.adhan && placeHasTaraweeh(place) && isRamadan(addDays(ymd, 1), hijriOffset)) {
+      const at = taraweehFor(place, calc, ymd);
+      if (at) push({ uid: `${day}-taraweeh`, kind: "iqama", key: "taraweeh", start: at, end: new Date(at.getTime() + min(60)), title: label("taraweeh"), busy });
+    }
     // The last third of the night that *follows* this day's Maghrib (so it falls early tomorrow).
     if (pick.lastThird?.adhan) {
       const lt = computeDay(place, calc, ymd).times.lastThird;
       if (lt) push({ uid: `${day}-lastthird`, kind: "adhan", key: "lastThird", start: lt, end: new Date(lt.getTime() + min(10)), title: label("evLastThird"), busy: false });
     }
   }
+  // The masjid's own events (Eid prayer, a lecture…): on their day, whatever the prayer choices.
+  if (pick.events?.adhan && placeHasEvents(place) && days > 0) {
+    specialEvents(place, from, addDays(from, days - 1)).forEach((e) => {
+      const ev = { uid: `${e.date}-ev-${hash(`${e.time}|${e.title}`)}`, kind: "iqama", key: "events", start: e.at, end: new Date(e.at.getTime() + min(60)), title: e.title, busy };
+      if (ev.start.getTime() >= nowMs) out.push({ ...ev, ymd: e.ymd });
+    });
+  }
   out.sort((a, b) => a.start - b.start);
   return out;
+}
+
+// --- Ramadan pack ------------------------------------------------------------------------------
+// One file for the month: a Suhoor reminder before Fajr, Iftar at Maghrib, and the masjid's Taraweeh.
+// opts: { from, days, suhoorLead (min before Fajr, -1 = none), iftarAlert (-1 = none), taraweeh, taraweehAlert, label, hijriOffset, now }
+export function ramadanEvents(place, calc, { from, days, suhoorLead = 45, iftarAlert = 0, taraweeh = true, taraweehAlert = 15, label = (k) => k, hijriOffset = 0, now = null } = {}) {
+  const out = [];
+  const min = (n) => n * 60000;
+  const nowMs = now ? now.getTime() : -Infinity;
+  const alerts = (m) => (m >= 0 ? [m] : []);
+  // The evening before the first fast has Taraweeh too.
+  for (let i = -1; i < days; i++) {
+    const ymd = addDays(from, i);
+    const day = ymdKey(ymd);
+    const push = (ev) => ev.start.getTime() >= nowMs && out.push({ ...ev, ymd });
+    if (i >= 0) {
+      const t = computeDay(place, calc, ymd).times;
+      if (t.fajr && suhoorLead >= 0) {
+        const start = new Date(t.fajr.getTime() - min(Math.max(suhoorLead, 10)));
+        push({ uid: `${day}-ramadan-suhoor`, kind: "adhan", key: "suhoor", start, end: t.fajr, title: label("evSuhoor"), alerts: [0], busy: false });
+      }
+      if (t.maghrib && iftarAlert >= -1) {
+        push({ uid: `${day}-ramadan-iftar`, kind: "adhan", key: "iftar", start: t.maghrib, end: new Date(t.maghrib.getTime() + min(20)), title: label("iftar"), alerts: alerts(iftarAlert), busy: false });
+      }
+    }
+    if (taraweeh && placeHasTaraweeh(place) && isRamadan(addDays(ymd, 1), hijriOffset)) {
+      const at = taraweehFor(place, calc, ymd);
+      if (at) push({ uid: `${day}-ramadan-taraweeh`, kind: "iqama", key: "taraweeh", start: at, end: new Date(at.getTime() + min(60)), title: label("taraweeh"), alerts: alerts(taraweehAlert), busy: false });
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
 }
 
 // --- iCalendar (RFC 5545) ------------------------------------------------------------------
@@ -277,7 +335,7 @@ const before = (m) => (m ? `-PT${m}M` : "PT0M");
 // opts: { from, days, label, hijriOffset, now, busy, length, renew, url, fmt, fmtDate, calName, stamp }
 export function buildIcs(place, calc, prefs, opts) {
   const { label = (k) => k, url = "", fmt = (d) => hhmm(d, place.tz), fmtDate = ymdKey, renew = true, stamp = new Date() } = opts;
-  const events = reminderEvents(place, calc, prefs, opts);
+  const events = opts.events || reminderEvents(place, calc, prefs, opts);
   const id = placeKey(place);
   const dtstamp = icsDate(stamp);
   const lines = [
@@ -311,7 +369,7 @@ export function buildIcs(place, calc, prefs, opts) {
       `TRANSP:${ev.busy ? "OPAQUE" : "TRANSPARENT"}`,
       "CATEGORIES:" + icsText(label("calName"))
     );
-    for (const m of alertsFor(prefs, ev.kind)) lines.push(...alarm(before(m), ev.title));
+    for (const m of ev.alerts || alertsFor(prefs, ev.kind)) lines.push(...alarm(before(m), ev.title));
     lines.push("END:VEVENT");
   }
   // The calendar reminds you to add the next batch, two days before it runs out.

@@ -16,6 +16,10 @@ A simple, private prayer-times app that runs entirely in the browser. It has no 
   - A **printable QR poster** for the entrance.
   - A **one-page A4 monthly timetable**.
 - **Add to calendar, your way.** Reminders from your phone's calendar work even when the app is closed, which is the only dependable way for a web app. Choose per prayer whether you want the adhan, the iqama, or both (Jumu'ah adds one event per khutbah; Sunrise and the last third of the night are optional), when to be alerted (at the time or up to an hour before, plus an optional second alert), and how far ahead (rest of the month up to 12 months). Iqama is its own event, so "iqama only" is one tap. Options to show prayers as busy at work, and a last event that reminds you to add the next batch; the next download continues where your calendar ends, so nothing is added twice. The sheet explains, per platform, how to import the file, change the alert sound and remove it all later. In-app notifications (while the app is open) follow the same choices.
+- **Ramadan.** A printable Ramadan timetable (Suhoor ends, Iftar and the masjid's Taraweeh for every fast) and a one-tap **Ramadan pack**: one calendar file with a Suhoor reminder before Fajr, Iftar at Maghrib and Taraweeh, for the whole month. Masjids set Taraweeh as "N min after the Isha iqama" or a fixed time; it shows from the evening before the first fast, and never on the eve of Eid.
+- **Special events.** A masjid can add up to eight dated events (Eid prayers, a lecture, an open day). They travel in the same link, appear on the masjid page and the display screen, can be added to calendars, and disappear once they've passed.
+- **Iqama reminders link.** Every masjid gets a second link (`#/cal/<seed>`) that opens straight to "Add to calendar" with its iqama times. It's in the share sheet, as a second QR code on the printed poster and on the display screen.
+- **A real alarm for Fajr on iPhone.** A step-by-step guide to a Shortcuts automation that reads tomorrow's Fajr from your "Prayer times" calendar every night and sets a Clock alarm before it.
 - Qibla compass, Hijri date (Umm al-Qura, with a ±2 day adjustment), and optional extra times: Imsak, Duha, midnight and the last third of the night.
 - Regional defaults are chosen automatically: Diyanet for Türkiye (with Turkish names, where İmsak *is* Fajr), ISNA for North America, Umm al-Qura for Saudi Arabia (plus 30 minutes on Isha in Ramadan), Hanafi Asr where it is the norm, and high-latitude rules above 48°. All of it can be overridden: 21 methods, custom angles, and per-prayer minute adjustments.
 - A short **feature tour** (five swipeable cards) shown once after setup, and any time from *Settings → Take the tour*.
@@ -60,7 +64,7 @@ https://<user>.github.io/Masjid/#/m/mHc2xDoIwFIXhVzFn5Yj3tigtkw4ODjo…
 ```
 
 - The data sits after the `#`, so it is never sent to any server, not even GitHub's.
-- It contains the location, time zone, calculation method (pinned, so everyone gets identical times), iqama rules, Jumu'ah times and a note.
+- It contains the location, time zone, calculation method (pinned, so everyone gets identical times), iqama rules, Jumu'ah times, a note, and optionally Taraweeh and special events (in a 15th field that older versions of the app ignore, so old and new links work everywhere).
 - **To update times**, edit the masjid and share the new link. Each seed carries an id and a timestamp. Opening a newer link updates the saved copy, with an Undo. Opening an older one keeps yours and tells you so.
 - **Links are treated as untrusted.** Timestamps from the future are capped, so a wrong clock or a prank can't freeze a masjid. Backup codes are never accepted from a link; they can only be pasted into *Settings → Restore*, and only after a confirmation.
 - Iqama rules like "+10 min after adhan, rounded up to 5" follow the adhan through the seasons. Most masjids therefore rarely need to re-share.

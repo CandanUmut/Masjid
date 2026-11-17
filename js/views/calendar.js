@@ -3,8 +3,9 @@
 // the only reliable way for a web app to remind anyone. The same choices drive in-app notifications.
 import {
   ALERT_CHOICES, LENGTH_CHOICES, REMIND_ROWS, PRAYER_KEYS, buildIcs, placeHasIqama, placeHasJumuah, rangeDays,
-  reminderEvents, normalizeRemind, normalizeCal, placeKey, exportSig, planExport, recordExport,
+  reminderEvents, normalizeRemind, normalizeCal, placeKey, exportSig, planExport, recordExport, rowApplies, DEFAULT_REMIND,
 } from "../ics.js";
+import { ramadanSpan, specialEvents } from "../engine.js";
 import { addDays, formatDate, formatTime, parseHHMM, todayYmd, ymdKey } from "../time.js";
 import { t, tn } from "../i18n.js";
 import { h, icon, openSheet, select, toggle, segmented } from "../ui.js";
@@ -32,10 +33,13 @@ function placeChoices(ctx, current) {
   return [current, ...ctx.state.places].filter((p) => p && !seen.has(p.id) && seen.add(p.id));
 }
 
-// The cells of one column of the grid: the five prayers, plus Jumu'ah where it sits in that column.
+// The cells of one column of the grid: the five prayers, plus Jumu'ah, Taraweeh and the masjid's
+// events where they sit in that column (the iqama column when there is one).
 function columnCells(place, field) {
   const cells = PRAYER_KEYS.map((key) => ({ key, field }));
-  if (placeHasJumuah(place) && (field === "iqama") === placeHasIqama(place)) cells.push({ key: "jumuah", field: "adhan" });
+  if ((field === "iqama") === placeHasIqama(place)) {
+    for (const r of REMIND_ROWS) if (r.congregation && rowApplies(r, place)) cells.push({ key: r.key, field: "adhan" });
+  }
   return cells;
 }
 
@@ -51,10 +55,14 @@ export function remindSummary(prefs, place) {
 }
 
 // mode: "calendar" (choose + download) or "notify" (choose what in-app notifications cover).
-export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode = "calendar", onClose } = {}) {
+export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode = "calendar", onClose, preset = null } = {}) {
   let place = placeIn || ctx.place;
   if (!place) return null;
   const prefs = normalizeRemind(ctx.settings.remind);
+  // From a masjid's "iqama reminders" link: start with iqama only, unless you've made your own choices.
+  if (preset === "iqama" && placeHasIqama(place) && JSON.stringify(prefs.pick) === JSON.stringify(DEFAULT_REMIND.pick)) {
+    for (const key of PRAYER_KEYS) prefs.pick[key].adhan = false;
+  }
   const cal = normalizeCal(ctx.settings.cal);
   const isCal = mode === "calendar";
   let platform = platformOf();
@@ -75,6 +83,13 @@ export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode =
   // A month in the past (Month tab) has nothing left to add: use this month instead.
   const ymFor = (today) => (ymIn && ymIn.y * 12 + ymIn.m >= today.y * 12 + today.m ? ymIn : null);
   const key = () => placeKey(place);
+  const ramadanSoonFor = (p) => {
+    const today = todayYmd(p.tz);
+    const sp = ramadanSpan(today, ctx.settings.hijriOffset);
+    if (!sp) return null;
+    const until = Math.round((Date.UTC(sp.from.y, sp.from.m - 1, sp.from.d) - Date.UTC(today.y, today.m - 1, today.d)) / 864e5);
+    return until <= 45 ? { ...sp, until: Math.max(0, until) } : null;
+  };
   const sig = () => exportSig(place, calcOf(place), prefs, cal);
 
   // What the next file holds, given what this device already added to the calendar.
@@ -100,7 +115,7 @@ export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode =
       const hm = parseHHMM(s);
       return hm ? formatTime(new Date(Date.UTC(2000, 0, 1, hm.hh, hm.mm)), "UTC", { hour12: ctx.hour12, locale: ctx.locale }) : s;
     };
-    const rows = REMIND_ROWS.filter((r) => !r.jumuah || hasJumuah);
+    const rows = REMIND_ROWS.filter((r) => rowApplies(r, place));
     const check = (key, field, label) =>
       k(
         h(
@@ -141,23 +156,30 @@ export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode =
         `col:${field}`
       );
     };
-    const sub = { sunrise: t("calSunriseSub"), lastThird: t("calLastThirdSub"), jumuah: hasJumuah ? t("calKhutbahSub", { t: place.jumuah.map(clock).join(" · ") }) : "" };
-    const name = (key) => (key === "lastThird" ? t("evLastThird") : t(key));
+    const upcoming = specialEvents(place, todayYmd(place.tz), addDays(todayYmd(place.tz), 365));
+    const sub = {
+      sunrise: t("calSunriseSub"),
+      lastThird: t("calLastThirdSub"),
+      jumuah: hasJumuah ? t("calKhutbahSub", { t: place.jumuah.map(clock).join(" · ") }) : "",
+      taraweeh: t("calTaraweehSub"),
+      events: upcoming.length ? upcoming.slice(0, 2).map((e) => e.title).join(", ") + (upcoming.length > 2 ? "…" : "") : t("calEventsSub"),
+    };
+    const name = (key) => (key === "lastThird" ? t("evLastThird") : key === "events" ? t("specialEvents") : t(key));
     return h(
       "div",
       { class: `list remind-grid ${hasIqama ? "has-iqama" : ""}`, role: "group", "aria-label": t(isCal ? "calWhat" : "calWhatNotify") },
       h("div", { class: "rg-row rg-headrow" }, h("span", { class: "rg-name rg-hint" }, t("calTapCol")), colBtn("adhan", t("adhan")), hasIqama ? colBtn("iqama", t("iqama")) : null),
       rows.map((r) => {
         const label = name(r.key);
-        // Jumu'ah is a congregation time: it sits in the iqama column when there is one.
-        const jumuahInIqama = r.jumuah && hasIqama;
+        // Jumu'ah, Taraweeh and events are congregation times: they sit in the iqama column when there is one.
+        const jumuahInIqama = r.congregation && hasIqama;
         const empty = () => h("span", { class: "rg-empty", "aria-hidden": "true" });
         return h(
           "div",
           { class: `rg-row ${r.extra ? "is-extra" : ""}` },
           h("span", { class: "rg-name" }, h("span", { class: "rg-title" }, label), sub[r.key] ? h("span", { class: "rg-sub" }, sub[r.key]) : null),
-          jumuahInIqama ? empty() : check(r.key, "adhan", `${label} · ${r.jumuah ? t("khutbah") : t("adhan")}`),
-          hasIqama ? (jumuahInIqama ? check(r.key, "adhan", `${label} · ${t("khutbah")}`) : r.iqama ? check(r.key, "iqama", `${label} · ${t("iqama")}`) : empty()) : null
+          jumuahInIqama ? empty() : check(r.key, "adhan", r.congregation ? label : `${label} · ${t("adhan")}`),
+          hasIqama ? (jumuahInIqama ? check(r.key, "adhan", label) : r.iqama ? check(r.key, "iqama", `${label} · ${t("iqama")}`) : empty()) : null
         );
       })
     );
@@ -169,13 +191,14 @@ export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode =
 
   function alertRows() {
     const hasIqama = placeHasIqama(place);
-    const iqamaKind = (hasIqama && PRAYER_KEYS.some((k) => prefs.pick[k].iqama)) || (placeHasJumuah(place) && prefs.pick.jumuah.adhan);
+    const congregation = REMIND_ROWS.some((r) => r.congregation && rowApplies(r, place) && prefs.pick[r.key].adhan);
+    const iqamaKind = (hasIqama && PRAYER_KEYS.some((k) => prefs.pick[k].iqama)) || congregation;
     const opts = ALERT_CHOICES.map((m) => ({ value: m, label: alertLabel(m) }));
     const sel = (field, label) => selectRow(label, prefs[field], opts, (v) => { prefs[field] = Number(v); changed(); }, field);
-    const anyAdhan = PRAYER_KEYS.some((k) => prefs.pick[k].adhan) || prefs.pick.sunrise.adhan || prefs.pick.lastThird.adhan || (!hasIqama && prefs.pick.jumuah.adhan && placeHasJumuah(place));
+    const anyAdhan = PRAYER_KEYS.some((k) => prefs.pick[k].adhan) || prefs.pick.sunrise.adhan || prefs.pick.lastThird.adhan;
     return {
-      main: [anyAdhan ? sel("adhanAlert", t("alertAdhan")) : null, iqamaKind ? sel("iqamaAlert", hasIqama ? t("alertIqama") : t("alertKhutbah")) : null],
-      second: [anyAdhan ? sel("adhanAlert2", t("alertAdhan2")) : null, iqamaKind ? sel("iqamaAlert2", hasIqama ? t("alertIqama2") : t("alertKhutbah2")) : null],
+      main: [anyAdhan ? sel("adhanAlert", t("alertAdhan")) : null, iqamaKind ? sel("iqamaAlert", hasIqama ? t("alertIqama") : t("alertCongregation")) : null],
+      second: [anyAdhan ? sel("adhanAlert2", t("alertAdhan2")) : null, iqamaKind ? sel("iqamaAlert2", hasIqama ? t("alertIqama2") : t("alertCongregation2")) : null],
     };
   }
 
@@ -232,7 +255,9 @@ export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode =
         },
         t("calHowTitle")
       ),
-      list
+      list,
+      // A real alarm (not a calendar ping) for Fajr: only iPhone can build one from the calendar.
+      h("button", { class: "btn btn-plain btn-sm cal-alarm-link", type: "button", onclick: () => openAlarmGuide(ctx) }, icon("bell"), t("alarmLink"))
     );
   }
 
@@ -252,6 +277,19 @@ export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode =
             skip = true;
             changed();
           }, "place")
+        )
+      );
+    }
+    // Ramadan close (or here): the one-tap Ramadan pack goes first.
+    const rs = isCal && ctx.openRamadan ? ramadanSoonFor(place) : null;
+    if (rs) {
+      parts.push(
+        h(
+          "button",
+          { class: "card ramadan-card", type: "button", onclick: () => { sheet.close(); setTimeout(() => ctx.openRamadan(place), 240); } },
+          icon("moon", "ramadan-card-icon"),
+          h("span", { class: "row-main" }, h("span", { class: "row-title" }, t("ramadanPack")), h("span", { class: "row-sub wrap" }, rs.until ? tn("ramadanIn", rs.until, { n: rs.until }) : t("ramadanPackSub"))),
+          icon("chevronRight", "row-chevron flip-rtl")
         )
       );
     }
@@ -424,4 +462,23 @@ export function calendarEnding(settings, place, now = new Date()) {
   const t0 = ymdKey(today);
   if (rec.to < ymdKey(addDays(today, -60)) || rec.to > ymdKey(addDays(today, 3))) return null;
   return { until: parseYmd(rec.to), ended: rec.to < t0 };
+}
+
+// A real alarm for Fajr on iPhone: a Shortcuts automation that reads tomorrow's Fajr from the
+// "Prayer times" calendar every night and sets a Clock alarm before it. Built by the person, once.
+export function openAlarmGuide(ctx) {
+  const place = ctx.place;
+  const fajrTitle = place && placeHasIqama(place) ? t("evAdhan", { p: t("fajrPrayer") }) : t("fajr");
+  const steps = ["alarm1", "alarm2", "alarm3", "alarm4", "alarm5", "alarm6"];
+  return openSheet({
+    title: t("alarmTitle"),
+    subtitle: t("alarmIntro"),
+    content: [
+      h("p", { class: "list-foot cal-note" }, icon("calendar"), t("alarmFirst")),
+      h("ol", { class: "cal-steps" }, steps.map((k) => h("li", {}, t(k, { f: fajrTitle })))),
+      h("p", { class: "list-foot cal-note" }, icon("info"), t("alarmCaveat")),
+      h("h3", { class: "list-title" }, t("platAndroid")),
+      h("p", { class: "list-foot" }, t("alarmAndroid")),
+    ],
+  });
 }

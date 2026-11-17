@@ -4,6 +4,7 @@ import { t } from "../i18n.js";
 import { h, icon } from "../ui.js";
 import { skyAt } from "./today.js";
 import { mixRgb } from "../astro.js";
+import { ramadanSoon } from "./ramadan.js";
 
 const COLS = ["fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha"];
 
@@ -91,7 +92,9 @@ export function MonthView(ctx) {
         "div",
         { class: "month-actions no-print" },
         h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => window.print() }, icon("print"), t("print")),
-        h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.openCalendar?.(place, { ym }) }, icon("calendar"), t("exportCal"))
+        h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.openCalendar?.(place, { ym }) }, icon("calendar"), t("exportCal")),
+        // Ramadan close (or here): its own printable timetable and reminder pack.
+        ramadanSoon(place, ctx.settings.hijriOffset, 60) ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => ctx.go("ramadan") }, icon("moon"), t("ramadan")) : null
       ),
       h(
         "p",

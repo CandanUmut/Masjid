@@ -1,8 +1,8 @@
 // Display mode: a full-screen board for masjid TVs and screens. Open with #/tv (active place)
 // or #/tv/<seed> (a specific masjid — perfect as the start page of a kiosk browser).
 // Designed to be read from the back of a prayer hall: everything scales with the screen, nothing scrolls.
-import { statusAt, scheduleFor } from "../engine.js";
-import { todayYmd, formatDate, formatHijri, partsInTz, timeParts } from "../time.js";
+import { statusAt, scheduleFor, taraweehFor, specialEvents, isRamadan } from "../engine.js";
+import { todayYmd, formatDate, formatHijri, partsInTz, timeParts, addDays, ymdKey } from "../time.js";
 import { t } from "../i18n.js";
 import { h, icon } from "../ui.js";
 import { phaseOf, skyAt, durationNode } from "./today.js";
@@ -24,6 +24,7 @@ export function TvView(ctx) {
   const qrBox = h("div", { class: "tv-qr", hidden: true });
   // Long announcements get a smaller size and more lines rather than being cut off.
   const note = place.note ? h("div", { class: `tv-note ${place.note.length > 110 ? "tv-note--long" : ""}` }, icon("info"), h("span", {}, place.note)) : null;
+  const agenda = h("div", { class: "tv-agenda", hidden: true });
   const overlay = h("div", { class: "tv-overlay", hidden: true });
   const controls = h(
     "div",
@@ -49,7 +50,7 @@ export function TvView(ctx) {
     ),
     h("div", { class: "tv-sky" }, chart.el),
     grid,
-    h("footer", { class: "tv-foot" }, h("div", { class: "tv-foot-main" }, nextBox, note), qrBox),
+    h("footer", { class: "tv-foot" }, h("div", { class: "tv-foot-main" }, nextBox, agenda, note), qrBox),
     overlay,
     controls
   );
@@ -71,7 +72,16 @@ export function TvView(ctx) {
       const qr = qrcode(0, "M");
       qr.addData(seedUrl(seed));
       qr.make();
-      qrBox.replaceChildren(h("div", { class: "tv-qr-code", html: qr.createSvgTag({ cellSize: 3, margin: 4, scalable: true }) }), h("span", {}, t("scanToOpen")));
+      const item = (code, label) => h("div", { class: "tv-qr-item" }, h("div", { class: "tv-qr-code", html: code.createSvgTag({ cellSize: 3, margin: 4, scalable: true }) }), h("span", {}, label));
+      const items = [item(qr, t("scanToOpen"))];
+      // A second code straight to "Add to calendar": iqama reminders on everyone's phone.
+      if (place.iqama || place.jumuah?.length) {
+        const cal = qrcode(0, "M");
+        cal.addData(seedUrl(seed, "cal"));
+        cal.make();
+        items.push(item(cal, t("tvRemind")));
+      }
+      qrBox.replaceChildren(...items);
       qrBox.hidden = false;
     });
   }
@@ -80,6 +90,21 @@ export function TvView(ctx) {
     const { main, period } = timeParts(d, place.tz, { hour12: ctx.hour12, locale: ctx.locale });
     return period ? [main, h("small", { class: "tv-period" }, period)] : main;
   };
+
+  // Taraweeh tonight, or the masjid's next event in the coming two weeks (one line, never a list).
+  function renderAgenda(now, ymd) {
+    let text = null;
+    if (place.taraweeh && isRamadan(addDays(ymd, 1), ctx.settings.hijriOffset)) {
+      const at = taraweehFor(place, calc, ymd);
+      if (at && at > now) text = [h("strong", {}, t("taraweeh")), " ", tvTime(at)];
+    }
+    if (!text) {
+      const e = specialEvents(place, ymd, addDays(ymd, 14)).find((x) => x.at > new Date(now.getTime() - 1800000));
+      if (e) text = [h("strong", {}, e.title), ` · ${e.date === ymdKey(ymd) ? t("today") : formatDate(e.ymd, ctx.locale, { weekday: "long", day: "numeric", month: "long" })} `, tvTime(e.at)];
+    }
+    agenda.hidden = !text;
+    if (text) agenda.replaceChildren(icon(place.taraweeh && text[0].textContent === t("taraweeh") ? "moon" : "calendar"), h("span", {}, ...text));
+  }
 
   let lastKey = "";
   let lastSkyMinute = "";
@@ -103,6 +128,7 @@ export function TvView(ctx) {
     }
     if (key !== lastKey) {
       lastKey = key;
+      renderAgenda(now, ymd);
       date.textContent = `${formatDate(ymd, ctx.locale, { weekday: "long", day: "numeric", month: "long" })} · ${formatHijri(ymd, ctx.locale, ctx.settings.hijriOffset)}`;
       const sched = scheduleFor(place, calc, ymd);
       grid.replaceChildren(

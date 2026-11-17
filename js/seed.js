@@ -74,6 +74,35 @@ export function unpackIqama(s) {
   return any ? out : null;
 }
 
+// --- Taraweeh and one-off events ----------------------------------------------------------
+// Taraweeh: "+15" (minutes after the Isha iqama) or "@21:30" (fixed). Events: [["2027-03-10","08:00","Eid prayer"], …].
+// Both travel in an optional 15th field, which older versions of the app simply ignore.
+const validDate = (s) => /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s);
+export const MAX_EVENTS = 8;
+
+export function packTaraweeh(r) {
+  if (!r) return "";
+  if (r.mode === "fixed") return parseHHMM(r.time) ? `@${r.time}` : "";
+  return `+${Math.max(0, Math.min(120, Math.round(Number(r.offset) || 0)))}`;
+}
+
+export function unpackTaraweeh(s) {
+  let m;
+  if (typeof s !== "string") return null;
+  if ((m = /^@(\d{1,2}:\d{2})$/.exec(s)) && parseHHMM(m[1])) return { mode: "fixed", time: m[1] };
+  if ((m = /^\+(\d{1,3})$/.exec(s))) return { mode: "offset", offset: Math.min(120, Number(m[1])) };
+  return null;
+}
+
+export function cleanEvents(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((e) => (Array.isArray(e) ? { date: e[0], time: e[1], title: e[2] } : e))
+    .filter((e) => e && validDate(e.date) && parseHHMM(e.time) && String(e.title || "").trim())
+    .map((e) => ({ date: e.date, time: e.time, title: String(e.title).trim().slice(0, 60) }))
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+    .slice(0, MAX_EVENTS);
+}
+
 // --- place <-> compact array ---------------------------------------------------------
 function packCalc(calcIn) {
   if (!calcIn) return null; // inherits the viewer's own settings
@@ -115,12 +144,20 @@ export function placeToArray(p) {
     (p.jumuah || []).filter((t) => parseHHMM(t)).join(","),
     String(p.note || "").slice(0, 280),
     p.u || 0,
+    ...extrasField(p),
   ];
+}
+
+function extrasField(p) {
+  const tw = packTaraweeh(p.taraweeh);
+  const ev = cleanEvents(p.events).map((e) => [e.date, e.time, e.title]);
+  return tw || ev.length ? [[tw, ev]] : [];
 }
 
 export function arrayToPlace(a) {
   if (!Array.isArray(a) || a[0] !== 1) throw new Error("unsupported seed version");
-  const [, kind, id, name, sub, lat, lng, tz, cc, calc, iqama, jumuah, note, u] = a;
+  const [, kind, id, name, sub, lat, lng, tz, cc, calc, iqama, jumuah, note, u, extras] = a;
+  const [tw, ev] = Array.isArray(extras) ? extras : [];
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw new Error("bad coordinates");
   if (!isValidTimeZone(tz)) throw new Error("bad time zone");
   return {
@@ -141,6 +178,8 @@ export function arrayToPlace(a) {
       .slice(0, 6),
     note: String(note || "").slice(0, 280),
     u: Number.isFinite(u) ? u : 0,
+    taraweeh: unpackTaraweeh(tw),
+    events: cleanEvents(ev),
   };
 }
 
@@ -208,7 +247,7 @@ export async function backupToSeed(state) {
 // Accepts a bare seed, "#/m/<seed>", or any full URL containing one.
 export function extractSeed(text) {
   const s = String(text || "").trim();
-  const m = /(?:#\/?m\/|[?&]seed=)([A-Za-z0-9_-]+)/.exec(s);
+  const m = /(?:#\/?(?:m|tv|cal)\/|[?&]seed=)([A-Za-z0-9_-]+)/.exec(s);
   if (m) return m[1];
   if (/^[mMbB][A-Za-z0-9_-]{8,}$/.test(s)) return s;
   return null;

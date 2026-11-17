@@ -1,7 +1,8 @@
 // Phase-3 features wired in as a plugin: Month, Qibla, Display mode, reminders, install/offline, backup.
 import { formatDate, todayYmd } from "../time.js";
 import { reminderEvents as calendarEvents, alertsFor, PRAYER_KEYS, normalizeRemind, normalizeCal } from "../ics.js";
-import { openCalendarSheet, calendarEnding, remindSummary } from "./calendar.js";
+import { openCalendarSheet, calendarEnding, remindSummary, openAlarmGuide } from "./calendar.js";
+import { RamadanView, openRamadanSheet } from "./ramadan.js";
 import { t, tn } from "../i18n.js";
 import { h, icon, openSheet, toggle, toast, copyText, confirmSheet } from "../ui.js";
 import { normalizeCalc } from "../engine.js";
@@ -176,6 +177,13 @@ function settingsSections(ctx) {
           }
           ctx.update((s) => (s.settings.notify.enabled = v), { render: false });
         }, t("notifyEnable"))
+      ),
+      h(
+        "button",
+        { class: "row row-btn", type: "button", onclick: () => openAlarmGuide(ctx) },
+        icon("bell", "row-icon"),
+        h("span", { class: "row-main" }, h("span", { class: "row-title" }, t("alarmRow")), h("span", { class: "row-sub wrap" }, t("alarmRowSub"))),
+        icon("chevronRight", "row-chevron flip-rtl")
       )
     ),
     h("p", { class: "list-foot" }, !supported || blocked ? t("notifyDenied") + " " : "", t("notifyHint")),
@@ -320,17 +328,30 @@ export const extrasPlugin = {
     month: { icon: "calendar", label: "month", view: MonthView, needsPlace: true },
     qibla: { icon: "compass", label: "qibla", view: QiblaView, needsPlace: true },
     tv: { icon: "tv", label: "tvMode", view: TvView, needsPlace: true, chromeless: true, hidden: true },
+    ramadan: { icon: "moon", label: "ramadanTimetable", view: RamadanView, needsPlace: true, hidden: true },
   },
   ctx: () => ({
     settingsExtras: () => settingsSections(getCtx()),
     restoreBackup,
     openCalendar: (place, opts = {}) => openCalendarSheet(getCtx(), { place, ...opts }),
+    openRamadan: (place) => openRamadanSheet(getCtx(), place),
     openDisplay: async (place) => {
       // Always the seed URL, so the board can be bookmarked as a screen's start page.
       location.hash = `#/tv/${await placeToSeed(place)}`;
     },
   }),
   handleHash(name, arg, ctx) {
+    // #/cal/<seed>: the masjid's "iqama reminders" link (poster, screen, chat). Save the masjid, then
+    // go straight to Add to calendar, set to its iqama times.
+    if (name === "cal" && arg) {
+      importSeed(ctx, arg).then((ok) => {
+        if (ok === false) toast(t("invalidSeed"), { tone: "warn" });
+        history.replaceState(null, "", location.pathname + location.search + "#/");
+        ctx.go("today");
+        if (ok) setTimeout(() => openCalendarSheet(getCtx(), { preset: "iqama" }), 450);
+      });
+      return true;
+    }
     if (name !== "tv" || !arg) return false;
     // #/tv/<seed>: import (or refresh) the masjid silently, then show the board.
     importSeed(ctx, arg, { silent: true }).then((ok) => {
