@@ -1,5 +1,5 @@
 // Masjid pages: create/edit, share as link / QR / seed code, and open shared seeds.
-import { PRAYERS, DEFAULT_CALC, resolveCalc, scheduleFor, normalizeCalc, taraweehFor, specialEvents, isRamadan } from "../engine.js";
+import { PRAYERS, DEFAULT_CALC, resolveCalc, scheduleFor, normalizeCalc, taraweehFor, specialEvents, isRamadan, placeHijriOffset } from "../engine.js";
 import { placeToSeed, parseSeed, seedUrl, MAX_EVENTS } from "../seed.js";
 import { getPosition, reverseGeocode, searchPlaces, timezoneFor, completePlace } from "../geo.js";
 import { t, lang } from "../i18n.js";
@@ -46,7 +46,10 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
   draft.sub = draft.sub || "";
   draft.note = draft.note || "";
   draft.taraweeh = draft.taraweeh || null;
-  draft.events = (draft.events || []).map((e) => ({ ...e }));
+  draft.ramadanStart = draft.ramadanStart || "";
+  // Events that are over don't take up one of the eight places.
+  const yesterdayKey = ymdKey(addDays(todayYmd(draft.tz), -1));
+  draft.events = (draft.events || []).filter((e) => !e.date || e.date >= yesterdayKey).map((e) => ({ ...e }));
   const initial = JSON.stringify(draft);
   let saved = false;
 
@@ -557,7 +560,14 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
         ? h("div", { class: "iqama-sentence" }, minutesInput(r.offset, { min: 0, max: 120, step: 5, label: t("taraweeh"), unit: t("min"), onChange: (v) => (r.offset = v) }), h("span", { class: "iqama-word" }, t("twAfterIsha")))
         : r?.mode === "fixed"
           ? h("div", { class: "iqama-sentence" }, h("input", { class: "input input-time", type: "time", value: r.time, "aria-label": t("taraweeh"), oninput: (e) => (r.time = e.target.value) }))
-          : null
+          : null,
+      // When the masjid announces its first fast, everyone with the new link follows it.
+      h(
+        "label",
+        { class: "row iqama-top ramadan-start" },
+        h("span", { class: "row-label" }, t("ramadanStartLabel")),
+        h("input", { class: "input input-time ramadan-start-date", type: "date", value: draft.ramadanStart, "aria-label": t("ramadanStartLabel"), oninput: (e) => (draft.ramadanStart = e.target.value) })
+      )
     );
   }
   const eventsWrap = h("div", { class: "events-edit" });
@@ -567,13 +577,17 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
         h(
           "div",
           { class: "event-edit" },
-          h("input", { class: "input event-title", type: "text", maxlength: 60, value: e.title, placeholder: t("eventTitlePh"), "aria-label": t("eventTitle"), oninput: (ev) => (e.title = ev.target.value) }),
+          h(
+            "div",
+            { class: "event-head" },
+            h("input", { class: "input event-title", type: "text", maxlength: 60, value: e.title, placeholder: t("eventTitlePh"), "aria-label": t("eventTitle"), oninput: (ev) => (e.title = ev.target.value) }),
+            h("button", { class: "icon-btn icon-btn-sm", type: "button", "aria-label": `${t("remove")}: ${e.title || t("eventTitle")}`, onclick: () => { draft.events.splice(i, 1); renderEvents(); } }, icon("close"))
+          ),
           h(
             "div",
             { class: "event-when" },
             h("input", { class: "input input-time event-date", type: "date", value: e.date, "aria-label": t("date"), oninput: (ev) => (e.date = ev.target.value) }),
-            h("input", { class: "input input-time", type: "time", value: e.time, "aria-label": t("eventTime"), oninput: (ev) => (e.time = ev.target.value) }),
-            h("button", { class: "icon-btn icon-btn-sm", type: "button", "aria-label": t("remove"), onclick: () => { draft.events.splice(i, 1); renderEvents(); } }, icon("close"))
+            h("input", { class: "input input-time", type: "time", value: e.time, "aria-label": t("eventTime"), oninput: (ev) => (e.time = ev.target.value) })
           )
         )
       ),
@@ -646,6 +660,9 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
             // Events: a title is needed; past ones (more than a day ago) are dropped.
             const untitled = draft.events.findIndex((e) => e.date && e.time && !String(e.title || "").trim());
             if (untitled >= 0) return fail(t("eventNeedsTitle"), eventsWrap.querySelectorAll(".event-title")[untitled]);
+            // A title without a day or time would silently disappear: ask instead.
+            const undated = draft.events.findIndex((e) => String(e.title || "").trim() && (!e.date || !e.time));
+            if (undated >= 0) return fail(t("eventNeedsWhen"), eventsWrap.querySelectorAll(".event-date")[undated]);
             const yesterday = ymdKey(addDays(todayYmd(draft.tz), -1));
             const events = draft.events
               .filter((e) => e.date && e.time && e.date >= yesterday)
@@ -661,6 +678,7 @@ export function openMasjidEditor(ctx, existing = null, prefill = null) {
               jumuah: draft.jumuah.filter(Boolean),
               events,
               taraweeh: draft.taraweeh,
+              ramadanStart: draft.ramadanStart || null,
               calc: { ...draft.calc, method: r.method, madhab: r.madhab },
             };
             const unchanged = existing && JSON.stringify(draft) === initial;
@@ -747,11 +765,19 @@ export async function openShareSheet(ctx, place) {
   // The "iqama reminders" link: opens straight to Add to calendar for this masjid.
   const hasTimes = place.kind === "masjid" && (place.iqama || place.jumuah?.length);
   const calUrl = hasTimes ? seedUrl(seed, "cal") : null;
+  // Printed codes stay up for months: leave the one-off events out (smaller, easier to scan, never stale).
+  const printSeed = place.events?.length ? await placeToSeed(place, { events: false }) : seed;
   let calQr = null;
   if (calUrl) {
     calQr = qrcode(0, "M");
-    calQr.addData(calUrl);
+    calQr.addData(seedUrl(printSeed, "cal"));
     calQr.make();
+  }
+  let posterQr = qr;
+  if (printSeed !== seed) {
+    posterQr = qrcode(0, "M");
+    posterQr.addData(seedUrl(printSeed));
+    posterQr.make();
   }
   const copyBtn = (text, label) =>
     h(
@@ -803,7 +829,7 @@ export async function openShareSheet(ctx, place) {
           : null,
         copyBtn(url, t("copyLink")),
         calUrl ? copyBtn(calUrl, t("copyRemindersLink")) : null,
-        place.kind === "masjid" ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => printPoster(place, qr, calQr) }, icon("print"), t("poster")) : null,
+        place.kind === "masjid" ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => printPoster(place, posterQr, calQr) }, icon("print"), t("poster")) : null,
         place.kind === "masjid" && ctx.openDisplay ? h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => { sheet.forceClose(); ctx.openDisplay(place); } }, icon("tv"), t("tvMode")) : null
       ),
       place.iqama ? weekPreview(ctx, place) : null,
@@ -891,7 +917,7 @@ export function openSeedInput(ctx, { restore = false } = {}) {
 //  - backups (which replace settings) are never accepted from a URL, only when pasted and confirmed
 //  - timestamps from the future are capped, so a bad clock or a prank can't freeze a masjid
 //  - an older link never silently overwrites a newer copy, and every update can be undone
-export async function importSeed(ctx, text, { allowBackup = false, silent = false } = {}) {
+export async function importSeed(ctx, text, { allowBackup = false, silent = false, onUndo = null } = {}) {
   let parsed;
   try {
     parsed = await parseSeed(text);
@@ -924,7 +950,7 @@ export async function importSeed(ctx, text, { allowBackup = false, silent = fals
   if (existing && !silent) {
     const previous = structuredClone(existing);
     ctx.addPlace(place, { activate: true, silent: true });
-    toast(t("updated", { p: place.name }), { action: t("undo"), duration: 8000, onAction: () => ctx.addPlace(previous, { activate: true, silent: true }) });
+    toast(t("updated", { p: place.name }), { action: t("undo"), duration: 8000, onAction: () => { onUndo?.(); ctx.addPlace(previous, { activate: true, silent: true }); } });
     return true;
   }
   if (silent) {
@@ -938,6 +964,7 @@ export async function importSeed(ctx, text, { allowBackup = false, silent = fals
     action: t("undo"),
     duration: 8000,
     onAction: () => {
+      onUndo?.();
       ctx.removePlace(place.id, { silent: true });
       if (before && before !== place.id) ctx.activate(before);
     },
@@ -985,7 +1012,7 @@ export function masjidAgenda(ctx, place, { days = 60, max = 3 } = {}) {
   const now = new Date();
   const fmt = (d) => formatTime(d, place.tz, { hour12: ctx.hour12, locale: ctx.locale });
   const items = [];
-  if (place.taraweeh && isRamadan(addDays(today, 1), ctx.settings.hijriOffset)) {
+  if (place.taraweeh && isRamadan(addDays(today, 1), placeHijriOffset(place, today, ctx.settings.hijriOffset))) {
     const at = taraweehFor(place, place.calc || ctx.settings.calc, today);
     if (at && at > now) items.push(h("li", { class: "agenda-item" }, icon("moon"), h("span", {}, h("strong", {}, t("taraweeh")), ` · ${t("tonight")} ${fmt(at)}`)));
   }

@@ -1,7 +1,7 @@
 // Display mode: a full-screen board for masjid TVs and screens. Open with #/tv (active place)
 // or #/tv/<seed> (a specific masjid — perfect as the start page of a kiosk browser).
 // Designed to be read from the back of a prayer hall: everything scales with the screen, nothing scrolls.
-import { statusAt, scheduleFor, taraweehFor, specialEvents, isRamadan } from "../engine.js";
+import { statusAt, scheduleFor, taraweehFor, specialEvents, isRamadan, placeHijriOffset } from "../engine.js";
 import { todayYmd, formatDate, formatHijri, partsInTz, timeParts, addDays, ymdKey } from "../time.js";
 import { t } from "../i18n.js";
 import { h, icon } from "../ui.js";
@@ -68,7 +68,8 @@ export function TvView(ctx) {
 
   // QR so people in the hall can put the masjid on their own phone.
   if (place.kind === "masjid") {
-    placeToSeed(place).then((seed) => {
+    // Codes on a screen stay up for months: without the one-off events (smaller, never stale).
+    placeToSeed(place, { events: false }).then((seed) => {
       const qr = qrcode(0, "M");
       qr.addData(seedUrl(seed));
       qr.make();
@@ -94,16 +95,20 @@ export function TvView(ctx) {
   // Taraweeh tonight, or the masjid's next event in the coming two weeks (one line, never a list).
   function renderAgenda(now, ymd) {
     let text = null;
-    if (place.taraweeh && isRamadan(addDays(ymd, 1), ctx.settings.hijriOffset)) {
+    let moon = false;
+    if (place.taraweeh && isRamadan(addDays(ymd, 1), placeHijriOffset(place, ymd, ctx.settings.hijriOffset))) {
       const at = taraweehFor(place, calc, ymd);
-      if (at && at > now) text = [h("strong", {}, t("taraweeh")), " ", tvTime(at)];
+      if (at && at > now) {
+        text = [h("strong", {}, t("taraweeh")), " ", tvTime(at)];
+        moon = true;
+      }
     }
     if (!text) {
       const e = specialEvents(place, ymd, addDays(ymd, 14)).find((x) => x.at > new Date(now.getTime() - 1800000));
       if (e) text = [h("strong", {}, e.title), ` · ${e.date === ymdKey(ymd) ? t("today") : formatDate(e.ymd, ctx.locale, { weekday: "long", day: "numeric", month: "long" })} `, tvTime(e.at)];
     }
     agenda.hidden = !text;
-    if (text) agenda.replaceChildren(icon(place.taraweeh && text[0].textContent === t("taraweeh") ? "moon" : "calendar"), h("span", {}, ...text));
+    if (text) agenda.replaceChildren(icon(moon ? "moon" : "calendar"), h("span", {}, ...text));
   }
 
   let lastKey = "";
@@ -122,6 +127,7 @@ export function TvView(ctx) {
     const minuteKey = `${p.hh}:${p.mm}`;
     if (minuteKey !== lastSkyMinute) {
       lastSkyMinute = minuteKey;
+      renderAgenda(now, ymd); // so what has already started drops off
       const sky = skyAt(place, now);
       root.style.setProperty("--sky-top", sky.top);
       root.style.setProperty("--sky-horizon", sky.horizon);

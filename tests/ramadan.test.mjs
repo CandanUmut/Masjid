@@ -4,7 +4,7 @@ import { taraweehFor, specialEvents, ramadanSpan, isRamadan } from "../js/engine
 import { reminderEvents, ramadanEvents, buildIcs, exportSig, DEFAULT_REMIND, DEFAULT_CAL } from "../js/ics.js";
 import { placeToArray, arrayToPlace, placeToSeed, parseSeed, extractSeed, cleanEvents } from "../js/seed.js";
 import { STRINGS } from "../js/i18n.js";
-import { addDays, formatHHMM, ymdKey } from "../js/time.js";
+import { addDays, formatHHMM, ymdKey, partsInTz } from "../js/time.js";
 
 const label = (k, vars) => {
   let s = STRINGS.en[k] ?? k;
@@ -121,4 +121,59 @@ test("new masjid times (Taraweeh, events) count as a change for the calendar", (
   const sig = (p) => exportSig(p, calc, prefs(), DEFAULT_CAL);
   assert.notEqual(sig(masjid), sig({ ...masjid, taraweeh: { mode: "offset", offset: 20 } }));
   assert.notEqual(sig(masjid), sig({ ...masjid, events: [] }));
+});
+
+// --- Fixes from review ----------------------------------------------------------------------------
+import { placeHijriOffset, ramadanSoon } from "../js/engine.js";
+import { normalizeRemind } from "../js/ics.js";
+
+test("calendars added with the previous version still match (no false 'choices changed')", () => {
+  // Fingerprints computed with v2.6 (commit 79febb3) for the same place and default choices.
+  const m = { id: "m1", kind: "masjid", lat: 40.7128, lng: -74.006, tz: "America/New_York", iqama: { fajr: { mode: "offset", offset: 20, round: 0 }, dhuhr: null, asr: null, maghrib: null, isha: { mode: "offset", offset: 15, round: 0 } }, jumuah: ["13:00"] };
+  const home = { id: "gps", lat: 40.7128, lng: -74.006, tz: "America/New_York" };
+  const p = normalizeRemind(null);
+  assert.equal(exportSig(m, calc, p, DEFAULT_CAL), "1xah8r7");
+  assert.equal(exportSig(home, calc, p, DEFAULT_CAL), "1cbsqtj");
+});
+
+test("Taraweeh at a fixed time after midnight is that night, not the Isha time", () => {
+  const day = addDays(span.from, 3);
+  const at = taraweehFor({ ...masjid, taraweeh: { mode: "fixed", time: "00:30" } }, calc, day);
+  assert.equal(formatHHMM(at, masjid.tz), "00:30");
+  const p = partsInTz(at, masjid.tz);
+  assert.equal(ymdKey({ y: p.y, m: p.m, d: p.d }), ymdKey(addDays(day, 1))); // the next calendar day
+  assert.ok(at > taraweehFor(masjid, calc, day));
+});
+
+test("a masjid's announced first fast decides Ramadan for everyone with its link", () => {
+  const today = { y: 2027, m: 1, d: 20 };
+  const late = { ...masjid, ramadanStart: ymdKey(addDays(span.from, 1)) };
+  const off = placeHijriOffset(late, today, 0);
+  assert.equal(off, -1);
+  assert.deepEqual(ramadanSpan(today, off).from, addDays(span.from, 1));
+  // Whatever each viewer's own adjustment is.
+  assert.equal(placeHijriOffset(late, today, 2), -1);
+  // Its calendar and the pack follow it: the first Taraweeh moves one evening later.
+  const nights = reminderEvents(late, calc, prefs(), { from: addDays(span.from, -3), days: 10, label, hijriOffset: 2 }).filter((e) => e.key === "taraweeh");
+  assert.equal(ymdKey(nights[0].ymd), ymdKey(span.from));
+  assert.equal(ramadanSoon(late, today, 0, 60).until, 20);
+  // Last year's date says nothing about this year.
+  assert.equal(placeHijriOffset({ ...masjid, ramadanStart: "2026-02-19" }, { y: 2027, m: 1, d: 20 }, 1), 1);
+});
+
+test("seed carries the first fast; printed codes can leave events out", async () => {
+  const withStart = { ...masjid, ramadanStart: "2027-02-09" };
+  assert.equal(arrayToPlace(placeToArray(withStart)).ramadanStart, "2027-02-09");
+  assert.equal(arrayToPlace(placeToArray(masjid)).ramadanStart, null);
+  const full = await placeToSeed(masjid);
+  const lean = await placeToSeed(masjid, { events: false });
+  assert.ok(lean.length < full.length);
+  assert.deepEqual((await parseSeed(lean)).place.events, []);
+  assert.deepEqual((await parseSeed(lean)).place.taraweeh, masjid.taraweeh);
+});
+
+test("Ramadan pack: Iftar can be left out", () => {
+  const evs = ramadanEvents(masjid, calc, { from: span.from, days: span.days, iftarAlert: -2, label });
+  assert.equal(evs.filter((e) => e.key === "iftar").length, 0);
+  assert.ok(ramadanEvents(masjid, calc, { from: span.from, days: span.days, iftarAlert: -1, label }).filter((e) => e.key === "iftar").every((e) => e.alerts.length === 0));
 });

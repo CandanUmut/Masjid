@@ -1,7 +1,7 @@
 // Ramadan: a printable timetable for the month (Suhoor ends, Iftar, Taraweeh), and the "Ramadan pack",
 // one calendar file with Suhoor, Iftar and Taraweeh reminders for every day of it.
-import { scheduleFor, computeDay, ramadanSpan, taraweehFor, isRamadan, METHODS } from "../engine.js";
-import { buildIcs, ramadanEvents, placeHasTaraweeh } from "../ics.js";
+import { scheduleFor, computeDay, ramadanSpan, taraweehFor, isRamadan, METHODS, placeHijriOffset, ramadanSoon as soon } from "../engine.js";
+import { buildIcs, ramadanEvents, placeHasTaraweeh, placeKey, normalizeRemind } from "../ics.js";
 import { addDays, formatDate, formatTime, hijriParts, sameYmd, timeParts, todayYmd, ymdKey } from "../time.js";
 import { t, tn } from "../i18n.js";
 import { h, icon, openSheet, select, toggle } from "../ui.js";
@@ -9,16 +9,11 @@ import { row } from "./calc-editor.js";
 import { alertLabel } from "./calendar.js";
 
 const SUHOOR_LEADS = [-1, 20, 30, 45, 60, 90];
-const IFTAR_ALERTS = [-1, 0, 5, 10, 15];
+const IFTAR_ALERTS = [-2, -1, 0, 5, 10, 15]; // -2: leave Iftar out
 
-// Ramadan within `days` from today (or now)? Returns its span, or null.
+// Ramadan within `days` from today (or now), for this place? Its span, or null.
 export function ramadanSoon(place, hijriOffset, days = 60) {
-  if (!place) return null;
-  const today = todayYmd(place.tz);
-  const span = ramadanSpan(today, hijriOffset);
-  if (!span) return null;
-  const until = Math.round((Date.UTC(span.from.y, span.from.m - 1, span.from.d) - Date.UTC(today.y, today.m - 1, today.d)) / 864e5);
-  return until <= days ? { ...span, until: Math.max(0, until), today } : null;
+  return place ? soon(place, todayYmd(place.tz), hijriOffset, days) : null;
 }
 
 // The dates of this (or the next) Ramadan, as a short range: "8 February – 9 March".
@@ -31,10 +26,18 @@ function spanLabel(span, locale) {
 export function openRamadanSheet(ctx, place = ctx.place) {
   if (!place) return null;
   const today = todayYmd(place.tz);
-  const span = ramadanSpan(today, ctx.settings.hijriOffset);
+  const span = ramadanSpan(today, placeHijriOffset(place, today, ctx.settings.hijriOffset));
   if (!span) return null;
   const calc = place.calc || ctx.settings.calc;
-  const prefs = { suhoorLead: 45, iftarAlert: 0, taraweeh: true, taraweehAlert: 15, ...(ctx.settings.ramadan || {}) };
+  // Already in the prayer calendar for (part of) Ramadan? Then Maghrib and Taraweeh are there too:
+  // leave them out of the pack by default, so nobody gets two alerts each evening.
+  const rec = ctx.settings.cal?.exports?.[placeKey(place)];
+  const lastDay = ymdKey(addDays(span.from, span.days - 1));
+  const pick = normalizeRemind(ctx.settings.remind).pick;
+  const overlap = Boolean(rec && rec.to >= ymdKey(addDays(span.from, -1)) && rec.from <= lastDay);
+  const dupIftar = overlap && pick.maghrib.adhan;
+  const dupTaraweeh = overlap && pick.taraweeh.adhan && placeHasTaraweeh(place);
+  const prefs = { suhoorLead: 45, iftarAlert: dupIftar ? -2 : 0, taraweeh: !dupTaraweeh, taraweehAlert: 15, ...(ctx.settings.ramadan || {}) };
   const body = h("div", { class: "cal-sheet" });
   const foot = h("div", { class: "cal-foot" });
   let done = false;
@@ -52,11 +55,12 @@ export function openRamadanSheet(ctx, place = ctx.place) {
         "div",
         { class: "list" },
         sel(t("ramadanSuhoor"), prefs.suhoorLead, SUHOOR_LEADS, (m) => (m < 0 ? t("off") : tn("suhoorBefore", m, { m })), "suhoorLead"),
-        sel(t("ramadanIftar"), prefs.iftarAlert, IFTAR_ALERTS, alertLabel, "iftarAlert"),
+        sel(t("ramadanIftar"), prefs.iftarAlert, IFTAR_ALERTS, (m) => (m === -2 ? t("leaveOut") : alertLabel(m)), "iftarAlert"),
         hasT ? row(t("taraweeh"), toggle(prefs.taraweeh, (v) => { prefs.taraweeh = v; done = false; save(); render(); }, t("taraweeh"))) : null,
         hasT && prefs.taraweeh ? sel(t("ramadanTaraweehAlert"), prefs.taraweehAlert, [-1, 0, 10, 15, 30], alertLabel, "taraweehAlert") : null
       ),
-      h("p", { class: "list-foot" }, t("ramadanOnce"), " ", t("ramadanMoon")),
+      dupIftar || dupTaraweeh ? h("p", { class: "list-foot cal-note" }, icon("info"), t("ramadanOverlap")) : null,
+      h("p", { class: "list-foot" }, t("ramadanOnce"), " ", t(place.ramadanStart ? "ramadanMasjidDate" : "ramadanMoon")),
       h("div", { class: "list list-actions" }, h("button", { class: "row row-btn", type: "button", onclick: () => { sheet.close(); setTimeout(() => ctx.go("ramadan"), 240); } }, icon("print", "row-icon tone-accent"), h("span", { class: "row-title" }, t("ramadanTimetable"))))
     );
     const evs = ramadanEvents(place, calc, opts());
@@ -102,7 +106,7 @@ export function RamadanView(ctx) {
   const { place, calc } = ctx;
   const root = h("div", { class: "view view-month view-ramadan" });
   const today = todayYmd(place.tz);
-  const off = ctx.settings.hijriOffset;
+  const off = placeHijriOffset(place, today, ctx.settings.hijriOffset);
   const span = ramadanSpan(today, off);
   const short = (d) => (d ? timeParts(d, place.tz, { hour12: ctx.hour12, locale: ctx.locale }).main : "—");
   if (!span) {
@@ -117,21 +121,29 @@ export function RamadanView(ctx) {
     const s = scheduleFor(place, calc, ymd);
     const get = (k) => s.rows.find((r) => r.key === k || (k === "dhuhr" && r.key === "jumuah"));
     const cell = (k) => {
-      if (k === "taraweeh") return isRamadan(addDays(ymd, 1), off) ? short(taraweehFor(place, calc, ymd)) : "—";
+      if (k === "taraweeh") {
+        if (isRamadan(addDays(ymd, 1), off)) return short(taraweehFor(place, calc, ymd));
+        // The last fast: a 30th night only if the month completes 30 days (depends on the moon).
+        return span.days === 29 && i === span.days - 1 ? h("span", { title: t("ramadanMaybe") }, `${short(taraweehFor(place, calc, ymd))}*`) : "—";
+      }
       // Adhan times only: a fasting timetable stays narrow enough for a phone (iqama is on the Month page).
       return short(get(k === "suhoorEnds" ? "fajr" : k === "iftar" ? "maghrib" : k)?.adhan);
     };
     const hd = hijriParts(ymd, off)?.d;
+    // This evening begins night hd+1: mark the odd nights of the last ten (21st, 23rd … 29th).
+    const night = (hd || i + 1) + 1;
+    const oddNight = night >= 21 && night % 2 === 1;
     rows.push(
       h(
         "tr",
-        { class: `${sameYmd(ymd, today) ? "is-today" : ""} ${s.isFriday ? "is-friday" : ""} ${hd >= 21 ? "is-last-ten" : ""}`, "aria-current": sameYmd(ymd, today) ? "date" : null },
+        { class: `${sameYmd(ymd, today) ? "is-today" : ""} ${s.isFriday ? "is-friday" : ""} ${oddNight ? "is-odd-night" : ""}`, "aria-current": sameYmd(ymd, today) ? "date" : null, title: oddNight ? t("oddNight", { n: night }) : null },
         h("th", { scope: "row", class: "m-day" }, h("span", { class: "m-d" }, String(hd ?? i + 1)), h("span", { class: "m-w" }, formatDate(ymd, ctx.locale, { weekday: "short", day: "numeric", month: "short" }))),
         cols.map((k) => h("td", { class: `${k === "sunrise" ? "m-sun" : ""} ${k === "suhoorEnds" || k === "iftar" ? "r-key" : ""}` }, cell(k)))
       )
     );
   }
-  const firstT = hasT ? addDays(span.from, -1) : null;
+  const firstT = hasT && ymdKey(addDays(span.from, -1)) >= ymdKey(today) ? addDays(span.from, -1) : null;
+  const resolved = computeDay(place, calc, span.from).resolved;
   root.append(
     h(
       "div",
@@ -146,6 +158,7 @@ export function RamadanView(ctx) {
       h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => window.print() }, icon("print"), t("print")),
       h("button", { class: "btn btn-tinted btn-sm", type: "button", onclick: () => openRamadanSheet(ctx, place) }, icon("calendar"), t("ramadanPack"))
     ),
+    h("p", { class: "month-legend" }, h("span", {}, h("i", { class: "lg lg-odd" }), t("oddNightsLegend")), span.days === 29 && hasT ? h("span", {}, t("ramadanMaybe")) : null),
     firstT ? h("p", { class: "month-legend" }, t("firstTaraweeh", { d: formatDate(firstT, ctx.locale, { weekday: "long", day: "numeric", month: "long" }), t: formatTime(taraweehFor(place, calc, firstT), place.tz, { hour12: ctx.hour12, locale: ctx.locale }) })) : null,
     h(
       "div",
@@ -154,14 +167,14 @@ export function RamadanView(ctx) {
         "table",
         { class: "month-table ramadan-table" },
         h("caption", { class: "sr-only" }, t("ramadanTimetable")),
-        h("thead", {}, h("tr", {}, h("th", { scope: "col" }, t("ramadanDay")), cols.map((k) => h("th", { scope: "col", class: `${k === "sunrise" ? "m-sun" : ""} ${k === "suhoorEnds" || k === "iftar" ? "r-key" : ""}` }, k === "suhoorEnds" ? t("evSuhoorEnds") : t(k))))),
+        h("thead", {}, h("tr", {}, h("th", { scope: "col" }, t("ramadanDay")), cols.map((k) => h("th", { scope: "col", class: `${k === "sunrise" ? "m-sun" : ""} ${k === "suhoorEnds" || k === "iftar" ? "r-key" : ""}` }, k === "suhoorEnds" ? t("colSuhoor") : t(k))))),
         h("tbody", {}, rows)
       )
     ),
     h(
       "div",
       { class: "print-foot" },
-      h("div", {}, h("strong", {}, place.name), place.sub ? ` · ${place.sub}` : "", h("br"), t("methodNote", { m: METHODS[computeDay(place, calc, span.from).resolved.method]?.name || "", a: t(`${computeDay(place, calc, span.from).resolved.madhab}Short`) }), h("br"), t("ramadanMoon"))
+      h("div", {}, h("strong", {}, place.name), place.sub ? ` · ${place.sub}` : "", h("br"), t("methodNote", { m: METHODS[resolved.method]?.name || "", a: t(`${resolved.madhab}Short`) }), h("br"), t(place.ramadanStart ? "ramadanMasjidDate" : "ramadanMoon"))
     )
   );
   if (rows.some((r) => r.classList.contains("is-today")) && innerWidth < 900) {

@@ -5,7 +5,7 @@ import {
   ALERT_CHOICES, LENGTH_CHOICES, REMIND_ROWS, PRAYER_KEYS, buildIcs, placeHasIqama, placeHasJumuah, rangeDays,
   reminderEvents, normalizeRemind, normalizeCal, placeKey, exportSig, planExport, recordExport, rowApplies, DEFAULT_REMIND,
 } from "../ics.js";
-import { ramadanSpan, specialEvents } from "../engine.js";
+import { ramadanSoon, specialEvents } from "../engine.js";
 import { addDays, formatDate, formatTime, parseHHMM, todayYmd, ymdKey } from "../time.js";
 import { t, tn } from "../i18n.js";
 import { h, icon, openSheet, select, toggle, segmented } from "../ui.js";
@@ -60,8 +60,11 @@ export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode =
   if (!place) return null;
   const prefs = normalizeRemind(ctx.settings.remind);
   // From a masjid's "iqama reminders" link: start with iqama only, unless you've made your own choices.
+  // Only prayers that have an iqama lose their adhan (otherwise a prayer would vanish altogether).
+  let presetApplied = false;
   if (preset === "iqama" && placeHasIqama(place) && JSON.stringify(prefs.pick) === JSON.stringify(DEFAULT_REMIND.pick)) {
-    for (const key of PRAYER_KEYS) prefs.pick[key].adhan = false;
+    for (const key of PRAYER_KEYS) if (place.iqama[key]) prefs.pick[key].adhan = false;
+    presetApplied = true;
   }
   const cal = normalizeCal(ctx.settings.cal);
   const isCal = mode === "calendar";
@@ -83,13 +86,7 @@ export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode =
   // A month in the past (Month tab) has nothing left to add: use this month instead.
   const ymFor = (today) => (ymIn && ymIn.y * 12 + ymIn.m >= today.y * 12 + today.m ? ymIn : null);
   const key = () => placeKey(place);
-  const ramadanSoonFor = (p) => {
-    const today = todayYmd(p.tz);
-    const sp = ramadanSpan(today, ctx.settings.hijriOffset);
-    if (!sp) return null;
-    const until = Math.round((Date.UTC(sp.from.y, sp.from.m - 1, sp.from.d) - Date.UTC(today.y, today.m - 1, today.d)) / 864e5);
-    return until <= 45 ? { ...sp, until: Math.max(0, until) } : null;
-  };
+  const ramadanSoonFor = (p) => ramadanSoon(p, todayYmd(p.tz), ctx.settings.hijriOffset, 45);
   const sig = () => exportSig(place, calcOf(place), prefs, cal);
 
   // What the next file holds, given what this device already added to the calendar.
@@ -281,7 +278,8 @@ export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode =
       );
     }
     // Ramadan close (or here): the one-tap Ramadan pack goes first.
-    const rs = isCal && ctx.openRamadan ? ramadanSoonFor(place) : null;
+    // (Not when someone came for iqama reminders from a QR code: that's the task at hand.)
+    const rs = isCal && ctx.openRamadan && !preset ? ramadanSoonFor(place) : null;
     if (rs) {
       parts.push(
         h(
@@ -294,6 +292,7 @@ export function openCalendarSheet(ctx, { place: placeIn, ym: ymIn = null, mode =
       );
     }
     parts.push(h("h3", { class: "list-title" }, t(isCal ? "calWhat" : "calWhatNotify")), grid());
+    if (presetApplied) parts.push(h("p", { class: "list-foot cal-note" }, icon("info"), t("calPresetNote")));
     if (a.main.some(Boolean)) parts.push(h("h3", { class: "list-title" }, t("calAlerts")), h("div", { class: "list" }, a.main));
     if (isCal) {
       parts.push(h("div", { class: "list cal-range" }, rangeList(pl)));
@@ -468,8 +467,14 @@ export function calendarEnding(settings, place, now = new Date()) {
 // "Prayer times" calendar every night and sets a Clock alarm before it. Built by the person, once.
 export function openAlarmGuide(ctx) {
   const place = ctx.place;
-  const fajrTitle = place && placeHasIqama(place) ? t("evAdhan", { p: t("fajrPrayer") }) : t("fajr");
-  const steps = ["alarm1", "alarm2", "alarm3", "alarm4", "alarm5", "alarm6"];
+  // The Fajr event's title as it is in the calendar this person made (adhan if they added it, else iqama).
+  const pick = normalizeRemind(ctx.settings.remind).pick.fajr;
+  const fajrTitle = !(place && placeHasIqama(place))
+    ? t("fajr")
+    : pick.adhan || !(pick.iqama && place.iqama.fajr)
+      ? t("evAdhan", { p: t("fajrPrayer") })
+      : t("evIqama", { p: t("fajrPrayer") });
+  const steps = ["alarm1", "alarm2", "alarm3", "alarm4", "alarm5", "alarm6", "alarm7"];
   return openSheet({
     title: t("alarmTitle"),
     subtitle: t("alarmIntro"),

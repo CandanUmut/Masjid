@@ -151,13 +151,15 @@ export function placeToArray(p) {
 function extrasField(p) {
   const tw = packTaraweeh(p.taraweeh);
   const ev = cleanEvents(p.events).map((e) => [e.date, e.time, e.title]);
-  return tw || ev.length ? [[tw, ev]] : [];
+  const rs = validDate(p.ramadanStart) ? p.ramadanStart : "";
+  if (!tw && !ev.length && !rs) return [];
+  return [rs ? [tw, ev, rs] : [tw, ev]];
 }
 
 export function arrayToPlace(a) {
   if (!Array.isArray(a) || a[0] !== 1) throw new Error("unsupported seed version");
   const [, kind, id, name, sub, lat, lng, tz, cc, calc, iqama, jumuah, note, u, extras] = a;
-  const [tw, ev] = Array.isArray(extras) ? extras : [];
+  const [tw, ev, rs] = Array.isArray(extras) ? extras : [];
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) throw new Error("bad coordinates");
   if (!isValidTimeZone(tz)) throw new Error("bad time zone");
   return {
@@ -180,6 +182,7 @@ export function arrayToPlace(a) {
     u: Number.isFinite(u) ? u : 0,
     taraweeh: unpackTaraweeh(tw),
     events: cleanEvents(ev),
+    ramadanStart: validDate(rs) ? rs : null, // the masjid's first fast, when it announced one
   };
 }
 
@@ -231,8 +234,10 @@ async function decode(seed) {
 }
 
 // --- public API ----------------------------------------------------------------------
-export async function placeToSeed(place) {
-  return encode("m", placeToArray(place));
+// `events: false` leaves the one-off events out: for QR codes printed or shown on a screen, which stay
+// up for months (events go stale there, and every event makes the code denser and harder to scan).
+export async function placeToSeed(place, { events = true } = {}) {
+  return encode("m", placeToArray(events ? place : { ...place, events: [] }));
 }
 
 export async function backupToSeed(state) {

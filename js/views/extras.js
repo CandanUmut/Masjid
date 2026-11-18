@@ -344,11 +344,16 @@ export const extrasPlugin = {
     // #/cal/<seed>: the masjid's "iqama reminders" link (poster, screen, chat). Save the masjid, then
     // go straight to Add to calendar, set to its iqama times.
     if (name === "cal" && arg) {
-      importSeed(ctx, arg).then((ok) => {
+      let sheet = null;
+      // Undo ("added · Undo") also closes the sheet, which would otherwise be about a removed masjid.
+      importSeed(ctx, arg, { onUndo: () => sheet?.forceClose() }).then((ok) => {
         if (ok === false) toast(t("invalidSeed"), { tone: "warn" });
         history.replaceState(null, "", location.pathname + location.search + "#/");
         ctx.go("today");
-        if (ok) setTimeout(() => openCalendarSheet(getCtx(), { preset: "iqama" }), 450);
+        if (ok)
+          setTimeout(() => {
+            sheet = openCalendarSheet(getCtx(), { preset: "iqama" }); // the Undo toast moves into the sheet, still tappable
+          }, 450);
       });
       return true;
     }

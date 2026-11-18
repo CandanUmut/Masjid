@@ -4919,10 +4919,16 @@ body.no-tabbar::after {
 .ramadan-table .r-key {
   font-weight: 600;
 }
-.ramadan-table tr.is-last-ten th .m-d::after {
-  content: "·";
-  margin-inline-start: 2px;
+.ramadan-table tr.is-odd-night th .m-d::after,
+.lg-odd::before {
+  content: "✦";
+  margin-inline-start: 3px;
+  font-size: 0.6em;
+  vertical-align: super;
   color: var(--accent);
+}
+.lg-odd {
+  font-style: normal;
 }
 .masjid-agenda {
   margin: 12px -16px -4px;
@@ -4978,14 +4984,6 @@ body.no-tabbar::after {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-}
-.event-when .input-time {
-  flex: 0 0 136px;
-  width: auto;
-  min-width: 0;
-}
-.event-when .event-date {
-  flex: 1 1 0;
 }
 /* Ramadan timetable on a phone: Sunrise (the least used column in Ramadan) makes way; print keeps it */
 .view-ramadan .month-card {
@@ -5059,4 +5057,51 @@ body.no-tabbar::after {
   .poster-remind-text strong {
     font-size: 16pt;
   }
+}
+/* Paper is white whatever the screen theme: print always uses the light colours.
+   (:root:root:root outranks the dark theme's :root[data-theme] and :root:not(…) selectors.) */
+@media print {
+  :root:root:root {
+    --bg: #fff;
+    --surface: #fff;
+    --surface-2: #f2f2f7;
+    --surface-3: #e5e5ea;
+    --label: #000;
+    --label-2: #444;
+    --label-3: #888;
+    --label-passed: #444;
+    --sep: #bbb;
+    --fill: rgba(120, 120, 128, 0.12);
+    --fill-2: rgba(120, 120, 128, 0.2);
+    --accent: #0062cc;
+    --accent-tint: rgba(0, 122, 255, 0.12);
+    --shadow-1: none;
+    color-scheme: light;
+  }
+}
+.event-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.event-head .event-title {
+  flex: 1;
+  min-width: 0;
+}
+.event-head .icon-btn {
+  flex: none;
+}
+.event-when .input-time {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+.event-when .event-date {
+  flex: 1.3 1 0;
+}
+.ramadan-start {
+  gap: 10px;
+}
+.ramadan-start .ramadan-start-date {
+  flex: 0 1 180px;
 }

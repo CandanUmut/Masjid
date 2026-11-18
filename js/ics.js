@@ -1,6 +1,6 @@
 // Reminder choices and calendar export. Pure (no DOM), so it runs in tests and is shared by the
 // calendar file and the in-app notifications: one set of choices drives both.
-import { scheduleFor, computeDay, taraweehFor, specialEvents, isRamadan } from "./engine.js";
+import { scheduleFor, computeDay, taraweehFor, specialEvents, isRamadan, placeHijriOffset } from "./engine.js";
 import { addDays, hijriParts, partsInTz, ymdKey } from "./time.js";
 
 // Everything a person can be reminded of, in the order of the day.
@@ -120,7 +120,13 @@ export function placeKey(place) {
 // Everything that changes what a file contains. Same fingerprint = same events for the same days.
 export function exportSig(place, calc, prefs, cal) {
   const p = place;
-  return hash(JSON.stringify([prefs, cal.busy, cal.length, p.lat?.toFixed(3), p.lng?.toFixed(3), p.tz, calc, p.iqama || null, p.jumuah || null, p.taraweeh || null, p.events || null]));
+  // Choices for rows this place doesn't have (Taraweeh, events) don't change its file, and the newer
+  // parts are only added when present, so a calendar added with an earlier version still matches.
+  const pick = {};
+  for (const [k, v] of Object.entries(prefs.pick)) if (!["taraweeh", "events"].includes(k) || rowApplies({ key: k }, p)) pick[k] = v;
+  const parts = [{ ...prefs, pick }, cal.busy, cal.length, p.lat?.toFixed(3), p.lng?.toFixed(3), p.tz, calc, p.iqama || null, p.jumuah || null];
+  if (p.taraweeh || p.events?.length || p.ramadanStart) parts.push(p.taraweeh || null, p.events || null, p.ramadanStart || null);
+  return hash(JSON.stringify(parts));
 }
 
 // Record a download of [from, to] (ymd keys). Joins the span already covered when it touches it,
@@ -179,7 +185,9 @@ export function alertsFor(prefs, kind) {
 
 // Every event the choices produce for `days` days from `from` (a ymd in the place's time zone).
 // `label(key, vars)` translates; `now` drops anything already past.
-export function reminderEvents(place, calc, prefs, { from, days, label = (k) => k, hijriOffset = 0, now = null, busy = false, length = 15 } = {}) {
+export function reminderEvents(place, calc, prefs, { from, days, label = (k) => k, hijriOffset: viewerOffset = 0, now = null, busy = false, length = 15 } = {}) {
+  // A masjid that announced its first fast decides when Ramadan is, for everyone with its link.
+  const hijriOffset = placeHijriOffset(place, from, viewerOffset);
   const hasIqama = placeHasIqama(place);
   const hasJumuah = placeHasJumuah(place);
   const pick = prefs.pick;
@@ -284,7 +292,8 @@ export function reminderEvents(place, calc, prefs, { from, days, label = (k) => 
 // --- Ramadan pack ------------------------------------------------------------------------------
 // One file for the month: a Suhoor reminder before Fajr, Iftar at Maghrib, and the masjid's Taraweeh.
 // opts: { from, days, suhoorLead (min before Fajr, -1 = none), iftarAlert (-1 = none), taraweeh, taraweehAlert, label, hijriOffset, now }
-export function ramadanEvents(place, calc, { from, days, suhoorLead = 45, iftarAlert = 0, taraweeh = true, taraweehAlert = 15, label = (k) => k, hijriOffset = 0, now = null } = {}) {
+export function ramadanEvents(place, calc, { from, days, suhoorLead = 45, iftarAlert = 0, taraweeh = true, taraweehAlert = 15, label = (k) => k, hijriOffset: viewerOffset = 0, now = null } = {}) {
+  const hijriOffset = placeHijriOffset(place, from, viewerOffset);
   const out = [];
   const min = (n) => n * 60000;
   const nowMs = now ? now.getTime() : -Infinity;
@@ -297,10 +306,11 @@ export function ramadanEvents(place, calc, { from, days, suhoorLead = 45, iftarA
     if (i >= 0) {
       const t = computeDay(place, calc, ymd).times;
       if (t.fajr && suhoorLead >= 0) {
-        const start = new Date(t.fajr.getTime() - min(Math.max(suhoorLead, 10)));
+        const start = new Date(t.fajr.getTime() - min(suhoorLead));
         push({ uid: `${day}-ramadan-suhoor`, kind: "adhan", key: "suhoor", start, end: t.fajr, title: label("evSuhoor"), alerts: [0], busy: false });
       }
-      if (t.maghrib && iftarAlert >= -1) {
+      // iftarAlert: -2 = leave Iftar out (say, your prayer calendar already has Maghrib), -1 = no alert.
+      if (t.maghrib && iftarAlert > -2) {
         push({ uid: `${day}-ramadan-iftar`, kind: "adhan", key: "iftar", start: t.maghrib, end: new Date(t.maghrib.getTime() + min(20)), title: label("iftar"), alerts: alerts(iftarAlert), busy: false });
       }
     }

@@ -167,6 +167,7 @@ export function openSheet({ title, subtitle, content, actions, className = "", o
     dlg.classList.add("is-closing");
     const done = () => {
       dlg.close();
+      releaseToast(dlg);
       dlg.remove();
       if (!document.querySelector("dialog.sheet[open]")) document.documentElement.classList.remove("has-sheet");
       onClose?.();
@@ -196,6 +197,7 @@ export function openSheet({ title, subtitle, content, actions, className = "", o
       return;
     }
     closed = true;
+    releaseToast(dlg);
     dlg.remove();
     if (!document.querySelector("dialog.sheet[open]")) document.documentElement.classList.remove("has-sheet");
     onClose?.();
@@ -205,6 +207,7 @@ export function openSheet({ title, subtitle, content, actions, className = "", o
   syncViewport();
   document.body.append(dlg);
   dlg.showModal();
+  rehomeToast(); // a toast already on screen (with its Undo) stays visible and tappable above the sheet
   // The page behind a sheet stays put.
   document.documentElement.classList.add("has-sheet");
   return { el: dlg, body, close: () => close(false), forceClose: () => close(true) };
@@ -264,8 +267,8 @@ export function toast(message, { action, onAction, duration = 3800, tone = "" } 
   if (!toastHost) {
     toastHost = h("div", { class: "toast-host", role: "status", "aria-live": "polite" });
     if (typeof toastHost.showPopover === "function") toastHost.setAttribute("popover", "manual");
-    document.body.append(toastHost);
   }
+  if (toastHost.parentElement !== toastParent()) toastParent().append(toastHost);
   // A popover lives in the top layer, so toasts (and their Undo buttons) stay above open sheets.
   if (toastHost.hasAttribute("popover")) {
     try {
@@ -295,6 +298,31 @@ export function toast(message, { action, onAction, duration = 3800, tone = "" } 
   }
   dismissCurrent = dismiss;
   return dismiss;
+}
+
+// A modal sheet makes everything outside it inert, toasts included (even shown above it in the top
+// layer). So the toast host lives inside the topmost open sheet, and moves back out when it closes.
+function toastParent() {
+  return [...document.querySelectorAll("dialog.sheet[open]")].filter((d) => !d.classList.contains("is-closing")).pop() || document.body;
+}
+function rehomeToast() {
+  if (!toastHost) return;
+  const parent = toastParent();
+  if (toastHost.parentElement !== parent) parent.append(toastHost); // moving it hides a popover…
+  if (toastHost.hasAttribute("popover") && toastHost.children.length) {
+    try {
+      if (toastHost.matches(":popover-open")) toastHost.hidePopover();
+      toastHost.showPopover(); // …and showing again puts it on top
+    } catch {
+      /* ignore */
+    }
+  }
+}
+function releaseToast(dlg) {
+  if (toastHost && dlg.contains(toastHost)) {
+    document.body.append(toastHost);
+    queueMicrotask(rehomeToast);
+  }
 }
 
 // --- Form controls -----------------------------------------------------
