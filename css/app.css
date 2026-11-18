@@ -4625,3 +4625,483 @@ body.no-tabbar::after {
     font-size: 15px;
   }
 }
+
+/* ---------- Add to calendar / Prayers & alerts ---------- */
+.cal-sheet > .list-title:first-child {
+  margin-top: 8px;
+}
+.remind-grid {
+  padding: 2px 0;
+}
+.rg-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 68px;
+  align-items: center;
+  min-height: 50px;
+  padding: 6px 12px 6px 16px;
+}
+.remind-grid.has-iqama .rg-row {
+  grid-template-columns: minmax(0, 1fr) 68px 68px;
+}
+.rg-row + .rg-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  inset-inline: 16px 0;
+  border-top: 0.5px solid var(--sep);
+}
+.rg-headrow {
+  min-height: 42px;
+}
+.rg-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.rg-title {
+  font-weight: 500;
+}
+.rg-sub,
+.rg-hint {
+  font-size: 12.5px;
+  color: var(--label-2);
+  line-height: 1.3;
+}
+.rg-col {
+  justify-self: center;
+  /* A 32px pill inside a 44px tap target */
+  min-height: 44px;
+  padding: 4px 10px;
+  border: solid transparent;
+  border-width: 6px 3px;
+  background-clip: padding-box;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--label-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rg-col.is-all {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.rg-check {
+  position: relative;
+  justify-self: center;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+}
+.rg-check input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.rg-box {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--label-2);
+  color: transparent;
+  transition: background 0.15s, box-shadow 0.15s, color 0.15s;
+}
+.rg-box .icon {
+  width: 16px;
+  height: 16px;
+}
+.rg-box .icon svg {
+  stroke-width: 2.6;
+}
+.rg-check input:checked + .rg-box {
+  background: var(--accent);
+  box-shadow: none;
+  color: #fff;
+}
+.rg-check input:focus-visible + .rg-box {
+  outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+.rg-empty {
+  justify-self: center;
+  width: 8px;
+  height: 1.5px;
+  background: var(--label-3);
+}
+.cal-more,
+.cal-help {
+  margin-top: 18px;
+}
+.cal-more > summary,
+.cal-help > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 4px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+  list-style: none;
+}
+.cal-more > summary::-webkit-details-marker,
+.cal-help > summary::-webkit-details-marker {
+  display: none;
+}
+.cal-more > summary::after,
+.cal-help > summary::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-top: -3px;
+  margin-inline-start: 2px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.2s var(--ease);
+}
+.cal-more[open] > summary::after,
+.cal-help[open] > summary::after {
+  margin-top: 3px;
+  transform: rotate(-135deg);
+}
+.cal-help > summary .icon {
+  width: 20px;
+  height: 20px;
+}
+.cal-help .segmented {
+  display: flex;
+  margin: 4px 0 10px;
+}
+.cal-help .segmented button {
+  flex: 1;
+  min-width: 0;
+  padding-inline: 4px;
+}
+.cal-steps {
+  margin: 0;
+  padding: 14px 16px 14px 34px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  font-size: 15px;
+  line-height: 1.45;
+}
+[dir="rtl"] .cal-steps {
+  padding: 14px 34px 14px 16px;
+}
+.cal-steps li + li {
+  margin-top: 8px;
+}
+.cal-note,
+.cal-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 12px;
+}
+/* Colour on the icon only: orange or green text is too faint to read on white */
+.cal-warn {
+  color: var(--label);
+}
+.cal-warn .icon {
+  color: var(--orange);
+}
+.cal-note .icon,
+.cal-warn .icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+}
+.cal-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.cal-summary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--label-2);
+  text-align: center;
+  text-wrap: balance;
+}
+.cal-summary.is-empty {
+  color: var(--label);
+}
+.cal-foot-btns {
+  display: flex;
+  gap: 10px;
+}
+.cal-foot-btns .btn-primary {
+  flex: 1;
+}
+.cal-foot-btns .btn-block {
+  flex: 1;
+}
+.cal-foot-btns .cal-share {
+  flex: none;
+  width: 52px;
+  padding: 0;
+}
+.cal-summary.is-done {
+  color: var(--label);
+}
+.cal-summary.is-done .icon {
+  color: var(--green);
+}
+.cal-summary.is-done .icon {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  margin-inline-end: 4px;
+  vertical-align: -2px;
+}
+.list.cal-range {
+  margin-top: 16px;
+}
+
+/* ---------- Ramadan, special events, reminders QR ---------- */
+.ramadan-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 4px 0 4px;
+  padding: 12px 16px;
+  border: 0;
+  text-align: start;
+  color: var(--label);
+  cursor: pointer;
+}
+.ramadan-card-icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 7px;
+  border-radius: 10px;
+  background: linear-gradient(160deg, #1c2a5e, #4a3a7a);
+  color: #f5e6b8;
+}
+.ramadan-dates {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 4px 16px;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.ramadan-dates > .icon {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 7px;
+  border-radius: 10px;
+  background: linear-gradient(160deg, #1c2a5e, #4a3a7a);
+  color: #f5e6b8;
+}
+.cal-alarm-link {
+  margin-top: 8px;
+}
+.icon-btn-space {
+  flex: none;
+  width: 38px;
+}
+.ramadan-table .r-key {
+  font-weight: 600;
+}
+.ramadan-table tr.is-odd-night th .m-d::after,
+.lg-odd::before {
+  content: "✦";
+  margin-inline-start: 3px;
+  font-size: 0.6em;
+  vertical-align: super;
+  color: var(--accent);
+}
+.lg-odd {
+  font-style: normal;
+}
+.masjid-agenda {
+  margin: 12px -16px -4px;
+  padding-top: 6px;
+  border-top: 0.5px solid var(--sep);
+}
+.masjid-agenda ul {
+  margin: 0;
+  padding: 2px 16px 0;
+  list-style: none;
+}
+.agenda-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.agenda-item .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  color: var(--accent);
+}
+.taraweeh-edit {
+  display: grid;
+  gap: 10px;
+}
+.taraweeh-edit .row {
+  padding: 0;
+  min-height: 0;
+  flex-wrap: wrap;
+}
+.iqama-word {
+  color: var(--label-2);
+}
+.events-edit {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+.event-edit {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding-bottom: 12px;
+  border-bottom: 0.5px solid var(--sep);
+}
+.event-when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+/* Ramadan timetable on a phone: Sunrise (the least used column in Ramadan) makes way; print keeps it */
+.view-ramadan .month-card {
+  overflow-x: auto;
+}
+@media screen and (max-width: 560px) {
+  .ramadan-table .m-sun {
+    display: none;
+  }
+}
+/* TV: two codes side by side (open the masjid / iqama reminders) */
+.tv-qr {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 2vmin;
+}
+.tv-qr-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6vmin;
+  max-width: 16vmin;
+  text-align: center;
+}
+.tv-agenda {
+  display: flex;
+  align-items: center;
+  gap: 1.4vmin;
+  max-width: 100%;
+  font-size: 3vmin;
+}
+.tv-agenda .icon {
+  flex: none;
+  width: 3.2vmin;
+  height: 3.2vmin;
+}
+.tv-agenda .tv-period {
+  font-size: 0.7em;
+}
+@media print {
+  /* Room for the reminders code below */
+  body.is-printing-poster .poster:has(.poster-remind) .poster-qr {
+    width: 9cm;
+    height: 9cm;
+  }
+  .poster-remind {
+    display: flex;
+    align-items: center;
+    gap: 0.6cm;
+    margin-top: 0.8cm;
+    padding: 0.4cm 0.6cm;
+    border: 1.5px solid #000;
+    border-radius: 0.4cm;
+    text-align: start;
+  }
+  .poster-remind-qr {
+    flex: none;
+    width: 3.6cm;
+    height: 3.6cm;
+  }
+  .poster-remind-qr svg {
+    width: 100%;
+    height: 100%;
+  }
+  .poster-remind-text {
+    display: grid;
+    gap: 4px;
+    font-size: 12pt;
+    max-width: 8cm;
+  }
+  .poster-remind-text strong {
+    font-size: 16pt;
+  }
+}
+/* Paper is white whatever the screen theme: print always uses the light colours.
+   (:root:root:root outranks the dark theme's :root[data-theme] and :root:not(…) selectors.) */
+@media print {
+  :root:root:root {
+    --bg: #fff;
+    --surface: #fff;
+    --surface-2: #f2f2f7;
+    --surface-3: #e5e5ea;
+    --label: #000;
+    --label-2: #444;
+    --label-3: #888;
+    --label-passed: #444;
+    --sep: #bbb;
+    --fill: rgba(120, 120, 128, 0.12);
+    --fill-2: rgba(120, 120, 128, 0.2);
+    --accent: #0062cc;
+    --accent-tint: rgba(0, 122, 255, 0.12);
+    --shadow-1: none;
+    color-scheme: light;
+  }
+}
+.event-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.event-head .event-title {
+  flex: 1;
+  min-width: 0;
+}
+.event-head .icon-btn {
+  flex: none;
+}
+.event-when .input-time {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+.event-when .event-date {
+  flex: 1.3 1 0;
+}
+.ramadan-start {
+  gap: 10px;
+}
+.ramadan-start .ramadan-start-date {
+  flex: 0 1 180px;
+}

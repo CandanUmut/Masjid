@@ -20,6 +20,9 @@ test("no duplicate keys within a language", () => {
 test("every language has the same keys", async () => {
   const { STRINGS } = await import("../js/i18n.js").catch(() => ({}));
   if (!STRINGS) return; // not exported
-  const en = Object.keys(STRINGS.en).sort();
-  for (const l of ["tr", "ar"]) assert.deepEqual(Object.keys(STRINGS[l]).sort(), en, l);
+  // Plural forms (key_one, key_few, …) depend on the language; only their base key must exist everywhere.
+  const PLURAL = /_(zero|one|two|few|many|other)$/;
+  const base = (l) => Object.keys(STRINGS[l]).filter((k) => !PLURAL.test(k)).sort();
+  for (const l of ["tr", "ar"]) assert.deepEqual(base(l), base("en"), l);
+  for (const l of ["en", "tr", "ar"]) for (const k of Object.keys(STRINGS[l]).filter((k) => PLURAL.test(k))) assert.ok(STRINGS[l][k.replace(PLURAL, "")], `${l}.${k} has no base key`);
 });

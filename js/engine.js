@@ -309,3 +309,78 @@ function clampNum(v, min, max, dflt) {
   if (!Number.isFinite(n)) return dflt;
   return Math.min(max, Math.max(min, n));
 }
+
+// --- Ramadan and special events -------------------------------------------------------------
+export const isRamadan = (ymd, hijriOffset = 0) => hijriParts(ymd, hijriOffset)?.m === 9;
+
+// Taraweeh on a Ramadan night: N minutes after the Isha iqama (or adhan when there's no iqama),
+// or a fixed time that is never earlier than that.
+export function taraweehFor(place, calc, ymd) {
+  const rule = place?.taraweeh;
+  if (!rule) return null;
+  const isha = scheduleFor(place, calc, ymd).rows.find((r) => r.key === "isha");
+  const after = isha?.iqama?.at || isha?.adhan;
+  if (!after) return null;
+  if (rule.mode === "fixed") {
+    const hm = parseHHMM(rule.time);
+    if (!hm) return null;
+    let at = zonedToInstant(ymd, hm.hh, hm.mm, place.tz);
+    // "00:30" in a short summer night means after midnight, i.e. tomorrow's date.
+    if (at < after && hm.hh < 12) at = zonedToInstant(addDays(ymd, 1), hm.hh, hm.mm, place.tz);
+    return at < after ? new Date(after.getTime()) : at;
+  }
+  return new Date(after.getTime() + clampInt(rule.offset, 0, 120) * 60000);
+}
+
+// A masjid's one-off events (Eid prayer, a lecture…) between two days, as instants, in order.
+export function specialEvents(place, fromYmd, toYmd) {
+  const from = `${fromYmd.y}-${String(fromYmd.m).padStart(2, "0")}-${String(fromYmd.d).padStart(2, "0")}`;
+  const to = `${toYmd.y}-${String(toYmd.m).padStart(2, "0")}-${String(toYmd.d).padStart(2, "0")}`;
+  return (place?.events || [])
+    .filter((e) => e.date >= from && e.date <= to && parseHHMM(e.time))
+    .map((e) => {
+      const [y, m, d] = e.date.split("-").map(Number);
+      const hm = parseHHMM(e.time);
+      return { ...e, ymd: { y, m, d }, at: zonedToInstant({ y, m, d }, hm.hh, hm.mm, place.tz) };
+    })
+    .sort((a, b) => a.at - b.at);
+}
+
+// The current Ramadan (if today is in it) or the next one: { from, days, year } in local days.
+export function ramadanSpan(today, hijriOffset = 0) {
+  let d = today;
+  for (let i = 0; i < 400 && !isRamadan(d, hijriOffset); i++) d = addDays(d, 1);
+  if (!isRamadan(d, hijriOffset)) return null;
+  // Back to its first day (when today is already in Ramadan).
+  while (isRamadan(addDays(d, -1), hijriOffset)) d = addDays(d, -1);
+  let days = 0;
+  while (isRamadan(addDays(d, days), hijriOffset) && days < 31) days++;
+  return { from: d, days, year: hijriParts(d, hijriOffset)?.y };
+}
+
+// Days from a to b (local calendar days).
+const dayDiff = (a, b) => Math.round((Date.UTC(b.y, b.m - 1, b.d) - Date.UTC(a.y, a.m - 1, a.d)) / 864e5);
+
+// The Hijri adjustment that applies to a masjid around `ymd`. A masjid that announced its first fast
+// (place.ramadanStart) is followed by everyone with its link — its screen, calendars and timetable all
+// agree — for that Ramadan season. Otherwise each person's own adjustment (`fallback`) applies.
+export function placeHijriOffset(place, ymd, fallback = 0) {
+  const start = place?.ramadanStart;
+  if (!start || !/^\d{4}-\d{2}-\d{2}$/.test(start)) return fallback;
+  const [y, m, d] = start.split("-").map(Number);
+  const s = { y, m, d };
+  if (Math.abs(dayDiff(s, ymd)) > 200) return fallback; // last year's announcement says nothing about this year
+  const uq = ramadanSpan(addDays(s, -40), 0);
+  if (!uq) return fallback;
+  const off = dayDiff(s, uq.from);
+  return Math.abs(off) <= 3 ? off : fallback;
+}
+
+// Ramadan within `days` from today (or now), for a place: its span plus `until` (days from today), or null.
+export function ramadanSoon(place, today, fallbackOffset = 0, days = 60) {
+  const off = placeHijriOffset(place, today, fallbackOffset);
+  const span = ramadanSpan(today, off);
+  if (!span) return null;
+  const until = dayDiff(today, span.from);
+  return until <= days ? { ...span, until: Math.max(0, until), offset: off } : null;
+}
